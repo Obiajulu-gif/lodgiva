@@ -15,6 +15,9 @@ import {
   Menu,
   X,
   Bell,
+  UtensilsCrossed,
+  Banknote,
+  Settings,
 } from "lucide-react";
 
 const nav = [
@@ -23,8 +26,11 @@ const nav = [
   { href: "/dashboard/reservations", label: "Reservations", icon: CalendarRange },
   { href: "/dashboard/guests", label: "Guests", icon: Users },
   { href: "/dashboard/housekeeping", label: "Housekeeping", icon: Sparkles },
+  { href: "/dashboard/pos", label: "POS", icon: UtensilsCrossed },
   { href: "/dashboard/payments", label: "Payments", icon: Wallet },
+  { href: "/dashboard/cashiering", label: "Cashiering", icon: Banknote },
   { href: "/dashboard/reports", label: "Reports", icon: BarChart3 },
+  { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
 export default function DashboardLayout({
@@ -63,7 +69,7 @@ export default function DashboardLayout({
         <p className="mt-0.5 text-sm font-semibold">Grand Palm Hotel, Lagos</p>
       </div>
 
-      <nav className="flex-1 space-y-1 px-4">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-4">
         {nav.map((item) => {
           const active = pathname === item.href;
           return (

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Plus } from "lucide-react";
-import { reservations, formatNaira } from "@/lib/data";
+import { Search, Plus, X } from "lucide-react";
+import { reservations as seedReservations, formatNaira, type Reservation } from "@/lib/data";
 
 const statusStyles: Record<string, string> = {
   CHECKED_IN: "bg-brand-100 text-brand-800",
@@ -15,9 +15,58 @@ const statusStyles: Record<string, string> = {
 
 const tabs = ["All", "Arrivals", "In-house", "Departures", "Cancelled"];
 
+const roomTypeRates: Record<string, number> = {
+  Standard: 35000,
+  Deluxe: 46500,
+  Executive: 62000,
+  Suite: 95000,
+};
+
 export default function ReservationsPage() {
   const [tab, setTab] = useState("All");
   const [query, setQuery] = useState("");
+  const [reservations, setReservations] = useState<Reservation[]>(seedReservations);
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({
+    guest: "",
+    roomType: "Deluxe",
+    room: "",
+    arrival: "2026-07-30",
+    departure: "2026-07-31",
+  });
+
+  const createReservation = () => {
+    if (!form.guest.trim()) return;
+    const nights = Math.max(
+      1,
+      Math.round(
+        (new Date(form.departure).getTime() - new Date(form.arrival).getTime()) /
+          86400000
+      )
+    );
+    const total = (roomTypeRates[form.roomType] ?? 46500) * nights;
+    setReservations((prev) => [
+      {
+        id: `res_${Date.now()}`,
+        code: `LDG-${4830 + prev.length}`,
+        guest: form.guest.trim(),
+        room: form.room || "—",
+        roomType: form.roomType,
+        arrival: form.arrival,
+        departure: form.departure,
+        nights,
+        adults: 1,
+        status: "CONFIRMED",
+        total,
+        balance: total,
+        source: "Walk-in",
+      },
+      ...prev,
+    ]);
+    setShowModal(false);
+    setForm({ ...form, guest: "", room: "" });
+    setTab("All");
+  };
 
   const filtered = reservations.filter((r) => {
     const q = query.toLowerCase();
@@ -46,7 +95,10 @@ export default function ReservationsPage() {
             Search, filter and manage all bookings.
           </p>
         </div>
-        <button className="inline-flex items-center gap-2 rounded-full bg-brand-800 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700">
+        <button
+          onClick={() => setShowModal(true)}
+          className="inline-flex items-center gap-2 rounded-full bg-brand-800 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
+        >
           <Plus className="h-4 w-4" />
           New reservation
         </button>
@@ -143,6 +195,107 @@ export default function ReservationsPage() {
           </table>
         </div>
       </div>
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div
+            className="absolute inset-0 bg-ink/40"
+            onClick={() => setShowModal(false)}
+          />
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-xl font-semibold text-ink">
+                New reservation
+              </h2>
+              <button onClick={() => setShowModal(false)} aria-label="Close">
+                <X className="h-5 w-5 text-ink/40" />
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-ink/60">
+                  GUEST NAME
+                </label>
+                <input
+                  value={form.guest}
+                  onChange={(e) => setForm({ ...form, guest: e.target.value })}
+                  placeholder="e.g. Chinwe Okafor"
+                  className="mt-1.5 w-full rounded-xl border border-ink/10 px-4 py-3 text-sm outline-none focus:border-brand-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-ink/60">
+                    ROOM TYPE
+                  </label>
+                  <select
+                    value={form.roomType}
+                    onChange={(e) =>
+                      setForm({ ...form, roomType: e.target.value })
+                    }
+                    className="mt-1.5 w-full rounded-xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none focus:border-brand-500"
+                  >
+                    {Object.keys(roomTypeRates).map((t) => (
+                      <option key={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-ink/60">
+                    ROOM (OPTIONAL)
+                  </label>
+                  <input
+                    value={form.room}
+                    onChange={(e) => setForm({ ...form, room: e.target.value })}
+                    placeholder="e.g. 204"
+                    className="mt-1.5 w-full rounded-xl border border-ink/10 px-4 py-3 text-sm outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-ink/60">
+                    ARRIVAL
+                  </label>
+                  <input
+                    type="date"
+                    value={form.arrival}
+                    onChange={(e) =>
+                      setForm({ ...form, arrival: e.target.value })
+                    }
+                    className="mt-1.5 w-full rounded-xl border border-ink/10 px-4 py-3 text-sm outline-none focus:border-brand-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-ink/60">
+                    DEPARTURE
+                  </label>
+                  <input
+                    type="date"
+                    value={form.departure}
+                    onChange={(e) =>
+                      setForm({ ...form, departure: e.target.value })
+                    }
+                    className="mt-1.5 w-full rounded-xl border border-ink/10 px-4 py-3 text-sm outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={createReservation}
+                disabled={!form.guest.trim()}
+                className="mt-2 w-full rounded-full bg-brand-800 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700 disabled:opacity-40"
+              >
+                Create reservation
+              </button>
+              <p className="text-center text-[11px] text-ink/40">
+                Demo only — the reservation is added to this session, not saved.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
