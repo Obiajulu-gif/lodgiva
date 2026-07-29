@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { enqueue, flush, isConnectivityFailure, readQueue } from "../offline";
 
 interface Task {
   id: string;
@@ -8,8 +9,16 @@ interface Task {
   status: string;
   notes: string | null;
   businessDate: string;
+  version: number;
   room: { roomNumber: string; operationalStatus: string };
 }
+
+// Maps the next board column to the offline sync action name.
+const ACTION_FOR: Record<string, string> = {
+  IN_PROGRESS: "start",
+  COMPLETED: "complete",
+  INSPECTED: "inspect",
+};
 
 const COLUMNS = ["PENDING", "IN_PROGRESS", "COMPLETED", "INSPECTED"];
 
@@ -22,13 +31,43 @@ export default function HousekeepingPage({ propertyId }: { propertyId: string })
   });
 
   const advance = useMutation({
-    mutationFn: (id: string) =>
-      api(`/housekeeping/tasks/${id}/advance`, { method: "POST", body: {} }),
+    // Offline-first: when there is no connection the change is queued with the
+    // version this device saw and replayed through /sync/mutations later.
+    mutationFn: async (task: Task) => {
+      const idx = COLUMNS.indexOf(task.status);
+      const next = COLUMNS[idx + 1];
+      if (!next) return;
+
+      const queueIt = () =>
+        enqueue({
+          entityType: "housekeepingTask",
+          entityId: task.id,
+          baseVersion: task.version,
+          action: ACTION_FOR[next],
+          payload: {},
+          label: `Room ${task.room.roomNumber} → ${next.replace("_", " ")}`,
+        });
+
+      // Known-offline: don't even attempt the request.
+      if (!navigator.onLine) return void queueIt();
+
+      try {
+        await api(`/housekeeping/tasks/${task.id}/advance`, { method: "POST", body: {} });
+      } catch (err) {
+        // The server was unreachable — queue it rather than losing the work.
+        // A genuine rejection (409, 404, …) still surfaces as an error.
+        if (isConnectivityFailure(err)) return void queueIt();
+        throw err;
+      }
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["hk-tasks", propertyId] });
       qc.invalidateQueries({ queryKey: ["room-rack", propertyId] });
     },
   });
+
+  const queuedFor = (taskId: string) =>
+    readQueue().filter((q) => q.entityId === taskId).length;
 
   return (
     <>
@@ -37,10 +76,16 @@ export default function HousekeepingPage({ propertyId }: { propertyId: string })
           <h1>Housekeeping Board</h1>
           <p className="sub">
             Click a card to advance it. Completing a task updates the room's
-            state on the rack automatically.
+            state on the rack. Works offline — changes queue and sync on
+            reconnect.
           </p>
         </div>
-        <span className="badge">{tasks?.length ?? 0} tasks</span>
+        <div className="toolbar" style={{ margin: 0 }}>
+          <span className="badge">{tasks?.length ?? 0} tasks</span>
+          <button className="secondary small" onClick={() => flush().then(() => qc.invalidateQueries())}>
+            Sync now
+          </button>
+        </div>
       </div>
 
       <div className="grid cols-4">
@@ -57,10 +102,15 @@ export default function HousekeepingPage({ propertyId }: { propertyId: string })
                     key={t.id}
                     className="card"
                     style={{ cursor: col !== "INSPECTED" ? "pointer" : "default", padding: 14 }}
-                    onClick={() => col !== "INSPECTED" && advance.mutate(t.id)}
+                    onClick={() => col !== "INSPECTED" && advance.mutate(t)}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <b>Room {t.room.roomNumber}</b>
+                      <b>
+                        Room {t.room.roomNumber}
+                        {queuedFor(t.id) > 0 && (
+                          <span className="pill gold" style={{ marginLeft: 6 }}>queued</span>
+                        )}
+                      </b>
                       <span className={`pill ${t.priority === "HIGH" ? "red" : t.priority === "LOW" ? "gray" : "blue"}`}>
                         {t.priority}
                       </span>

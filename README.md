@@ -73,10 +73,10 @@ across four room types, two POS outlets with menus, guests and reservations.
 With the API running:
 
 ```bash
-node apps/api/test/e2e.mjs
+pnpm --filter @lodgiva/api test
 ```
 
-47 assertions covering the full stay lifecycle — reserve, check in, post POS
+85 assertions covering the full stay lifecycle — reserve, check in, post POS
 charges, take payment, check out, run night audit — plus the financial
 invariants (append-only ledger, reversals, payment idempotency, cash variance
 approval) and tenant isolation.

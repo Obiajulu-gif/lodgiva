@@ -15,7 +15,7 @@ import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
 import { AuditService } from "../common/audit.service";
-import { computeChargeLines } from "../common/money";
+import { TaxService } from "../common/tax.service";
 import { PropertiesModule, PropertiesService } from "./properties.module";
 import { FoliosModule, FoliosService } from "./folios.module";
 
@@ -56,7 +56,8 @@ export class PosService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly properties: PropertiesService,
-    private readonly folios: FoliosService
+    private readonly folios: FoliosService,
+    private readonly tax: TaxService
   ) {}
 
   async outlets(auth: AuthContext, propertyId: string) {
@@ -127,7 +128,21 @@ export class PosService {
           lineMinor,
         });
       }
-      const lines = computeChargeLines(subtotal);
+      // Same versioned tax engine the folio uses, so an order posted to a
+      // room can never total differently from its ledger lines.
+      const computed = await this.tax.compute(tx, {
+        tenantId: auth.tenantId,
+        propertyId: outlet.propertyId,
+        baseMinor: subtotal,
+        chargeKind: "FB",
+        businessDate: property.businessDate,
+      });
+      const serviceMinor = computed.lines
+        .filter((l) => l.isServiceCharge)
+        .reduce((s, l) => s + l.amountMinor, 0n);
+      const taxMinor = computed.lines
+        .filter((l) => !l.isServiceCharge)
+        .reduce((s, l) => s + l.amountMinor, 0n);
       const count = await tx.posOrder.count({
         where: { tenantId: auth.tenantId, propertyId: outlet.propertyId },
       });
@@ -138,10 +153,10 @@ export class PosService {
           outletId: outlet.id,
           orderNumber: `${outlet.code}-${1000 + count + 1}`,
           tableRef: dto.tableRef,
-          subtotalMinor: lines.base,
-          serviceMinor: lines.serviceCharge,
-          taxMinor: lines.vat,
-          totalMinor: lines.total,
+          subtotalMinor: computed.base,
+          serviceMinor,
+          taxMinor,
+          totalMinor: computed.total,
           businessDate: property.businessDate,
           openedById: auth.userId,
           lines: { create: lineData },
@@ -153,7 +168,7 @@ export class PosService {
         entityType: "pos_order",
         entityId: order.id,
         propertyId: outlet.propertyId,
-        summary: { orderNumber: order.orderNumber, totalMinor: Number(lines.total) },
+        summary: { orderNumber: order.orderNumber, totalMinor: Number(computed.total) },
       });
       return order;
     });

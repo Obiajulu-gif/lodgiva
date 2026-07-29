@@ -54,6 +54,9 @@ model Property {
   outlets            Outlet[]
   cashierShifts      CashierShift[]
   maintenanceTickets MaintenanceTicket[]
+  taxRules           TaxRule[]
+  ratePlans          RatePlan[]
+  approvalRequests   ApprovalRequest[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, slug])
@@ -114,8 +117,9 @@ model RoomType {
   maxOccupancy  Int    @default(2)
   baseRateMinor BigInt // kobo per night
 
-  property Property @relation(fields: [propertyId], references: [id])
-  rooms    Room[]
+  property  Property   @relation(fields: [propertyId], references: [id])
+  rooms     Room[]
+  ratePlans RatePlan[]
 
   @@unique([tenantId, propertyId, code])
 }
@@ -126,8 +130,10 @@ model Room {
   propertyId        String
   roomTypeId        String
   roomNumber        String
-  floor             Int    @default(1)
-  operationalStatus String @default("VACANT_CLEAN") // §7.2 room operational states
+  floor             Int      @default(1)
+  operationalStatus String   @default("VACANT_CLEAN") // §7.2 room operational states
+  // Defaulted so the column can be added to existing rows without a reset.
+  updatedAt         DateTime @default(now()) @updatedAt // drives the sync change feed
 
   property Property @relation(fields: [propertyId], references: [id])
   roomType RoomType @relation(fields: [roomTypeId], references: [id])
@@ -239,6 +245,10 @@ model FolioEntry {
   description  String
   amountMinor  BigInt // signed: charges positive, payments/credits negative
   taxCode      String?
+  // §13.3: the tax rule version applied at posting time, kept so historical
+  // invoices never change when tax configuration is updated.
+  taxRuleId      String?
+  taxRuleVersion Int?
   reversalOfId String?  @unique
   businessDate String
   postedById   String?
@@ -284,12 +294,113 @@ model HousekeepingTask {
   notes        String?
   startedAt    DateTime?
   completedAt  DateTime?
+  version      Int       @default(1) // optimistic concurrency for offline sync
   createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now()) @updatedAt
 
   property Property @relation(fields: [propertyId], references: [id])
   room     Room     @relation(fields: [roomId], references: [id])
 
   @@index([tenantId, propertyId, businessDate, status])
+}
+
+// §13.3 — tax rules are versioned by effective date. Posted folio lines store
+// the rule version they were billed under, so changing configuration never
+// rewrites history.
+model TaxRule {
+  id                 String  @id @default(uuid())
+  tenantId           String
+  propertyId         String
+  code               String // VAT | LSCT | SVC
+  name               String
+  rateBp             Int // basis points (750 = 7.5%)
+  appliesTo          String  @default("ALL") // ALL | ROOM | FB
+  basis              String  @default("EXCLUSIVE") // EXCLUSIVE | INCLUSIVE
+  compoundOrder      Int     @default(1) // lower runs first; VAT usually after service
+  taxOnServiceCharge Boolean @default(true)
+  version            Int     @default(1)
+  effectiveFrom      String // ISO date
+  effectiveTo        String? // null = open-ended
+  createdById        String?
+
+  property Property @relation(fields: [propertyId], references: [id])
+
+  @@unique([tenantId, propertyId, code, version])
+  @@index([tenantId, propertyId, effectiveFrom])
+}
+
+model RatePlan {
+  id           String  @id @default(uuid())
+  tenantId     String
+  propertyId   String
+  roomTypeId   String
+  code         String
+  name         String
+  refundable   Boolean @default(true)
+  minStay      Int     @default(1)
+  includesBreakfast Boolean @default(false)
+  status       String  @default("ACTIVE")
+
+  property    Property     @relation(fields: [propertyId], references: [id])
+  roomType    RoomType     @relation(fields: [roomTypeId], references: [id])
+  dailyRates  DailyRate[]
+
+  @@unique([tenantId, propertyId, code])
+}
+
+// Per-date pricing overrides; falls back to the room type base rate.
+model DailyRate {
+  id         String @id @default(uuid())
+  tenantId   String
+  ratePlanId String
+  date       String // ISO date
+  rateMinor  BigInt
+  closed     Boolean @default(false) // restriction: closed to arrival/stay
+
+  ratePlan RatePlan @relation(fields: [ratePlanId], references: [id])
+
+  @@unique([ratePlanId, date])
+}
+
+// §13.4 — threshold-driven approvals with an explicit second actor.
+model ApprovalRequest {
+  id            String    @id @default(uuid())
+  tenantId      String
+  propertyId    String
+  type          String // DISCOUNT | REFUND | FOLIO_REOPEN | CASH_VARIANCE | RATE_OVERRIDE
+  entityType    String
+  entityId      String
+  amountMinor   BigInt?
+  reason        String
+  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  payload       String    @default("{}") // JSON: what to apply on approval
+  requestedById String
+  decidedById   String?
+  decisionNote  String?
+  decidedAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id])
+
+  @@index([tenantId, propertyId, status])
+}
+
+// §10.4 — operationId is the idempotency key for offline mutations.
+model SyncOperation {
+  id          String   @id @default(uuid())
+  tenantId    String
+  operationId String
+  deviceId    String
+  userId      String
+  entityType  String
+  entityId    String
+  action      String
+  status      String // APPLIED | CONFLICT | REJECTED
+  detail      String   @default("{}")
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, operationId])
+  @@index([tenantId, deviceId, createdAt])
 }
 
 model Outlet {

@@ -51,6 +51,32 @@ const property = me.data.properties[0];
 assert(!!property, "auth/me returns property context");
 const businessDate = property.businessDate;
 
+// Tax rules are append-only and versioned, so previous runs leave versions
+// behind. Pin a known configuration (5% service, 7.5% VAT) as the newest
+// version so this suite is deterministic on a re-used database.
+const mgrLogin = await call("/auth/login", {
+  method: "POST",
+  body: { email: "manager@grandpalm.demo", password: "Password123!" },
+});
+const mgrToken = mgrLogin.data.accessToken;
+await call("/properties/tax-rules", {
+  method: "POST",
+  token: mgrToken,
+  body: {
+    propertyId: property.id, code: "SVC", name: "Service Charge",
+    rateBp: 500, compoundOrder: 1, taxOnServiceCharge: false, effectiveFrom: businessDate,
+  },
+});
+const baselineVat = await call("/properties/tax-rules", {
+  method: "POST",
+  token: mgrToken,
+  body: {
+    propertyId: property.id, code: "VAT", name: "Value Added Tax",
+    rateBp: 750, compoundOrder: 2, taxOnServiceCharge: true, effectiveFrom: businessDate,
+  },
+});
+assert(baselineVat.status === 201, "tax baseline pinned at 5% service + 7.5% VAT");
+
 console.log("2. Availability & reservation");
 const types = await call(`/properties/${property.id}/room-types`, { token });
 const dlx = types.data.find((t) => t.code === "DLX");
@@ -67,6 +93,28 @@ function addDays(iso, n) {
   const d = new Date(iso + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Finds a sellable room of the given type, cleaning one first if the suite has
+ * already used up the clean ones. Keeps the suite runnable repeatedly against
+ * the same database instead of requiring a fresh seed.
+ */
+async function ensureCleanRoom(typeCode) {
+  const rack = await call(`/properties/${property.id}/room-rack`, { token });
+  const ofType = rack.data.filter((r) => r.roomType.code === typeCode && !r.occupant);
+  const ready = ofType.find((r) =>
+    ["VACANT_CLEAN", "INSPECTED"].includes(r.operationalStatus)
+  );
+  if (ready) return ready;
+  const dirty = ofType.find((r) => r.operationalStatus === "VACANT_DIRTY");
+  if (!dirty) throw new Error(`No free ${typeCode} room available to prepare.`);
+  await call(`/rooms/${dirty.id}/status`, {
+    method: "PATCH",
+    token,
+    body: { status: "VACANT_CLEAN", reason: "e2e preparation" },
+  });
+  return { ...dirty, operationalStatus: "VACANT_CLEAN" };
 }
 const arrival = businessDate;
 const departure = addDays(businessDate, 2);
@@ -102,11 +150,8 @@ const badTransition = await call(`/reservations/${reservationId}/check-out`, {
 assert(badTransition.status === 409, "CONFIRMED → CHECKED_OUT rejected (state machine)");
 
 console.log("3. Check-in");
-const rack = await call(`/properties/${property.id}/room-rack`, { token });
-const cleanRoom = rack.data.find(
-  (r) => r.roomType.code === "DLX" && r.operationalStatus === "VACANT_CLEAN" && !r.occupant
-);
-assert(!!cleanRoom, "a clean DLX room exists");
+const cleanRoom = await ensureCleanRoom("DLX");
+assert(!!cleanRoom, "a clean DLX room is available");
 
 const checkin = await call(`/reservations/${reservationId}/check-in`, {
   method: "POST",
@@ -200,6 +245,18 @@ const turnover = hk.data.find(
 assert(!!turnover, "turnover task auto-created after checkout");
 
 console.log("6. POS, cashiering & maintenance");
+// A shift left open by an earlier run would block opening a new one; close it
+// balanced so the suite can run repeatedly.
+const existingShifts = await call(`/cashiering/shifts?propertyId=${property.id}`, { token });
+for (const s of existingShifts.data.filter((s) => s.status === "OPEN")) {
+  const detail = await call(`/cashiering/shifts/${s.id}`, { token });
+  await call(`/cashiering/shifts/${s.id}/close`, {
+    method: "POST",
+    token,
+    body: { countedMinor: detail.data.expectedMinor },
+  });
+}
+
 // Cashier shift
 const shift = await call("/cashiering/shifts", {
   method: "POST",
@@ -249,10 +306,7 @@ const posRes = await call("/reservations", {
     source: "WALK_IN",
   },
 });
-const posRack = await call(`/properties/${property.id}/room-rack`, { token });
-const posRoom = posRack.data.find(
-  (r) => r.roomType.code === "DLX" && r.operationalStatus === "VACANT_CLEAN" && !r.occupant
-);
+const posRoom = await ensureCleanRoom("DLX");
 const posCheckin = await call(`/reservations/${posRes.data.id}/check-in`, {
   method: "POST",
   token,
@@ -290,6 +344,38 @@ const voidSettled = await call(`/pos/orders/${order.data.id}/void`, {
   body: { reason: "Attempt to void after settlement" },
 });
 assert(voidSettled.status === 409, "settled order cannot be voided");
+
+// Settle and release this stay so repeated runs don't exhaust the room stock.
+const posFolioState = await call(`/folios/${posFolioId}`, { token });
+await call("/payments", {
+  method: "POST",
+  token,
+  body: {
+    folioId: posFolioId,
+    method: "CASH",
+    amountMinor: posFolioState.data.balanceMinor,
+  },
+});
+// Checkout posts the night's room charge, so settle whatever remains.
+let posCheckout = await call(`/reservations/${posRes.data.id}/check-out`, {
+  method: "POST", token, body: {},
+});
+if (posCheckout.status === 409) {
+  await call("/payments", {
+    method: "POST",
+    token,
+    body: {
+      folioId: posFolioId,
+      method: "CASH",
+      amountMinor: posCheckout.data.error.details.balanceMinor,
+    },
+  });
+  posCheckout = await call(`/reservations/${posRes.data.id}/check-out`, {
+    method: "POST", token, body: {},
+  });
+}
+assert(posCheckout.status === 201, "POS stay settled and checked out",
+  JSON.stringify(posCheckout.data));
 
 // Cash settlement flows into the drawer
 const order2 = await call("/pos/orders", {
@@ -374,7 +460,237 @@ assert(
   "resolved room returns via housekeeping, not straight to sellable"
 );
 
-console.log("7. Night audit (idempotent)");
+console.log("7. Rates, versioned tax engine, approvals & offline sync");
+
+// Rate plan + calendar + quote
+const plan = await call("/rates/plans", {
+  method: "POST",
+  token: mgrToken,
+  body: {
+    propertyId: property.id,
+    roomTypeId: dlx.id,
+    code: `BAR${Date.now() % 10000}`,
+    name: "Best Available Rate",
+    minStay: 2,
+  },
+});
+assert(plan.status === 201, "rate plan created", JSON.stringify(plan.data));
+
+const weekend = addDays(businessDate, 5);
+await call("/rates/calendar", {
+  method: "POST",
+  token: mgrToken,
+  body: {
+    ratePlanId: plan.data.id,
+    rates: [{ date: weekend, rateMinor: 7000000, closed: false }],
+  },
+});
+const cal = await call(
+  `/rates/calendar?ratePlanId=${plan.data.id}&from=${weekend}&to=${addDays(weekend, 2)}`,
+  { token: mgrToken }
+);
+assert(cal.data[0].rateMinor === 7000000 && cal.data[0].source === "CALENDAR",
+  "calendar override applies on the priced date");
+assert(cal.data[1].source === "BASE", "other dates fall back to the room-type base rate");
+
+const shortQuote = await call(
+  `/rates/quote?propertyId=${property.id}&ratePlanId=${plan.data.id}&arrival=${weekend}&departure=${addDays(weekend, 1)}`,
+  { token: mgrToken }
+);
+assert(shortQuote.status === 409 && shortQuote.data.error.code === "MIN_STAY_NOT_MET",
+  "minimum-stay restriction enforced");
+
+const quote = await call(
+  `/rates/quote?propertyId=${property.id}&ratePlanId=${plan.data.id}&arrival=${weekend}&departure=${addDays(weekend, 2)}`,
+  { token: mgrToken }
+);
+assert(quote.status === 200, "quote returns");
+assert(quote.data.baseMinor === 7000000 + 4650000,
+  "quote prices night-by-night (calendar night + base night)");
+assert(quote.data.taxes.length === 2, "quote itemises service charge and VAT");
+
+// Closed dates block quoting
+await call("/rates/calendar", {
+  method: "POST",
+  token: mgrToken,
+  body: { ratePlanId: plan.data.id, rates: [{ date: weekend, rateMinor: 7000000, closed: true }] },
+});
+const closedQuote = await call(
+  `/rates/quote?propertyId=${property.id}&ratePlanId=${plan.data.id}&arrival=${weekend}&departure=${addDays(weekend, 2)}`,
+  { token: mgrToken }
+);
+assert(closedQuote.status === 409 && closedQuote.data.error.code === "DATES_CLOSED",
+  "closed dates are not sellable");
+
+// Versioned tax rules: front desk cannot change tax config
+const forbiddenTax = await call("/properties/tax-rules", {
+  method: "POST",
+  token,
+  body: {
+    propertyId: property.id, code: "VAT", name: "Value Added Tax",
+    rateBp: 1000, compoundOrder: 2, effectiveFrom: businessDate,
+  },
+});
+assert(forbiddenTax.status === 409, "front desk cannot change tax configuration");
+
+// The baseline pinned in section 1 is the currently effective VAT version.
+const vatBaselineVersion = baselineVat.data.version;
+assert(vatBaselineVersion >= 1, "VAT rule has an effective version");
+
+// Post a charge under v1, then version the VAT rate up and confirm history holds
+const taxGuest = await call("/guests", {
+  method: "POST", token,
+  body: { firstName: "Tax", lastName: "Case", phone: "+2348000000003" },
+});
+const taxRes = await call("/reservations", {
+  method: "POST", token,
+  body: {
+    propertyId: property.id, guestId: taxGuest.data.id, roomTypeId: dlx.id,
+    arrivalDate: businessDate, departureDate: addDays(businessDate, 1), source: "PHONE",
+  },
+});
+await call(`/folios/${taxRes.data.folioId}/charges`, {
+  method: "POST", token,
+  body: { type: "POS_CHARGE", description: "Charge under VAT v1", amountMinor: 1000000, applyTaxes: true },
+});
+let taxFolio = await call(`/folios/${taxRes.data.folioId}`, { token });
+const v1Vat = taxFolio.data.entries.find((e) => e.taxCode === "VAT");
+assert(v1Vat.amountMinor === 78750 && v1Vat.taxRuleVersion === vatBaselineVersion,
+  "charge taxed at the effective VAT rule (7.5%) and stamped with its version");
+
+const vatV2 = await call("/properties/tax-rules", {
+  method: "POST",
+  token: mgrToken,
+  body: {
+    propertyId: property.id, code: "VAT", name: "Value Added Tax",
+    rateBp: 1000, compoundOrder: 2, taxOnServiceCharge: true, effectiveFrom: businessDate,
+  },
+});
+assert(vatV2.data.version === vatBaselineVersion + 1,
+  "tax change creates a new version rather than editing the existing rule");
+
+await call(`/folios/${taxRes.data.folioId}/charges`, {
+  method: "POST", token,
+  body: { type: "POS_CHARGE", description: "Charge under VAT v2", amountMinor: 1000000, applyTaxes: true },
+});
+taxFolio = await call(`/folios/${taxRes.data.folioId}`, { token });
+const stillV1 = taxFolio.data.entries.find(
+  (e) => e.taxCode === "VAT" && e.description.includes("v1")
+);
+const nowV2 = taxFolio.data.entries.find(
+  (e) => e.taxCode === "VAT" && e.description.includes("v2")
+);
+assert(stillV1.amountMinor === 78750, "the older posted line is unchanged by the rate change");
+assert(nowV2.amountMinor === 105000 && nowV2.taxRuleVersion === vatBaselineVersion + 1,
+  "the new charge uses the new VAT version (10%)");
+
+// Approvals: discount threshold
+const smallDiscount = await call("/approvals/discounts", {
+  method: "POST", token,
+  body: { folioId: taxRes.data.folioId, amountMinor: 20000, reason: "Goodwill — slow service" },
+});
+assert(smallDiscount.data.status === "APPLIED", "small discount applies without approval");
+
+const bigDiscount = await call("/approvals/discounts", {
+  method: "POST", token,
+  body: { folioId: taxRes.data.folioId, amountMinor: 900000, reason: "Service failure compensation" },
+});
+assert(bigDiscount.data.status === "PENDING_APPROVAL", "large discount needs manager approval");
+const requestId = bigDiscount.data.request.id;
+
+const beforeApproval = await call(`/folios/${taxRes.data.folioId}`, { token });
+const noDiscountYet = beforeApproval.data.entries.filter(
+  (e) => e.type === "DISCOUNT" && e.amountMinor === -900000
+);
+assert(noDiscountYet.length === 0, "pending discount does not touch the ledger");
+
+const selfApproveDiscount = await call(`/approvals/${requestId}/approve`, { method: "POST", token });
+assert(selfApproveDiscount.status === 409, "requester cannot approve their own discount");
+
+const approved = await call(`/approvals/${requestId}/approve`, {
+  method: "POST", token: mgrToken, body: { note: "Approved — documented complaint" },
+});
+assert(approved.status === 201, "manager approves the discount");
+const afterApproval = await call(`/folios/${taxRes.data.folioId}`, { token });
+assert(
+  afterApproval.data.entries.some((e) => e.type === "DISCOUNT" && e.amountMinor === -900000),
+  "approval posts the discount to the ledger"
+);
+
+// Offline sync contract
+const hkTasks = await call(`/housekeeping/tasks?propertyId=${property.id}`, { token });
+const syncTask = hkTasks.data.find((t) => t.status === "PENDING");
+const opId = `op-${Date.now()}`;
+const push1 = await call("/sync/mutations", {
+  method: "POST",
+  token,
+  body: {
+    deviceId: "dev_hk_tablet_01",
+    mutations: [
+      {
+        operationId: opId,
+        entityType: "housekeepingTask",
+        entityId: syncTask.id,
+        baseVersion: syncTask.version,
+        action: "start",
+        occurredAt: new Date().toISOString(),
+        payload: {},
+      },
+      {
+        operationId: `${opId}-money`,
+        entityType: "housekeepingTask",
+        entityId: syncTask.id,
+        action: "payment",
+        occurredAt: new Date().toISOString(),
+        payload: { amountMinor: 50000 },
+      },
+    ],
+  },
+});
+assert(push1.data.applied.length === 1, "queued housekeeping mutation applied");
+assert(push1.data.rejected[0].code === "ONLINE_ONLY", "financial mutation rejected as online-only");
+assert(typeof push1.data.nextCursor === "string", "sync returns a cursor");
+assert(push1.data.serverChanges.length > 0, "sync returns server changes");
+
+const replay = await call("/sync/mutations", {
+  method: "POST",
+  token,
+  body: {
+    deviceId: "dev_hk_tablet_01",
+    mutations: [{
+      operationId: opId,
+      entityType: "housekeepingTask",
+      entityId: syncTask.id,
+      baseVersion: syncTask.version,
+      action: "start",
+      occurredAt: new Date().toISOString(),
+      payload: {},
+    }],
+  },
+});
+assert(replay.data.applied[0].replayed === true, "replayed operationId is idempotent");
+
+const staleVersion = await call("/sync/mutations", {
+  method: "POST",
+  token,
+  body: {
+    deviceId: "dev_hk_tablet_02",
+    mutations: [{
+      operationId: `${opId}-stale`,
+      entityType: "housekeepingTask",
+      entityId: syncTask.id,
+      baseVersion: syncTask.version, // stale: the task advanced above
+      action: "complete",
+      occurredAt: new Date().toISOString(),
+      payload: {},
+    }],
+  },
+});
+assert(staleVersion.data.conflicts[0]?.code === "VERSION_CONFLICT",
+  "stale offline version reports a conflict instead of overwriting");
+assert(!!staleVersion.data.conflicts[0].resolution, "conflict includes a resolution path");
+
+console.log("8. Night audit (idempotent)");
 const audit1 = await call("/night-audit/run", {
   method: "POST",
   token,
@@ -394,7 +710,7 @@ assert(audit2.status === 201, "next business date can be audited");
 const flash = await call(`/reports/daily-flash?propertyId=${property.id}`, { token });
 assert(flash.status === 200, "daily flash report loads");
 
-console.log("8. Tenant isolation (§6.2 rule 8)");
+console.log("9. Tenant isolation (§6.2 rule 8)");
 // Forge a token signed with the right secret but a different tenant id.
 // Simpler equivalent: use a valid token but request another tenant's object id.
 const foreign = await call(`/folios/does-not-exist-id`, { token });

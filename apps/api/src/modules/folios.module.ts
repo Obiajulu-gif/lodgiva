@@ -14,7 +14,7 @@ import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
 import { AuditService } from "../common/audit.service";
-import { computeChargeLines } from "../common/money";
+import { TaxService } from "../common/tax.service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -33,7 +33,8 @@ const reverseSchema = z.object({ reason: z.string().min(3) }).strict();
 export class FoliosService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly tax: TaxService
   ) {}
 
   async getFolioOrThrow(auth: AuthContext, folioId: string, tx?: Tx) {
@@ -98,7 +99,6 @@ export class FoliosService {
         error: { code: "FOLIO_CLOSED", message: "Cannot post to a closed folio; request a reopen approval." },
       });
     }
-    const lines = computeChargeLines(input.amountMinor);
     const base = {
       tenantId: folio.tenantId,
       folioId: folio.id,
@@ -106,23 +106,31 @@ export class FoliosService {
       postedById: auth.userId,
     };
     const entry = await tx.folioEntry.create({
-      data: { ...base, type: input.type, description: input.description, amountMinor: lines.base },
+      data: { ...base, type: input.type, description: input.description, amountMinor: input.amountMinor },
     });
     if (input.applyTaxes) {
-      await tx.folioEntry.create({
-        data: {
-          ...base, type: "SERVICE_CHARGE", taxCode: "SVC",
-          description: `Service charge 5% — ${input.description}`,
-          amountMinor: lines.serviceCharge,
-        },
+      // Resolve versioned tax rules (§13.3) and post each as its own line,
+      // recording the rule version that produced it.
+      const computed = await this.tax.compute(tx, {
+        tenantId: folio.tenantId,
+        propertyId: folio.propertyId,
+        baseMinor: input.amountMinor,
+        chargeKind: input.type === "ROOM_CHARGE" ? "ROOM" : "FB",
+        businessDate: input.businessDate,
       });
-      await tx.folioEntry.create({
-        data: {
-          ...base, type: "TAX", taxCode: "VAT",
-          description: `VAT 7.5% — ${input.description}`,
-          amountMinor: lines.vat,
-        },
-      });
+      for (const line of computed.lines) {
+        await tx.folioEntry.create({
+          data: {
+            ...base,
+            type: line.isServiceCharge ? "SERVICE_CHARGE" : "TAX",
+            taxCode: line.code,
+            taxRuleId: line.taxRuleId,
+            taxRuleVersion: line.taxRuleVersion,
+            description: `${line.name} — ${input.description}`,
+            amountMinor: line.amountMinor,
+          },
+        });
+      }
     }
     await this.audit.log(tx, auth, {
       action: "folio.entry_posted",
@@ -242,7 +250,7 @@ export class FoliosController {
 
 @Module({
   controllers: [FoliosController],
-  providers: [FoliosService],
-  exports: [FoliosService],
+  providers: [FoliosService, TaxService],
+  exports: [FoliosService, TaxService],
 })
 export class FoliosModule {}
