@@ -22,6 +22,9 @@ import { PaymentsModule } from "./modules/payments.module";
 import { HousekeepingModule } from "./modules/housekeeping.module";
 import { NightAuditModule } from "./modules/night-audit.module";
 import { ReportsModule } from "./modules/reports.module";
+import { PosModule } from "./modules/pos.module";
+import { CashieringModule } from "./modules/cashiering.module";
+import { MaintenanceModule } from "./modules/maintenance.module";
 
 /** §9.1 — stable error contract with field-level validation errors. */
 @Catch(ZodError)
@@ -78,6 +81,9 @@ class CoreModule {}
     FoliosModule,
     PaymentsModule,
     HousekeepingModule,
+    PosModule,
+    CashieringModule,
+    MaintenanceModule,
     NightAuditModule,
     ReportsModule,
   ],

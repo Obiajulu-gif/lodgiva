@@ -8,6 +8,9 @@ import ReservationsPage from "./pages/Reservations";
 import HousekeepingPage from "./pages/Housekeeping";
 import PaymentsPage from "./pages/Payments";
 import NightAuditPage from "./pages/NightAudit";
+import PosPage from "./pages/Pos";
+import CashieringPage from "./pages/Cashiering";
+import MaintenancePage from "./pages/Maintenance";
 
 export interface Me {
   user: { id: string; email: string; fullName: string };
@@ -46,7 +49,10 @@ function Shell() {
         <NavLink to="/rooms">Room Rack</NavLink>
         <NavLink to="/reservations">Reservations</NavLink>
         <NavLink to="/housekeeping">Housekeeping</NavLink>
+        <NavLink to="/maintenance">Maintenance</NavLink>
+        <NavLink to="/pos">POS</NavLink>
         <NavLink to="/payments">Payments</NavLink>
+        <NavLink to="/cashiering">Cashiering</NavLink>
         <NavLink to="/night-audit">Night Audit</NavLink>
         <div className="spacer" />
         <a href="#logout" onClick={(e) => { e.preventDefault(); logout(); }}>
@@ -60,7 +66,10 @@ function Shell() {
             <Route path="/rooms" element={<RoomRackPage propertyId={property.id} />} />
             <Route path="/reservations" element={<ReservationsPage propertyId={property.id} />} />
             <Route path="/housekeeping" element={<HousekeepingPage propertyId={property.id} />} />
+            <Route path="/maintenance" element={<MaintenancePage propertyId={property.id} />} />
+            <Route path="/pos" element={<PosPage propertyId={property.id} />} />
             <Route path="/payments" element={<PaymentsPage propertyId={property.id} />} />
+            <Route path="/cashiering" element={<CashieringPage propertyId={property.id} />} />
             <Route path="/night-audit" element={<NightAuditPage propertyId={property.id} />} />
           </Routes>
         )}

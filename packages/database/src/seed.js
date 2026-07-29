@@ -169,6 +169,55 @@ async function main() {
     await mk(5, guests[4], "DLX", 3, 2, "CONFIRMED");
   }
 
+  // Outlets + menus for the POS module
+  const outletDefs = [
+    {
+      code: "REST", name: "Palm Restaurant", type: "RESTAURANT",
+      items: [
+        { code: "JOLLOF", name: "Jollof Rice & Chicken", category: "MAINS", priceMinor: 850000n },
+        { code: "EGUSI", name: "Egusi Soup & Pounded Yam", category: "MAINS", priceMinor: 980000n },
+        { code: "CROAKER", name: "Grilled Croaker Fish", category: "MAINS", priceMinor: 1450000n },
+        { code: "PEPPER", name: "Pepper Soup (Goat)", category: "STARTERS", priceMinor: 720000n },
+        { code: "SUYA", name: "Suya Platter", category: "STARTERS", priceMinor: 1100000n },
+        { code: "PUFF", name: "Puff Puff & Ice Cream", category: "DESSERTS", priceMinor: 480000n },
+      ],
+    },
+    {
+      code: "BAR", name: "Pool Bar", type: "BAR",
+      items: [
+        { code: "CHAPMAN", name: "Chapman", category: "DRINKS", priceMinor: 350000n },
+        { code: "OJ", name: "Fresh Orange Juice", category: "DRINKS", priceMinor: 300000n },
+        { code: "STAR", name: "Star Lager", category: "DRINKS", priceMinor: 250000n },
+        { code: "WINE", name: "Red Wine (Glass)", category: "DRINKS", priceMinor: 650000n },
+      ],
+    },
+  ];
+  for (const o of outletDefs) {
+    const outlet = await prisma.outlet.upsert({
+      where: {
+        tenantId_propertyId_code: {
+          tenantId: tenant.id, propertyId: property.id, code: o.code,
+        },
+      },
+      update: {},
+      create: {
+        tenantId: tenant.id, propertyId: property.id,
+        code: o.code, name: o.name, type: o.type,
+      },
+    });
+    for (const item of o.items) {
+      await prisma.menuItem.upsert({
+        where: {
+          tenantId_outletId_code: {
+            tenantId: tenant.id, outletId: outlet.id, code: item.code,
+          },
+        },
+        update: {},
+        create: { tenantId: tenant.id, outletId: outlet.id, ...item },
+      });
+    }
+  }
+
   console.log("Seed complete:", {
     tenant: tenant.slug,
     property: property.code,

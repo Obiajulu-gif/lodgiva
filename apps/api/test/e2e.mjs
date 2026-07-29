@@ -199,7 +199,182 @@ const turnover = hk.data.find(
 );
 assert(!!turnover, "turnover task auto-created after checkout");
 
-console.log("6. Night audit (idempotent)");
+console.log("6. POS, cashiering & maintenance");
+// Cashier shift
+const shift = await call("/cashiering/shifts", {
+  method: "POST",
+  token,
+  body: { propertyId: property.id, openingFloatMinor: 5000000 },
+});
+assert(shift.status === 201, "cashier shift opened", JSON.stringify(shift.data));
+const shiftId = shift.data.id;
+
+const dupShift = await call("/cashiering/shifts", {
+  method: "POST",
+  token,
+  body: { propertyId: property.id, openingFloatMinor: 0 },
+});
+assert(dupShift.status === 409, "second concurrent shift for same user rejected");
+
+// POS order priced server-side
+const outlets = await call(`/pos/outlets?propertyId=${property.id}`, { token });
+const restaurant = outlets.data.find((o) => o.code === "REST");
+assert(restaurant?.menuItems.length > 0, "outlet menus load");
+const jollof = restaurant.menuItems.find((m) => m.code === "JOLLOF");
+
+const order = await call("/pos/orders", {
+  method: "POST",
+  token,
+  body: { outletId: restaurant.id, lines: [{ menuItemId: jollof.id, quantity: 2 }] },
+});
+assert(order.status === 201, "POS order created");
+assert(order.data.subtotalMinor === 1700000, "order priced from menu (2 × ₦8,500)");
+assert(order.data.totalMinor === 1700000 + 85000 + 133875, "order totals include 5% service + 7.5% VAT");
+
+// Post to a live in-house room folio: create and check in a dedicated stay.
+const posGuest = await call("/guests", {
+  method: "POST",
+  token,
+  body: { firstName: "POS", lastName: "Diner", phone: "+2348000000002" },
+});
+const posRes = await call("/reservations", {
+  method: "POST",
+  token,
+  body: {
+    propertyId: property.id,
+    guestId: posGuest.data.id,
+    roomTypeId: dlx.id,
+    arrivalDate: businessDate,
+    departureDate: addDays(businessDate, 1),
+    source: "WALK_IN",
+  },
+});
+const posRack = await call(`/properties/${property.id}/room-rack`, { token });
+const posRoom = posRack.data.find(
+  (r) => r.roomType.code === "DLX" && r.operationalStatus === "VACANT_CLEAN" && !r.occupant
+);
+const posCheckin = await call(`/reservations/${posRes.data.id}/check-in`, {
+  method: "POST",
+  token,
+  body: { roomId: posRoom.id },
+});
+assert(posCheckin.status === 201, "in-house stay ready for room posting");
+const posFolioId = posRes.data.folioId;
+
+const settle = await call(`/pos/orders/${order.data.id}/settle`, {
+  method: "POST",
+  token,
+  body: { settlement: "ROOM_POSTING", folioId: posFolioId },
+});
+assert(settle.status === 201, "POS order posted to room folio", JSON.stringify(settle.data));
+
+const f = await call(`/folios/${posFolioId}`, { token });
+const posEntry = f.data.entries.find(
+  (e) => e.type === "POS_CHARGE" && e.description.includes(order.data.orderNumber)
+);
+assert(!!posEntry, "POS charge appears on the guest folio ledger");
+assert(posEntry.amountMinor === 1700000, "posted amount matches the order subtotal");
+assert(f.data.balanceMinor === order.data.totalMinor,
+  "folio balance equals the order total (base + service + VAT)");
+
+const reSettle = await call(`/pos/orders/${order.data.id}/settle`, {
+  method: "POST",
+  token,
+  body: { settlement: "CASH" },
+});
+assert(reSettle.status === 409, "settled order cannot be settled twice");
+
+const voidSettled = await call(`/pos/orders/${order.data.id}/void`, {
+  method: "POST",
+  token,
+  body: { reason: "Attempt to void after settlement" },
+});
+assert(voidSettled.status === 409, "settled order cannot be voided");
+
+// Cash settlement flows into the drawer
+const order2 = await call("/pos/orders", {
+  method: "POST",
+  token,
+  body: { outletId: restaurant.id, lines: [{ menuItemId: jollof.id, quantity: 1 }] },
+});
+const cashSettle = await call(`/pos/orders/${order2.data.id}/settle`, {
+  method: "POST",
+  token,
+  body: { settlement: "CASH", shiftId },
+});
+assert(cashSettle.status === 201, "POS cash settlement recorded against shift");
+
+const shiftState = await call(`/cashiering/shifts/${shiftId}`, { token });
+const expected = shiftState.data.expectedMinor;
+assert(expected === 5000000 + order2.data.totalMinor, "drawer expected = float + cash taken");
+
+// Variance handling
+const badClose = await call(`/cashiering/shifts/${shiftId}/close`, {
+  method: "POST",
+  token,
+  body: { countedMinor: expected - 100000 },
+});
+assert(badClose.status === 409 && badClose.data.error.code === "VARIANCE_REASON_REQUIRED",
+  "closing short without a reason is rejected");
+
+const closed = await call(`/cashiering/shifts/${shiftId}/close`, {
+  method: "POST",
+  token,
+  body: { countedMinor: expected - 100000, varianceReason: "Suspected short-change at dinner service" },
+});
+assert(closed.data.status === "PENDING_APPROVAL", "variance close requires manager approval");
+
+const selfApprove = await call(`/cashiering/shifts/${shiftId}/approve`, { method: "POST", token });
+assert(selfApprove.status === 409, "cashier cannot approve their own variance");
+
+const mgr = await call("/auth/login", {
+  method: "POST",
+  body: { email: "manager@grandpalm.demo", password: "Password123!" },
+});
+const mgrApprove = await call(`/cashiering/shifts/${shiftId}/approve`, {
+  method: "POST",
+  token: mgr.data.accessToken,
+});
+assert(mgrApprove.status === 201 && mgrApprove.data.status === "CLOSED",
+  "manager approves variance and shift closes");
+
+// Maintenance blocks a room out of inventory
+const rackForMaint = await call(`/properties/${property.id}/room-rack`, { token });
+const blockTarget = rackForMaint.data.find(
+  (r) => !r.occupant && r.operationalStatus !== "OUT_OF_ORDER"
+);
+const ticket = await call("/maintenance/tickets", {
+  method: "POST",
+  token,
+  body: {
+    propertyId: property.id,
+    roomId: blockTarget.id,
+    title: "AC not cooling",
+    priority: "HIGH",
+    blocksRoom: true,
+  },
+});
+assert(ticket.status === 201, "maintenance ticket created");
+
+const rackBlocked = await call(`/properties/${property.id}/room-rack`, { token });
+assert(
+  rackBlocked.data.find((r) => r.id === blockTarget.id).operationalStatus === "OUT_OF_ORDER",
+  "blocking ticket takes the room out of order"
+);
+
+const resolved = await call(`/maintenance/tickets/${ticket.data.id}/status`, {
+  method: "POST",
+  token,
+  body: { status: "RESOLVED" },
+});
+assert(resolved.status === 201, "ticket resolved");
+const rackFreed = await call(`/properties/${property.id}/room-rack`, { token });
+assert(
+  rackFreed.data.find((r) => r.id === blockTarget.id).operationalStatus === "VACANT_DIRTY",
+  "resolved room returns via housekeeping, not straight to sellable"
+);
+
+console.log("7. Night audit (idempotent)");
 const audit1 = await call("/night-audit/run", {
   method: "POST",
   token,
@@ -219,7 +394,7 @@ assert(audit2.status === 201, "next business date can be audited");
 const flash = await call(`/reports/daily-flash?propertyId=${property.id}`, { token });
 assert(flash.status === 200, "daily flash report loads");
 
-console.log("7. Tenant isolation (§6.2 rule 8)");
+console.log("8. Tenant isolation (§6.2 rule 8)");
 // Forge a token signed with the right secret but a different tenant id.
 // Simpler equivalent: use a valid token but request another tenant's object id.
 const foreign = await call(`/folios/does-not-exist-id`, { token });

@@ -17,10 +17,27 @@ process.env.JWT_SECRET ??= "lodgiva-dev-secret-change-in-production";
 };
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestFastifyApplication>(
-    AppModule,
-    new FastifyAdapter()
+  const adapter = new FastifyAdapter();
+
+  // Action endpoints such as /no-show and /approve carry no payload. Fastify
+  // rejects an empty body when Content-Type is application/json, so register
+  // our own parser (with Nest's disabled below) that treats it as {}.
+  adapter.getInstance().addContentTypeParser(
+    "application/json",
+    { parseAs: "string" },
+    (_req: unknown, body: string, done: (err: Error | null, result?: unknown) => void) => {
+      if (!body || !body.trim()) return done(null, {});
+      try {
+        done(null, JSON.parse(body));
+      } catch (err) {
+        done(err as Error);
+      }
+    }
   );
+
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, {
+    bodyParser: false, // our parser above is the only JSON parser
+  });
   app.setGlobalPrefix("api/v1");
   await app.register(require("@fastify/cors"), {
     origin: true,
