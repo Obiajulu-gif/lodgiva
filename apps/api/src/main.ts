@@ -39,9 +39,32 @@ async function bootstrap() {
     bodyParser: false, // our parser above is the only JSON parser
   });
   app.setGlobalPrefix("api/v1");
+
+  // §12.1 security baseline.
+  await app.register(require("@fastify/helmet"), {
+    // The API serves JSON only; a restrictive CSP costs nothing here.
+    contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } },
+    hsts: { maxAge: 31536000, includeSubDomains: true },
+  });
   await app.register(require("@fastify/cors"), {
-    origin: true,
+    origin: process.env.CORS_ORIGINS?.split(",") ?? true,
     credentials: true,
+  });
+  await app.register(require("@fastify/rate-limit"), {
+    global: true,
+    max: Number(process.env.RATE_LIMIT_MAX ?? 600),
+    timeWindow: "1 minute",
+    // Per authenticated user where possible, otherwise per IP, so one busy
+    // property cannot exhaust another tenant's allowance.
+    keyGenerator: (req: { headers: Record<string, string | undefined>; ip: string }) =>
+      req.headers.authorization ? `t:${req.headers.authorization.slice(-32)}` : `ip:${req.ip}`,
+    errorResponseBuilder: (_req: unknown, ctx: { after: string }) => ({
+      error: {
+        code: "RATE_LIMITED",
+        message: `Too many requests. Retry after ${ctx.after}.`,
+        retryable: true,
+      },
+    }),
   });
   const port = Number(process.env.API_PORT ?? 4000);
   await app.listen(port, "0.0.0.0");

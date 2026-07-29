@@ -1,9 +1,11 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Injectable,
   Module,
   Query,
+  Res,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
@@ -91,6 +93,91 @@ export class ReportsService {
       take: 100,
     });
   }
+
+  /** §13.3 — tax summary by business date and tax code. */
+  async taxSummary(auth: AuthContext, propertyId: string, from: string, to: string) {
+    await this.properties.assertProperty(auth, propertyId);
+    const entries = await this.prisma.folioEntry.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        folio: { propertyId },
+        businessDate: { gte: from, lte: to },
+        type: { in: ["TAX", "SERVICE_CHARGE"] },
+      },
+      select: {
+        businessDate: true,
+        taxCode: true,
+        taxRuleVersion: true,
+        amountMinor: true,
+      },
+    });
+    const grouped = new Map<string, { businessDate: string; taxCode: string; ruleVersion: number | null; totalMinor: bigint; lines: number }>();
+    for (const e of entries) {
+      const key = `${e.businessDate}|${e.taxCode}|${e.taxRuleVersion}`;
+      const row = grouped.get(key) ?? {
+        businessDate: e.businessDate,
+        taxCode: e.taxCode ?? "—",
+        ruleVersion: e.taxRuleVersion,
+        totalMinor: 0n,
+        lines: 0,
+      };
+      row.totalMinor += e.amountMinor;
+      row.lines += 1;
+      grouped.set(key, row);
+    }
+    return [...grouped.values()].sort(
+      (a, b) => a.businessDate.localeCompare(b.businessDate) || a.taxCode.localeCompare(b.taxCode)
+    );
+  }
+
+  /** Guest ledger: every posted line for a date range, for finance export. */
+  async guestLedger(auth: AuthContext, propertyId: string, from: string, to: string) {
+    await this.properties.assertProperty(auth, propertyId);
+    const entries = await this.prisma.folioEntry.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        folio: { propertyId },
+        businessDate: { gte: from, lte: to },
+      },
+      orderBy: { postedAt: "asc" },
+      include: {
+        folio: {
+          select: {
+            id: true,
+            guest: { select: { firstName: true, lastName: true } },
+            reservation: { select: { confirmationCode: true } },
+          },
+        },
+      },
+    });
+    return entries.map((e) => ({
+      businessDate: e.businessDate,
+      postedAt: e.postedAt.toISOString(),
+      confirmationCode: e.folio.reservation?.confirmationCode ?? "",
+      guest: `${e.folio.guest.firstName} ${e.folio.guest.lastName}`,
+      folioId: e.folio.id,
+      type: e.type,
+      description: e.description,
+      taxCode: e.taxCode ?? "",
+      taxRuleVersion: e.taxRuleVersion ?? "",
+      amountMinor: Number(e.amountMinor),
+      amountNaira: (Number(e.amountMinor) / 100).toFixed(2),
+    }));
+  }
+}
+
+/** RFC 4180 quoting so descriptions containing commas or quotes stay intact. */
+export function toCsv(rows: Record<string, unknown>[]): string {
+  if (rows.length === 0) return "";
+  const headers = Object.keys(rows[0]);
+  const escape = (v: unknown) => {
+    const s = v === null || v === undefined ? "" : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [
+    headers.join(","),
+    ...rows.map((r) => headers.map((h) => escape(r[h])).join(",")),
+  ].join("\r\n");
 }
 
 @Controller("reports")
@@ -105,6 +192,64 @@ export class ReportsController {
   @Get("audit-trail")
   auditTrail(@CurrentAuth() auth: AuthContext, @Query("propertyId") propertyId?: string) {
     return this.service.auditTrail(auth, propertyId);
+  }
+
+  @Get("tax-summary")
+  taxSummary(
+    @CurrentAuth() auth: AuthContext,
+    @Query("propertyId") propertyId: string,
+    @Query("from") from: string,
+    @Query("to") to: string
+  ) {
+    return this.service.taxSummary(auth, propertyId, from, to);
+  }
+
+  @Get("guest-ledger")
+  guestLedger(
+    @CurrentAuth() auth: AuthContext,
+    @Query("propertyId") propertyId: string,
+    @Query("from") from: string,
+    @Query("to") to: string
+  ) {
+    return this.service.guestLedger(auth, propertyId, from, to);
+  }
+
+  /** §14.1 CSV exports. Streams directly rather than staging a file. */
+  @Get("export")
+  async exportCsv(
+    @CurrentAuth() auth: AuthContext,
+    @Query("propertyId") propertyId: string,
+    @Query("type") type: string,
+    @Query("from") from: string,
+    @Query("to") to: string,
+    @Res() reply: { header: (k: string, v: string) => void; send: (b: string) => void }
+  ) {
+    const rows =
+      type === "tax-summary"
+        ? (await this.service.taxSummary(auth, propertyId, from, to)).map((r) => ({
+            businessDate: r.businessDate,
+            taxCode: r.taxCode,
+            ruleVersion: r.ruleVersion ?? "",
+            lines: r.lines,
+            totalMinor: Number(r.totalMinor),
+            totalNaira: (Number(r.totalMinor) / 100).toFixed(2),
+          }))
+        : type === "guest-ledger"
+          ? await this.service.guestLedger(auth, propertyId, from, to)
+          : null;
+
+    if (!rows) {
+      throw new BadRequestException({
+        error: {
+          code: "UNKNOWN_EXPORT",
+          message: 'Unknown export type. Use "tax-summary" or "guest-ledger".',
+        },
+      });
+    }
+    const filename = `lodgiva-${type}-${from}_to_${to}.csv`;
+    reply.header("Content-Type", "text/csv; charset=utf-8");
+    reply.header("Content-Disposition", `attachment; filename="${filename}"`);
+    reply.send(toCsv(rows as unknown as Record<string, unknown>[]));
   }
 }
 

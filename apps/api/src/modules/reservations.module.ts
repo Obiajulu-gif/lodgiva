@@ -61,6 +61,18 @@ const checkOutSchema = z
 
 const cancelSchema = z.object({ reason: z.string().min(3) }).strict();
 
+const roomMoveSchema = z
+  .object({
+    roomId: z.string().min(1),
+    reason: z.string().min(3),
+    overrideDirtyRoom: z.boolean().default(false),
+  })
+  .strict();
+
+const extendSchema = z
+  .object({ departureDate: isoDate, reason: z.string().optional() })
+  .strict();
+
 @Injectable()
 export class ReservationsService {
   constructor(
@@ -459,6 +471,206 @@ export class ReservationsService {
     });
   }
 
+  /**
+   * §7 Front Office room move. The stay keeps its folio and confirmation
+   * code; the vacated room goes dirty and gets a turnover task, exactly as it
+   * would after a checkout.
+   */
+  async roomMove(auth: AuthContext, id: string, body: unknown) {
+    const dto = roomMoveSchema.parse(body);
+    return this.prisma.$transaction(async (tx) => {
+      const res = await this.getOrThrow(auth, id, tx);
+      if (res.status !== "CHECKED_IN") {
+        throw new ConflictException({
+          error: {
+            code: "NOT_IN_HOUSE",
+            message: "Only an in-house reservation can be moved to another room.",
+          },
+        });
+      }
+      const resRoom = res.rooms[0];
+      const target = await tx.room.findFirst({
+        where: { id: dto.roomId, tenantId: auth.tenantId, propertyId: res.propertyId },
+      });
+      if (!target) {
+        throw new NotFoundException({
+          error: { code: "ROOM_NOT_FOUND", message: "Target room not found." },
+        });
+      }
+      if (target.id === resRoom.roomId) {
+        throw new BadRequestException({
+          error: { code: "SAME_ROOM", message: "The guest is already in that room." },
+        });
+      }
+      const occupied = await tx.reservationRoom.count({
+        where: { tenantId: auth.tenantId, roomId: target.id, status: "IN_HOUSE" },
+      });
+      if (occupied > 0) {
+        throw new ConflictException({
+          error: { code: "ROOM_OCCUPIED", message: `Room ${target.roomNumber} already has an in-house guest.` },
+        });
+      }
+      const ready = ["VACANT_CLEAN", "INSPECTED"].includes(target.operationalStatus);
+      if (!ready && !dto.overrideDirtyRoom) {
+        throw new ConflictException({
+          error: {
+            code: "ROOM_NOT_READY",
+            message: `Room ${target.roomNumber} is ${target.operationalStatus}; choose another room or record an override.`,
+          },
+        });
+      }
+
+      const previous = resRoom.roomId
+        ? await tx.room.findUnique({ where: { id: resRoom.roomId } })
+        : null;
+      const property = await tx.property.findUniqueOrThrow({ where: { id: res.propertyId } });
+
+      await tx.reservationRoom.update({
+        where: { id: resRoom.id },
+        data: { roomId: target.id },
+      });
+      await tx.room.update({
+        where: { id: target.id },
+        data: { operationalStatus: "OCCUPIED_CLEAN" },
+      });
+      if (previous) {
+        await tx.room.update({
+          where: { id: previous.id },
+          data: { operationalStatus: "VACANT_DIRTY" },
+        });
+        await tx.housekeepingTask.create({
+          data: {
+            tenantId: auth.tenantId,
+            propertyId: res.propertyId,
+            roomId: previous.id,
+            businessDate: property.businessDate,
+            type: "TURNOVER",
+            priority: "HIGH",
+            notes: `Room move ${previous.roomNumber} → ${target.roomNumber} (${res.confirmationCode})`,
+          },
+        });
+      }
+      const updated = await tx.reservation.update({
+        where: { id: res.id },
+        data: { version: { increment: 1 } },
+      });
+      await this.audit.log(tx, auth, {
+        action: "frontdesk.room_move",
+        entityType: "reservation",
+        entityId: res.id,
+        propertyId: res.propertyId,
+        summary: {
+          from: previous?.roomNumber,
+          to: target.roomNumber,
+          reason: dto.reason,
+          override: !ready ? "dirty-room-override" : undefined,
+        },
+      });
+      await this.audit.emit(tx, auth.tenantId, {
+        aggregateType: "reservation",
+        aggregateId: res.id,
+        eventType: "reservation.room_moved",
+        payload: { confirmationCode: res.confirmationCode, to: target.roomNumber },
+      });
+      return { ...updated, roomNumber: target.roomNumber };
+    });
+  }
+
+  /**
+   * Extend or shorten a stay. Extending re-checks capacity for the added
+   * nights so an extension can never create a double booking.
+   */
+  async extendStay(auth: AuthContext, id: string, body: unknown) {
+    const dto = extendSchema.parse(body);
+    return this.prisma.$transaction(async (tx) => {
+      const res = await this.getOrThrow(auth, id, tx);
+      if (!["CHECKED_IN", "CONFIRMED"].includes(res.status)) {
+        throw new ConflictException({
+          error: {
+            code: "NOT_EXTENDABLE",
+            message: `A ${res.status} reservation cannot change its departure date.`,
+          },
+        });
+      }
+      if (dto.departureDate <= res.arrivalDate) {
+        throw new BadRequestException({
+          error: { code: "INVALID_DATE_RANGE", message: "Departure must be after arrival." },
+        });
+      }
+      const resRoom = res.rooms[0];
+      const extending = dto.departureDate > res.departureDate;
+
+      if (extending) {
+        // Capacity for the added nights only: [old departure, new departure).
+        const sold = await tx.reservationRoom.count({
+          where: {
+            tenantId: auth.tenantId,
+            roomTypeId: resRoom.roomTypeId,
+            status: { in: ["RESERVED", "IN_HOUSE"] },
+            id: { not: resRoom.id },
+            ...this.overlapWhere(res.departureDate, dto.departureDate),
+            reservation: { status: { in: ["CONFIRMED", "CHECKED_IN", "PENDING_PAYMENT", "HOLD"] } },
+          },
+        });
+        const roomType = await tx.roomType.findUniqueOrThrow({
+          where: { id: resRoom.roomTypeId },
+          include: { _count: { select: { rooms: true } } },
+        });
+        if (sold >= roomType._count.rooms) {
+          throw new ConflictException({
+            error: {
+              code: "ROOM_NOT_AVAILABLE",
+              message: `No ${roomType.name} availability for the extended nights.`,
+            },
+          });
+        }
+        // The specific physical room must also be free for the added nights.
+        if (resRoom.roomId) {
+          const clash = await tx.reservationRoom.count({
+            where: {
+              tenantId: auth.tenantId,
+              roomId: resRoom.roomId,
+              id: { not: resRoom.id },
+              status: { in: ["RESERVED", "IN_HOUSE"] },
+              ...this.overlapWhere(res.departureDate, dto.departureDate),
+            },
+          });
+          if (clash > 0) {
+            throw new ConflictException({
+              error: {
+                code: "ROOM_NOT_AVAILABLE",
+                message: "This room is booked by another guest for the extended nights.",
+              },
+            });
+          }
+        }
+      }
+
+      const nights = nightsBetween(res.arrivalDate, dto.departureDate).length;
+      await tx.reservationRoom.update({
+        where: { id: resRoom.id },
+        data: { departureDate: dto.departureDate },
+      });
+      const updated = await tx.reservation.update({
+        where: { id: res.id },
+        data: { departureDate: dto.departureDate, version: { increment: 1 } },
+      });
+      await this.audit.log(tx, auth, {
+        action: extending ? "frontdesk.stay_extended" : "frontdesk.early_departure",
+        entityType: "reservation",
+        entityId: res.id,
+        propertyId: res.propertyId,
+        summary: {
+          from: res.departureDate,
+          to: dto.departureDate,
+          nights,
+          reason: dto.reason,
+        },
+      });
+      return updated;
+    });
+  }
+
   async cancel(auth: AuthContext, id: string, body: unknown) {
     const dto = cancelSchema.parse(body);
     return this.prisma.$transaction(async (tx) => {
@@ -553,6 +765,16 @@ export class ReservationsController {
   @Post(":id/check-out")
   checkOut(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.checkOut(auth, id, body ?? {});
+  }
+
+  @Post(":id/room-move")
+  roomMove(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
+    return this.service.roomMove(auth, id, body);
+  }
+
+  @Post(":id/extend")
+  extend(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
+    return this.service.extendStay(auth, id, body);
   }
 
   @Post(":id/cancel")

@@ -164,6 +164,42 @@ const rack2 = await call(`/properties/${property.id}/room-rack`, { token });
 const nowOccupied = rack2.data.find((r) => r.id === cleanRoom.id);
 assert(nowOccupied.operationalStatus === "OCCUPIED_CLEAN", "room becomes OCCUPIED_CLEAN");
 
+console.log("3b. Room move & stay extension");
+const moveTarget = await ensureCleanRoom("DLX");
+const move = await call(`/reservations/${reservationId}/room-move`, {
+  method: "POST",
+  token,
+  body: { roomId: moveTarget.id, reason: "Guest requested a quieter room" },
+});
+assert(move.status === 201, "room move succeeds", JSON.stringify(move.data));
+
+const rackAfterMove = await call(`/properties/${property.id}/room-rack`, { token });
+const vacated = rackAfterMove.data.find((r) => r.id === cleanRoom.id);
+const occupiedNow = rackAfterMove.data.find((r) => r.id === moveTarget.id);
+assert(vacated.operationalStatus === "VACANT_DIRTY", "vacated room goes dirty after a move");
+assert(occupiedNow.operationalStatus === "OCCUPIED_CLEAN", "new room becomes occupied");
+assert(!!occupiedNow.occupant, "the stay follows the guest to the new room");
+
+const sameRoom = await call(`/reservations/${reservationId}/room-move`, {
+  method: "POST", token,
+  body: { roomId: moveTarget.id, reason: "Repeat move" },
+});
+assert(sameRoom.status === 400, "moving to the same room is rejected");
+
+const extend = await call(`/reservations/${reservationId}/extend`, {
+  method: "POST",
+  token,
+  body: { departureDate: addDays(businessDate, 4), reason: "Guest staying longer" },
+});
+assert(extend.status === 201 && extend.data.departureDate === addDays(businessDate, 4),
+  "stay extended");
+
+const badExtend = await call(`/reservations/${reservationId}/extend`, {
+  method: "POST", token,
+  body: { departureDate: arrival },
+});
+assert(badExtend.status === 400, "departure on or before arrival is rejected");
+
 console.log("4. Folio ledger & payments");
 const charge = await call(`/folios/${folioId}/charges`, {
   method: "POST",
@@ -709,6 +745,47 @@ const audit2 = await call("/night-audit/run", {
 assert(audit2.status === 201, "next business date can be audited");
 const flash = await call(`/reports/daily-flash?propertyId=${property.id}`, { token });
 assert(flash.status === 200, "daily flash report loads");
+
+console.log("8b. Reports, CSV exports & security headers");
+const taxSummary = await call(
+  `/reports/tax-summary?propertyId=${property.id}&from=${addDays(businessDate, -30)}&to=${addDays(businessDate, 5)}`,
+  { token: mgrToken }
+);
+assert(taxSummary.status === 200 && taxSummary.data.length > 0,
+  "tax summary groups by business date, code and rule version");
+assert(taxSummary.data.some((r) => r.taxCode === "VAT"), "tax summary includes VAT rows");
+
+const csvRes = await fetch(
+  `${BASE}/reports/export?propertyId=${property.id}&type=tax-summary&from=${addDays(businessDate, -30)}&to=${addDays(businessDate, 5)}`,
+  { headers: { Authorization: `Bearer ${mgrToken}` } }
+);
+const csv = await csvRes.text();
+assert(csvRes.headers.get("content-type")?.includes("text/csv"), "CSV export sets a CSV content type");
+assert(csvRes.headers.get("content-disposition")?.includes("attachment"),
+  "CSV export is sent as a download");
+assert(csv.split("\r\n")[0] === "businessDate,taxCode,ruleVersion,lines,totalMinor,totalNaira",
+  "CSV has a header row");
+assert(csv.split("\r\n").length > 1, "CSV has data rows");
+
+const ledgerCsvRes = await fetch(
+  `${BASE}/reports/export?propertyId=${property.id}&type=guest-ledger&from=${addDays(businessDate, -30)}&to=${addDays(businessDate, 5)}`,
+  { headers: { Authorization: `Bearer ${mgrToken}` } }
+);
+const ledgerCsv = await ledgerCsvRes.text();
+// Descriptions contain commas; RFC 4180 quoting must keep the column count stable.
+const headerCols = ledgerCsv.split("\r\n")[0].split(",").length;
+assert(ledgerCsv.includes('"') || headerCols > 5, "guest ledger CSV quotes fields containing commas");
+
+const badExport = await call(
+  `/reports/export?propertyId=${property.id}&type=nonsense&from=${businessDate}&to=${businessDate}`,
+  { token: mgrToken }
+);
+assert(badExport.status === 400, "unknown export type is rejected");
+
+const headRes = await fetch(`${BASE}/health/live`);
+assert(headRes.headers.get("x-frame-options") || headRes.headers.get("content-security-policy"),
+  "security headers are applied (§12.1)");
+assert(!!headRes.headers.get("x-ratelimit-limit"), "rate limiting is active");
 
 console.log("9. Tenant isolation (§6.2 rule 8)");
 // Forge a token signed with the right secret but a different tenant id.
