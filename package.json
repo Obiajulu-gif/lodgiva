@@ -1,27 +1,21 @@
 {
-  "name": "lodgiva",
+  "name": "lodgiva-platform",
   "version": "1.0.0",
   "private": true,
-  "description": "Lodgiva — modern hotel management software for Nigerian hotels, serviced apartments and hotel groups.",
+  "packageManager": "pnpm@10.28.2",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
-  },
-  "dependencies": {
-    "lucide-react": "^0.525.0",
-    "next": "^15.4.5",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "db:migrate": "pnpm --filter @lodgiva/database migrate",
+    "db:seed": "pnpm --filter @lodgiva/database seed",
+    "api": "pnpm --filter @lodgiva/api dev",
+    "worker": "pnpm --filter @lodgiva/worker dev",
+    "dashboard": "pnpm --filter @lodgiva/dashboard-web dev",
+    "marketing": "pnpm --filter lodgiva dev"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.11",
-    "@types/node": "^22.15.0",
-    "@types/react": "^19.1.8",
-    "@types/react-dom": "^19.1.6",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.11",
-    "typescript": "^5.8.3"
+    "turbo": "^2.5.4"
   }
 }

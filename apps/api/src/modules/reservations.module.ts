@@ -1,0 +1,574 @@
+import {
+  BadRequestException,
+  Body,
+  ConflictException,
+  Controller,
+  Get,
+  Injectable,
+  Module,
+  NotFoundException,
+  Param,
+  Post,
+  Query,
+} from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import { z } from "zod";
+import { PrismaService } from "../prisma.service";
+import { AuthContext, CurrentAuth } from "../common/auth";
+import { AuditService } from "../common/audit.service";
+import { nightsBetween } from "../common/money";
+import { PropertiesModule, PropertiesService } from "./properties.module";
+import { FoliosModule, FoliosService } from "./folios.module";
+
+type Tx = Prisma.TransactionClient;
+
+// §7.1 reservation state machine — legal transitions only.
+const TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ["HOLD", "CONFIRMED", "CANCELLED"],
+  HOLD: ["PENDING_PAYMENT", "CONFIRMED", "CANCELLED"],
+  PENDING_PAYMENT: ["CONFIRMED", "CANCELLED"],
+  CONFIRMED: ["CHECKED_IN", "CANCELLED", "NO_SHOW"],
+  CHECKED_IN: ["CHECKED_OUT"],
+  CHECKED_OUT: [],
+  CANCELLED: [],
+  NO_SHOW: [],
+};
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+const createSchema = z
+  .object({
+    propertyId: z.string().min(1),
+    guestId: z.string().min(1),
+    roomTypeId: z.string().min(1),
+    roomId: z.string().optional(),
+    arrivalDate: isoDate,
+    departureDate: isoDate,
+    adults: z.number().int().min(1).default(1),
+    children: z.number().int().min(0).default(0),
+    source: z.enum(["DIRECT", "WALK_IN", "PHONE", "BOOKING_ENGINE", "CORPORATE"]).default("WALK_IN"),
+    notes: z.string().optional(),
+  })
+  .strict();
+
+const checkInSchema = z
+  .object({ roomId: z.string().optional(), overrideDirtyRoom: z.boolean().default(false) })
+  .strict();
+
+const checkOutSchema = z
+  .object({ allowOutstandingBalance: z.boolean().default(false) })
+  .strict();
+
+const cancelSchema = z.object({ reason: z.string().min(3) }).strict();
+
+@Injectable()
+export class ReservationsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+    private readonly properties: PropertiesService,
+    private readonly folios: FoliosService
+  ) {}
+
+  private assertTransition(from: string, to: string) {
+    if (!TRANSITIONS[from]?.includes(to)) {
+      throw new ConflictException({
+        error: {
+          code: "INVALID_STATE_TRANSITION",
+          message: `Cannot move a reservation from ${from} to ${to}.`,
+        },
+      });
+    }
+  }
+
+  private async getOrThrow(auth: AuthContext, id: string, tx?: Tx) {
+    const db = tx ?? this.prisma;
+    const res = await db.reservation.findFirst({
+      where: { id, tenantId: auth.tenantId },
+      include: { rooms: true, folios: true, guest: true },
+    });
+    if (!res) {
+      throw new NotFoundException({
+        error: { code: "RESERVATION_NOT_FOUND", message: "Reservation not found." },
+      });
+    }
+    return res;
+  }
+
+  /** Overlap rule for date ranges: [arrival, departure) — §8.3. */
+  private overlapWhere(arrival: string, departure: string) {
+    return { arrivalDate: { lt: departure }, departureDate: { gt: arrival } };
+  }
+
+  async availability(
+    auth: AuthContext,
+    propertyId: string,
+    arrival: string,
+    departure: string
+  ) {
+    await this.properties.assertProperty(auth, propertyId);
+    if (arrival >= departure) {
+      throw new BadRequestException({
+        error: { code: "INVALID_DATE_RANGE", message: "Departure must be after arrival." },
+      });
+    }
+    const roomTypes = await this.prisma.roomType.findMany({
+      where: { tenantId: auth.tenantId, propertyId },
+      include: { _count: { select: { rooms: true } } },
+    });
+    const result = [];
+    for (const rt of roomTypes) {
+      const sold = await this.prisma.reservationRoom.count({
+        where: {
+          tenantId: auth.tenantId,
+          roomTypeId: rt.id,
+          status: { in: ["RESERVED", "IN_HOUSE"] },
+          ...this.overlapWhere(arrival, departure),
+          reservation: { status: { in: ["CONFIRMED", "CHECKED_IN", "PENDING_PAYMENT", "HOLD"] } },
+        },
+      });
+      result.push({
+        roomTypeId: rt.id,
+        code: rt.code,
+        name: rt.name,
+        baseRateMinor: rt.baseRateMinor,
+        totalRooms: rt._count.rooms,
+        available: rt._count.rooms - sold,
+      });
+    }
+    return result;
+  }
+
+  list(auth: AuthContext, propertyId?: string, status?: string) {
+    return this.prisma.reservation.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        ...(propertyId ? { propertyId } : {}),
+        ...(status ? { status } : {}),
+      },
+      orderBy: [{ arrivalDate: "desc" }],
+      take: 100,
+      include: {
+        guest: { select: { id: true, firstName: true, lastName: true, vip: true } },
+        rooms: {
+          include: {
+            room: { select: { roomNumber: true } },
+          },
+        },
+        folios: { select: { id: true, status: true } },
+      },
+    });
+  }
+
+  async get(auth: AuthContext, id: string) {
+    const res = await this.getOrThrow(auth, id);
+    const folio = res.folios[0];
+    const balanceMinor = folio ? await this.folios.balanceMinor(folio.id) : 0n;
+    return { ...res, balanceMinor };
+  }
+
+  async create(auth: AuthContext, body: unknown) {
+    const dto = createSchema.parse(body);
+    if (dto.arrivalDate >= dto.departureDate) {
+      throw new BadRequestException({
+        error: { code: "INVALID_DATE_RANGE", message: "Departure must be after arrival." },
+      });
+    }
+    await this.properties.assertProperty(auth, dto.propertyId);
+
+    return this.prisma.$transaction(async (tx) => {
+      const roomType = await tx.roomType.findFirst({
+        where: { id: dto.roomTypeId, tenantId: auth.tenantId, propertyId: dto.propertyId },
+        include: { _count: { select: { rooms: true } } },
+      });
+      if (!roomType) {
+        throw new NotFoundException({
+          error: { code: "ROOM_TYPE_NOT_FOUND", message: "Room type not found." },
+        });
+      }
+      // No double booking (§2 / Phase 2 gate): capacity check inside the txn.
+      const sold = await tx.reservationRoom.count({
+        where: {
+          tenantId: auth.tenantId,
+          roomTypeId: roomType.id,
+          status: { in: ["RESERVED", "IN_HOUSE"] },
+          ...this.overlapWhere(dto.arrivalDate, dto.departureDate),
+          reservation: { status: { in: ["CONFIRMED", "CHECKED_IN", "PENDING_PAYMENT", "HOLD"] } },
+        },
+      });
+      if (sold >= roomType._count.rooms) {
+        throw new ConflictException({
+          error: {
+            code: "ROOM_NOT_AVAILABLE",
+            message: `No ${roomType.name} rooms available for the requested dates.`,
+            retryable: false,
+          },
+        });
+      }
+      if (dto.roomId) {
+        const clash = await tx.reservationRoom.count({
+          where: {
+            tenantId: auth.tenantId,
+            roomId: dto.roomId,
+            status: { in: ["RESERVED", "IN_HOUSE"] },
+            ...this.overlapWhere(dto.arrivalDate, dto.departureDate),
+          },
+        });
+        if (clash > 0) {
+          throw new ConflictException({
+            error: { code: "ROOM_NOT_AVAILABLE", message: "That physical room is already booked for these dates." },
+          });
+        }
+      }
+
+      const guest = await tx.guest.findFirst({
+        where: { id: dto.guestId, tenantId: auth.tenantId },
+      });
+      if (!guest) {
+        throw new NotFoundException({
+          error: { code: "GUEST_NOT_FOUND", message: "Guest not found." },
+        });
+      }
+
+      const count = await tx.reservation.count({ where: { tenantId: auth.tenantId } });
+      const confirmationCode = `LDG-${5000 + count + 1}`;
+
+      const reservation = await tx.reservation.create({
+        data: {
+          tenantId: auth.tenantId,
+          propertyId: dto.propertyId,
+          confirmationCode,
+          primaryGuestId: guest.id,
+          source: dto.source,
+          status: "CONFIRMED",
+          arrivalDate: dto.arrivalDate,
+          departureDate: dto.departureDate,
+          adults: dto.adults,
+          children: dto.children,
+          notes: dto.notes,
+          rooms: {
+            create: {
+              tenantId: auth.tenantId,
+              roomTypeId: roomType.id,
+              roomId: dto.roomId,
+              arrivalDate: dto.arrivalDate,
+              departureDate: dto.departureDate,
+              adults: dto.adults,
+              children: dto.children,
+              nightlyRateMinor: roomType.baseRateMinor,
+            },
+          },
+        },
+        include: { rooms: true },
+      });
+      const folio = await tx.folio.create({
+        data: {
+          tenantId: auth.tenantId,
+          propertyId: dto.propertyId,
+          reservationId: reservation.id,
+          guestId: guest.id,
+        },
+      });
+      await this.audit.log(tx, auth, {
+        action: "reservation.created",
+        entityType: "reservation",
+        entityId: reservation.id,
+        propertyId: dto.propertyId,
+        summary: { confirmationCode, guest: `${guest.firstName} ${guest.lastName}` },
+      });
+      await this.audit.emit(tx, auth.tenantId, {
+        aggregateType: "reservation",
+        aggregateId: reservation.id,
+        eventType: "reservation.confirmed",
+        payload: { confirmationCode, arrivalDate: dto.arrivalDate },
+      });
+      return { ...reservation, folioId: folio.id };
+    });
+  }
+
+  async checkIn(auth: AuthContext, id: string, body: unknown) {
+    const dto = checkInSchema.parse(body);
+    return this.prisma.$transaction(async (tx) => {
+      const res = await this.getOrThrow(auth, id, tx);
+      this.assertTransition(res.status, "CHECKED_IN");
+      const resRoom = res.rooms[0];
+      const roomId = dto.roomId ?? resRoom.roomId;
+      if (!roomId) {
+        throw new BadRequestException({
+          error: { code: "NO_ROOM_ASSIGNED", message: "Assign a room before check-in." },
+        });
+      }
+      const room = await tx.room.findFirst({
+        where: { id: roomId, tenantId: auth.tenantId, propertyId: res.propertyId },
+      });
+      if (!room) {
+        throw new NotFoundException({
+          error: { code: "ROOM_NOT_FOUND", message: "Room not found." },
+        });
+      }
+      // §7.2: only inspected/clean rooms may be assigned unless an authorised
+      // override is recorded (the override itself becomes an audit event).
+      const assignable = ["VACANT_CLEAN", "INSPECTED"].includes(room.operationalStatus);
+      if (!assignable && !dto.overrideDirtyRoom) {
+        throw new ConflictException({
+          error: {
+            code: "ROOM_NOT_READY",
+            message: `Room ${room.roomNumber} is ${room.operationalStatus}; choose another room or record an override.`,
+          },
+        });
+      }
+      const clash = await tx.reservationRoom.count({
+        where: {
+          tenantId: auth.tenantId,
+          roomId: room.id,
+          status: "IN_HOUSE",
+        },
+      });
+      if (clash > 0) {
+        throw new ConflictException({
+          error: { code: "ROOM_OCCUPIED", message: `Room ${room.roomNumber} already has an in-house guest.` },
+        });
+      }
+
+      await tx.reservationRoom.update({
+        where: { id: resRoom.id },
+        data: { roomId: room.id, status: "IN_HOUSE" },
+      });
+      await tx.room.update({
+        where: { id: room.id },
+        data: { operationalStatus: "OCCUPIED_CLEAN" },
+      });
+      const updated = await tx.reservation.update({
+        where: { id: res.id },
+        data: { status: "CHECKED_IN", version: { increment: 1 } },
+      });
+      await this.audit.log(tx, auth, {
+        action: "frontdesk.check_in",
+        entityType: "reservation",
+        entityId: res.id,
+        propertyId: res.propertyId,
+        summary: {
+          room: room.roomNumber,
+          override: dto.overrideDirtyRoom && !assignable ? "dirty-room-override" : undefined,
+        },
+      });
+      await this.audit.emit(tx, auth.tenantId, {
+        aggregateType: "reservation",
+        aggregateId: res.id,
+        eventType: "guest.checked_in",
+        payload: { confirmationCode: res.confirmationCode, room: room.roomNumber },
+      });
+      return updated;
+    });
+  }
+
+  /** Posts any unposted room nights up to today, then requires settlement. */
+  async checkOut(auth: AuthContext, id: string, body: unknown) {
+    const dto = checkOutSchema.parse(body);
+    return this.prisma.$transaction(async (tx) => {
+      const res = await this.getOrThrow(auth, id, tx);
+      this.assertTransition(res.status, "CHECKED_OUT");
+      const property = await tx.property.findUniqueOrThrow({
+        where: { id: res.propertyId },
+      });
+      const folioRow = res.folios[0];
+      const folio = await this.folios.getFolioOrThrow(auth, folioRow.id, tx);
+      const resRoom = res.rooms[0];
+      const room = resRoom.roomId
+        ? await tx.room.findUnique({ where: { id: resRoom.roomId } })
+        : null;
+
+      // Post room charges for every stayed night not yet posted.
+      const stayedUntil =
+        property.businessDate < res.departureDate ? property.businessDate : res.departureDate;
+      const nights = nightsBetween(res.arrivalDate, stayedUntil);
+      const lastNight = nights.length ? nights : nightsBetween(res.arrivalDate, res.departureDate).slice(0, 1);
+      for (const night of lastNight) {
+        const description = `Room ${room?.roomNumber ?? ""} night ${night}`.trim();
+        const already = await tx.folioEntry.findFirst({
+          where: { folioId: folio.id, type: "ROOM_CHARGE", description },
+        });
+        if (!already) {
+          await this.folios.postChargeTx(tx, auth, folio, {
+            type: "ROOM_CHARGE",
+            description,
+            amountMinor: resRoom.nightlyRateMinor,
+            applyTaxes: true,
+            businessDate: property.businessDate,
+          });
+        }
+      }
+
+      const balance = await this.folios.balanceMinor(folio.id, tx);
+      if (balance > 0n && !dto.allowOutstandingBalance) {
+        throw new ConflictException({
+          error: {
+            code: "OUTSTANDING_BALANCE",
+            message: `Folio has an outstanding balance of ₦${(Number(balance) / 100).toLocaleString()}. Take payment or record an approved receivable.`,
+            details: { balanceMinor: Number(balance) },
+          },
+        });
+      }
+
+      await tx.folio.update({
+        where: { id: folio.id },
+        data: { status: "CLOSED", closedAt: new Date() },
+      });
+      await tx.reservationRoom.update({
+        where: { id: resRoom.id },
+        data: { status: "DEPARTED" },
+      });
+      if (room) {
+        await tx.room.update({
+          where: { id: room.id },
+          data: { operationalStatus: "VACANT_DIRTY" },
+        });
+        await tx.housekeepingTask.create({
+          data: {
+            tenantId: auth.tenantId,
+            propertyId: res.propertyId,
+            roomId: room.id,
+            businessDate: property.businessDate,
+            type: "TURNOVER",
+            priority: "HIGH",
+            notes: `Post-checkout turnover (${res.confirmationCode})`,
+          },
+        });
+      }
+      const updated = await tx.reservation.update({
+        where: { id: res.id },
+        data: { status: "CHECKED_OUT", version: { increment: 1 } },
+      });
+      await this.audit.log(tx, auth, {
+        action: "frontdesk.check_out",
+        entityType: "reservation",
+        entityId: res.id,
+        propertyId: res.propertyId,
+        summary: {
+          balanceMinor: Number(balance),
+          receivable: balance > 0n ? true : undefined,
+        },
+      });
+      await this.audit.emit(tx, auth.tenantId, {
+        aggregateType: "reservation",
+        aggregateId: res.id,
+        eventType: "guest.checked_out",
+        payload: { confirmationCode: res.confirmationCode },
+      });
+      return updated;
+    });
+  }
+
+  async cancel(auth: AuthContext, id: string, body: unknown) {
+    const dto = cancelSchema.parse(body);
+    return this.prisma.$transaction(async (tx) => {
+      const res = await this.getOrThrow(auth, id, tx);
+      this.assertTransition(res.status, "CANCELLED");
+      await tx.reservationRoom.updateMany({
+        where: { reservationId: res.id },
+        data: { status: "RELEASED" },
+      });
+      const updated = await tx.reservation.update({
+        where: { id: res.id },
+        data: { status: "CANCELLED", version: { increment: 1 } },
+      });
+      await this.audit.log(tx, auth, {
+        action: "reservation.cancelled",
+        entityType: "reservation",
+        entityId: res.id,
+        propertyId: res.propertyId,
+        summary: { reason: dto.reason },
+      });
+      await this.audit.emit(tx, auth.tenantId, {
+        aggregateType: "reservation",
+        aggregateId: res.id,
+        eventType: "reservation.cancelled",
+        payload: { confirmationCode: res.confirmationCode, reason: dto.reason },
+      });
+      return updated;
+    });
+  }
+
+  async noShow(auth: AuthContext, id: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const res = await this.getOrThrow(auth, id, tx);
+      this.assertTransition(res.status, "NO_SHOW");
+      await tx.reservationRoom.updateMany({
+        where: { reservationId: res.id },
+        data: { status: "RELEASED" },
+      });
+      const updated = await tx.reservation.update({
+        where: { id: res.id },
+        data: { status: "NO_SHOW", version: { increment: 1 } },
+      });
+      await this.audit.log(tx, auth, {
+        action: "reservation.no_show",
+        entityType: "reservation",
+        entityId: res.id,
+        propertyId: res.propertyId,
+      });
+      return updated;
+    });
+  }
+}
+
+@Controller("reservations")
+export class ReservationsController {
+  constructor(private readonly service: ReservationsService) {}
+
+  @Get("availability")
+  availability(
+    @CurrentAuth() auth: AuthContext,
+    @Query("propertyId") propertyId: string,
+    @Query("arrival") arrival: string,
+    @Query("departure") departure: string
+  ) {
+    return this.service.availability(auth, propertyId, arrival, departure);
+  }
+
+  @Get()
+  list(
+    @CurrentAuth() auth: AuthContext,
+    @Query("propertyId") propertyId?: string,
+    @Query("status") status?: string
+  ) {
+    return this.service.list(auth, propertyId, status);
+  }
+
+  @Get(":id")
+  get(@CurrentAuth() auth: AuthContext, @Param("id") id: string) {
+    return this.service.get(auth, id);
+  }
+
+  @Post()
+  create(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
+    return this.service.create(auth, body);
+  }
+
+  @Post(":id/check-in")
+  checkIn(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
+    return this.service.checkIn(auth, id, body ?? {});
+  }
+
+  @Post(":id/check-out")
+  checkOut(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
+    return this.service.checkOut(auth, id, body ?? {});
+  }
+
+  @Post(":id/cancel")
+  cancel(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
+    return this.service.cancel(auth, id, body);
+  }
+
+  @Post(":id/no-show")
+  noShow(@CurrentAuth() auth: AuthContext, @Param("id") id: string) {
+    return this.service.noShow(auth, id);
+  }
+}
+
+@Module({
+  imports: [PropertiesModule, FoliosModule],
+  controllers: [ReservationsController],
+  providers: [ReservationsService],
+})
+export class ReservationsModule {}

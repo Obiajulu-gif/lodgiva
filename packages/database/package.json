@@ -1,0 +1,21 @@
+{
+  "name": "@lodgiva/database",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate": "prisma migrate dev --name init",
+    "push": "prisma db push",
+    "seed": "node src/seed.js",
+    "build": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.10.0",
+    "argon2": "^0.41.1"
+  },
+  "devDependencies": {
+    "prisma": "^6.10.0"
+  }
+}

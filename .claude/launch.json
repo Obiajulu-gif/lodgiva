@@ -2,9 +2,15 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "lodgiva",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "start"],
+      "name": "dashboard",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@lodgiva/dashboard-web", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "marketing",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "lodgiva", "dev"],
       "port": 3000
     }
   ]

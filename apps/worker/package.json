@@ -1,0 +1,13 @@
+{
+  "name": "@lodgiva/worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node src/main.js",
+    "start": "node src/main.js"
+  },
+  "dependencies": {
+    "@lodgiva/database": "workspace:*",
+    "@prisma/client": "^6.10.0"
+  }
+}

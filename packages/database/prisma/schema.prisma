@@ -1,0 +1,336 @@
+// Lodgiva core schema — spec §8.2 entity catalogue (working subset).
+//
+// ADR-LOCAL-001: SQLite is used for local development because Docker/PostgreSQL
+// is unavailable on this machine. The schema avoids SQLite-only features so that
+// switching to PostgreSQL is a provider + DATABASE_URL change. Money is stored
+// as BigInt minor units (kobo) per §7.3 — never floats. Status fields are
+// strings validated at the application layer (SQLite has no enums); the API is
+// the single writer and enforces the state machines.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id              String   @id @default(uuid())
+  legalName       String
+  displayName     String
+  slug            String   @unique
+  status          String   @default("ACTIVE") // ACTIVE | SUSPENDED | TRIAL
+  defaultCurrency String   @default("NGN")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  properties  Property[]
+  memberships Membership[]
+}
+
+model Property {
+  id           String   @id @default(uuid())
+  tenantId     String
+  name         String
+  code         String
+  slug         String
+  timezone     String   @default("Africa/Lagos")
+  businessDate String // ISO date, advanced ONLY by night audit (§7.4 / ADR-009)
+  checkinTime  String   @default("14:00")
+  checkoutTime String   @default("12:00")
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  roomTypes         RoomType[]
+  rooms             Room[]
+  reservations      Reservation[]
+  housekeepingTasks HousekeepingTask[]
+  nightAuditRuns    NightAuditRun[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, slug])
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  phone        String?
+  passwordHash String
+  fullName     String
+  status       String    @default("ACTIVE")
+  mfaEnabled   Boolean   @default(false)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  memberships Membership[]
+  sessions    Session[]
+}
+
+model Membership {
+  id            String  @id @default(uuid())
+  tenantId      String
+  userId        String
+  role          String // TENANT_OWNER | GENERAL_MANAGER | FRONT_DESK | CASHIER | HOUSEKEEPING | FINANCE | AUDITOR
+  status        String  @default("ACTIVE")
+  allProperties Boolean @default(true)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([tenantId, userId])
+}
+
+model Session {
+  id               String    @id @default(uuid())
+  userId           String
+  refreshTokenHash String
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  ipHash           String?
+  userAgent        String?
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, revokedAt])
+}
+
+model RoomType {
+  id            String @id @default(uuid())
+  tenantId      String
+  propertyId    String
+  code          String
+  name          String
+  baseOccupancy Int    @default(2)
+  maxOccupancy  Int    @default(2)
+  baseRateMinor BigInt // kobo per night
+
+  property Property @relation(fields: [propertyId], references: [id])
+  rooms    Room[]
+
+  @@unique([tenantId, propertyId, code])
+}
+
+model Room {
+  id                String @id @default(uuid())
+  tenantId          String
+  propertyId        String
+  roomTypeId        String
+  roomNumber        String
+  floor             Int    @default(1)
+  operationalStatus String @default("VACANT_CLEAN") // §7.2 room operational states
+
+  property Property @relation(fields: [propertyId], references: [id])
+  roomType RoomType @relation(fields: [roomTypeId], references: [id])
+
+  reservationRooms  ReservationRoom[]
+  housekeepingTasks HousekeepingTask[]
+
+  @@unique([tenantId, propertyId, roomNumber])
+  @@index([tenantId, propertyId, operationalStatus])
+}
+
+model Guest {
+  id          String   @id @default(uuid())
+  tenantId    String
+  firstName   String
+  lastName    String
+  phone       String?
+  email       String?
+  nationality String?
+  notes       String?
+  vip         Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  reservations Reservation[]
+  folios       Folio[]
+
+  @@index([tenantId, lastName])
+  @@index([tenantId, phone])
+}
+
+model Reservation {
+  id               String   @id @default(uuid())
+  tenantId         String
+  propertyId       String
+  confirmationCode String
+  primaryGuestId   String
+  source           String   @default("DIRECT")
+  // §7.1 state machine: DRAFT HOLD PENDING_PAYMENT CONFIRMED CHECKED_IN CHECKED_OUT CANCELLED NO_SHOW
+  status           String   @default("CONFIRMED")
+  arrivalDate      String // ISO date
+  departureDate    String
+  adults           Int      @default(1)
+  children         Int      @default(0)
+  currency         String   @default("NGN")
+  notes            String?
+  version          Int      @default(1) // optimistic concurrency (§9.1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id])
+  guest    Guest    @relation(fields: [primaryGuestId], references: [id])
+
+  rooms  ReservationRoom[]
+  folios Folio[]
+
+  @@unique([tenantId, propertyId, confirmationCode])
+  @@index([tenantId, propertyId, arrivalDate, status])
+  @@index([tenantId, propertyId, departureDate, status])
+}
+
+model ReservationRoom {
+  id               String  @id @default(uuid())
+  tenantId         String
+  reservationId    String
+  roomTypeId       String
+  roomId           String?
+  arrivalDate      String
+  departureDate    String
+  adults           Int     @default(1)
+  children         Int     @default(0)
+  nightlyRateMinor BigInt
+  status           String  @default("RESERVED") // RESERVED | IN_HOUSE | DEPARTED | RELEASED
+
+  reservation Reservation @relation(fields: [reservationId], references: [id])
+  room        Room?       @relation(fields: [roomId], references: [id])
+
+  @@index([tenantId, roomId, status])
+}
+
+model Folio {
+  id            String    @id @default(uuid())
+  tenantId      String
+  propertyId    String
+  reservationId String?
+  guestId       String
+  status        String    @default("OPEN") // OPEN | CLOSED
+  currency      String    @default("NGN")
+  closedAt      DateTime?
+  createdAt     DateTime  @default(now())
+
+  reservation Reservation? @relation(fields: [reservationId], references: [id])
+  guest       Guest        @relation(fields: [guestId], references: [id])
+
+  entries  FolioEntry[]
+  payments Payment[]
+
+  @@index([tenantId, propertyId, status])
+}
+
+// §7.3: append-only ledger. Rows are NEVER updated or deleted by the
+// application; corrections post a REVERSAL row referencing the original.
+model FolioEntry {
+  id           String   @id @default(uuid())
+  tenantId     String
+  folioId      String
+  type         String // ROOM_CHARGE | POS_CHARGE | TAX | SERVICE_CHARGE | DISCOUNT | PAYMENT | REFUND | REVERSAL
+  description  String
+  amountMinor  BigInt // signed: charges positive, payments/credits negative
+  taxCode      String?
+  reversalOfId String?  @unique
+  businessDate String
+  postedById   String?
+  postedAt     DateTime @default(now())
+
+  folio      Folio       @relation(fields: [folioId], references: [id])
+  reversalOf FolioEntry? @relation("Reversal", fields: [reversalOfId], references: [id])
+  reversedBy FolioEntry? @relation("Reversal")
+
+  @@index([tenantId, folioId, postedAt])
+}
+
+model Payment {
+  id                String   @id @default(uuid())
+  tenantId          String
+  propertyId        String
+  folioId           String
+  method            String // CASH | BANK_TRANSFER | CARD | POS_TERMINAL | PAYMENT_LINK
+  provider          String? // Paystack | Flutterwave | Manual | FrontDesk
+  amountMinor       BigInt
+  status            String   @default("CONFIRMED") // PENDING | CONFIRMED | FAILED | REFUNDED
+  externalReference String?
+  idempotencyKey    String?
+  receivedAt        DateTime @default(now())
+  recordedById      String?
+
+  folio Folio @relation(fields: [folioId], references: [id])
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, propertyId, status])
+}
+
+model HousekeepingTask {
+  id           String    @id @default(uuid())
+  tenantId     String
+  propertyId   String
+  roomId       String
+  businessDate String
+  type         String    @default("FULL_CLEAN") // FULL_CLEAN | TURNOVER | INSPECTION | DEEP_CLEAN | MAINTENANCE
+  priority     String    @default("NORMAL")
+  assignedTo   String?
+  status       String    @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | INSPECTED
+  notes        String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id])
+  room     Room     @relation(fields: [roomId], references: [id])
+
+  @@index([tenantId, propertyId, businessDate, status])
+}
+
+// §12.3: append-only. No update/delete path exists in the application.
+model AuditEvent {
+  id         String   @id @default(uuid())
+  tenantId   String
+  propertyId String?
+  actorType  String   @default("USER") // USER | API_CLIENT | SYSTEM | SUPPORT
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  summary    String // redacted JSON text
+  requestId  String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, propertyId, createdAt(sort: Desc)])
+}
+
+// §9.3: written in the same transaction as the state change.
+model OutboxEvent {
+  id            String    @id @default(uuid())
+  tenantId      String
+  aggregateType String
+  aggregateId   String
+  eventType     String
+  payload       String // JSON text
+  occurredAt    DateTime  @default(now())
+  publishedAt   DateTime?
+  attempts      Int       @default(0)
+
+  @@index([publishedAt, occurredAt])
+}
+
+model NightAuditRun {
+  id           String    @id @default(uuid())
+  tenantId     String
+  propertyId   String
+  businessDate String
+  status       String    @default("COMPLETED")
+  summary      String // JSON text of KPI snapshot
+  completedAt  DateTime  @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id])
+
+  // §7.4: idempotent by property + business date
+  @@unique([propertyId, businessDate])
+}
