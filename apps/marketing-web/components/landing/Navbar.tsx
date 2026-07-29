@@ -26,10 +26,11 @@ export function Navbar() {
 
   return (
     <header
+      // Survivor brain: the header never moves, never changes order, and the
+      // logo stays top-left. The only change on scroll is the glass surface
+      // appearing so content passing underneath stays readable.
       className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${
-        scrolled
-          ? "bg-white/90 shadow-[0_1px_0_0_rgba(16,28,23,0.06)] backdrop-blur-md"
-          : "bg-transparent"
+        scrolled ? "glass" : "bg-transparent"
       }`}
     >
       <nav className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
@@ -58,7 +59,7 @@ export function Navbar() {
           </Link>
           <Link
             href="/dashboard"
-            className="rounded-full bg-brand-800 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-700 hover:shadow-md"
+            className="press rounded-control bg-brand-800 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 hover:shadow-md"
           >
             Start free trial
           </Link>

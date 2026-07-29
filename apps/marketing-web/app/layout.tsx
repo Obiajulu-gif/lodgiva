@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter } from "next/font/google";
+import { Playfair_Display, Inter } from "next/font/google";
 import "./globals.css";
 
-const fraunces = Fraunces({
+// ANCHOR — a high-contrast editorial serif. Loaded at display weights only:
+// it earns its keep at 40px+ and would be a liability in body copy.
+const playfair = Playfair_Display({
   subsets: ["latin"],
-  variable: "--font-fraunces",
+  weight: ["500", "600", "700"],
+  variable: "--font-playfair",
   display: "swap",
 });
 
@@ -38,7 +41,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${fraunces.variable} ${inter.variable}`}>
+    <html lang="en" className={`${playfair.variable} ${inter.variable}`}>
       <body>{children}</body>
     </html>
   );

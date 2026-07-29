@@ -61,7 +61,7 @@ export function Faq() {
           {faqs.map((f, i) => (
             <div
               key={f.q}
-              className="overflow-hidden rounded-2xl border border-ink/6 bg-white"
+              className="overflow-hidden rounded-card border border-ink/6 bg-white"
             >
               <button
                 onClick={() => setOpen(open === i ? null : i)}

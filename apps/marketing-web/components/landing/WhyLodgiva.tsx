@@ -64,9 +64,9 @@ export function WhyLodgiva() {
             {pillars.map((p) => (
               <div
                 key={p.title}
-                className="rounded-3xl border border-white/10 bg-white/[0.04] p-8 transition-colors hover:bg-white/[0.07] lg:p-10"
+                className="rounded-card border border-white/10 bg-white/[0.04] p-8 transition-colors hover:bg-white/[0.07] lg:p-10"
               >
-                <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gold-400/15 text-gold-300">
+                <span className="inline-flex h-12 w-12 items-center justify-center rounded-card bg-gold-400/15 text-gold-300">
                   <p.icon className="h-6 w-6" />
                 </span>
                 <h3 className="mt-6 font-display text-2xl font-semibold">

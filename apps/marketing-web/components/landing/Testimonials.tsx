@@ -72,7 +72,7 @@ export function Testimonials() {
           {testimonials.map((t) => (
             <figure
               key={t.name}
-              className="flex flex-col justify-between rounded-3xl border border-ink/5 bg-white p-8 shadow-sm transition-shadow hover:shadow-md"
+              className="flex flex-col justify-between rounded-card border border-ink/5 bg-white p-8 shadow-sm transition-shadow hover:shadow-md"
             >
               <div>
                 <div className="flex gap-1 text-gold-500">
