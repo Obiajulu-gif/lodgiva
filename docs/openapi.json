@@ -2242,6 +2242,122 @@
           "Reports"
         ]
       }
+    },
+    "/reservations/{id}": {
+      "patch": {
+        "tags": [
+          "Reservations"
+        ],
+        "summary": "Modify an un-arrived reservation",
+        "description": "Changes dates, room type, occupancy or notes. Inventory is re-allocated in the same transaction: the new dates are claimed before the old ones are released, so a modification that cannot be satisfied returns 409 SOLD_OUT and leaves the original booking intact. A pre-assigned room that no longer fits is dropped. Not permitted once the guest is in house — use room-move or extend instead.",
+        "responses": {
+          "200": {
+            "description": "Modified; body includes a `changes` set"
+          },
+          "400": {
+            "description": "NO_CHANGES or INVALID_DATE_RANGE"
+          },
+          "409": {
+            "description": "NOT_MODIFIABLE, SOLD_OUT or OCCUPANCY_EXCEEDED"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "arrivalDate": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "departureDate": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "roomTypeId": {
+                    "type": "string"
+                  },
+                  "adults": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  },
+                  "children": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10
+                  },
+                  "notes": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reservations/{id}/assign-room": {
+      "post": {
+        "tags": [
+          "Reservations"
+        ],
+        "summary": "Assign a physical room",
+        "description": "Assigns a specific room, or picks one automatically when `roomId` is omitted. Auto-assignment prefers the lowest floor and skips rooms that are blocked, out of order, or already assigned to an overlapping stay.",
+        "responses": {
+          "201": {
+            "description": "Assigned; returns roomId and roomNumber"
+          },
+          "404": {
+            "description": "ROOM_NOT_FOUND — unknown room, or not of this reservation's type"
+          },
+          "409": {
+            "description": "ROOM_NOT_AVAILABLE, NO_ROOM_AVAILABLE or ALREADY_IN_HOUSE"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "roomId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "info": {

@@ -299,3 +299,44 @@ worked around:
 4. **No PostgreSQL RLS** (§6.2 rules 6–7). Tenant isolation is enforced in the
    application layer and tested against a second real tenant, but the
    defence-in-depth database layer is unavailable on SQLite.
+
+## Reservations
+
+### Modify a reservation
+
+`PATCH /reservations/{id}` — change dates, room type, occupancy or notes on a
+stay that has not yet arrived.
+
+Inventory is re-allocated inside the same transaction. The new dates are
+claimed *before* the old ones are released, so a modification that cannot be
+satisfied returns `409 SOLD_OUT` and the guest keeps the booking they already
+had. A pre-assigned room that no longer matches the new type or dates is
+dropped rather than silently carried over; the response `changes` object
+records every field that moved.
+
+Once the guest is in house the endpoint returns `409 NOT_MODIFIABLE` — use
+`POST /reservations/{id}/room-move` or `/extend` instead, which have their own
+housekeeping and folio consequences.
+
+### Assign a room
+
+`POST /reservations/{id}/assign-room` — assign `roomId`, or omit it to
+auto-assign. Auto-assignment walks rooms of the reservation's type from the
+lowest floor upward, skipping any that are blocked, out of order, or already
+held by an overlapping stay. Check-in performs the same allocation when no
+room has been assigned, so a booking never blocks arrival for want of a room
+number.
+
+### Confirmation codes
+
+Codes are `LDG-XXXX-XXXX`, drawn at random from a 25-character alphabet that
+excludes transcription-ambiguous glyphs (no `O/0`, `I/1/L`, `S/5`, `B`, `U/V`,
+`Z`). Lookup normalises case, spaces and dashes, and folds excluded glyphs onto
+the character they were most likely misread from (`B→8`, `O/0→Q`, `U/V→W`,
+`Z→2`). Glyphs with no unambiguous target are rejected rather than guessed, so
+a mistyped code never resolves to somebody else's booking.
+
+Codes are random rather than sequential: a counter both races under concurrent
+booking and publishes the property's reservation volume to anyone who books
+twice.
+

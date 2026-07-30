@@ -7,6 +7,7 @@ import LoginPage from "./pages/Login";
 import OverviewPage from "./pages/Overview";
 import RoomRackPage from "./pages/RoomRack";
 import ReservationsPage from "./pages/Reservations";
+import CalendarPage from "./pages/Calendar";
 import HousekeepingPage from "./pages/Housekeeping";
 import PaymentsPage from "./pages/Payments";
 import NightAuditPage from "./pages/NightAudit";
@@ -117,6 +118,7 @@ function Shell() {
         <NavLink to="/" end>Overview</NavLink>
         <NavLink to="/rooms">Room Rack</NavLink>
         <NavLink to="/reservations">Reservations</NavLink>
+        <NavLink to="/calendar">Calendar</NavLink>
         <NavLink to="/housekeeping">Housekeeping</NavLink>
         <NavLink to="/maintenance">Maintenance</NavLink>
         <NavLink to="/pos">POS</NavLink>
@@ -136,6 +138,7 @@ function Shell() {
             <Route path="/" element={<OverviewPage propertyId={property.id} />} />
             <Route path="/rooms" element={<RoomRackPage propertyId={property.id} />} />
             <Route path="/reservations" element={<ReservationsPage propertyId={property.id} />} />
+            <Route path="/calendar" element={<CalendarPage propertyId={property.id} />} />
             <Route path="/housekeeping" element={<HousekeepingPage propertyId={property.id} />} />
             <Route path="/maintenance" element={<MaintenancePage propertyId={property.id} />} />
             <Route path="/pos" element={<PosPage propertyId={property.id} />} />
