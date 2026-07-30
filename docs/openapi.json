@@ -2358,6 +2358,421 @@
           }
         }
       }
+    },
+    "/front-desk/arrivals": {
+      "get": {
+        "tags": [
+          "Front desk"
+        ],
+        "summary": "Arrivals worklist",
+        "description": "Confirmed stays arriving on the business date, each with the blockers stopping check-in.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/front-desk/departures": {
+      "get": {
+        "tags": [
+          "Front desk"
+        ],
+        "summary": "Departures worklist",
+        "description": "In-house stays departing on the business date, with per-folio balances and whether checkout is clear.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/front-desk/in-house": {
+      "get": {
+        "tags": [
+          "Front desk"
+        ],
+        "summary": "In House worklist",
+        "description": "Every currently in-house stay.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/front-desk/summary": {
+      "get": {
+        "tags": [
+          "Front desk"
+        ],
+        "summary": "Desk summary",
+        "description": "Counts for arrivals, departures and in-house, plus total outstanding on departing folios.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/folios/split": {
+      "post": {
+        "tags": [
+          "Folios"
+        ],
+        "summary": "Open an additional folio on a stay",
+        "description": "Splits billing, e.g. room and tax to a company account and extras to the guest. Max six per stay.",
+        "responses": {
+          "201": {
+            "description": "Folio created"
+          },
+          "409": {
+            "description": "STAY_CLOSED or TOO_MANY_FOLIOS"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reservationId",
+                  "label"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "reservationId": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string",
+                    "maxLength": 40
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/folios/{id}/transfer": {
+      "post": {
+        "tags": [
+          "Folios"
+        ],
+        "summary": "Transfer charges to another folio",
+        "description": "Moves postings between folios of the SAME stay. The ledger is append-only, so nothing is re-parented: each entry is reversed on the source and re-posted on the target, both halves sharing a transferGroupId. The pair is exactly zero-sum. An entry can only be transferred once.",
+        "responses": {
+          "201": {
+            "description": "Transferred; returns both resulting balances"
+          },
+          "409": {
+            "description": "DIFFERENT_STAY, FOLIO_CLOSED or ENTRY_NOT_TRANSFERABLE"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "targetFolioId",
+                  "entryIds",
+                  "reason"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "targetFolioId": {
+                    "type": "string"
+                  },
+                  "entryIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 100
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/folios/by-reservation/{reservationId}": {
+      "get": {
+        "tags": [
+          "Folios"
+        ],
+        "summary": "List a stay's folios",
+        "description": "Every folio on a stay with its balance — the checkout screen's data.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "reservationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/invoices": {
+      "get": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "List invoices",
+        "description": "Issued documents for a property, newest first.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "folioId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Issue an invoice or receipt",
+        "description": "Freezes an immutable snapshot of the folio's current lines, taxes and guest details and assigns the next gapless number in the property's yearly series. Later postings to the folio never alter an issued document.",
+        "responses": {
+          "201": {
+            "description": "Issued"
+          },
+          "400": {
+            "description": "NOTHING_TO_INVOICE"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "folioId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "folioId": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "INVOICE",
+                      "RECEIPT"
+                    ]
+                  },
+                  "billTo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invoices/{id}": {
+      "get": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Get an invoice",
+        "description": "Returns the frozen snapshot.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/invoices/{id}/render": {
+      "get": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Render as printable text",
+        "description": "Plain-text rendering sized for the thermal printers front desks actually own.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/invoices/{id}/void": {
+      "post": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Void an invoice",
+        "description": "Issues an offsetting credit note and marks the original VOID. The original keeps its number — a gapless sequence must never lose an entry. Finance, manager or owner only.",
+        "responses": {
+          "201": {
+            "description": "Voided; returns the credit note"
+          },
+          "409": {
+            "description": "ALREADY_VOID or FORBIDDEN_ROLE"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "info": {

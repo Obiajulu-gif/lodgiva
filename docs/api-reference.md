@@ -340,3 +340,67 @@ Codes are random rather than sequential: a counter both races under concurrent
 booking and publishes the property's reservation volume to anyone who books
 twice.
 
+
+## Front desk worklists
+
+`GET /front-desk/arrivals`, `/departures`, `/in-house`, `/summary` — resolved
+against the property's **business date**, not the wall clock, so a shift
+working past midnight still sees today's list.
+
+Arrivals carry a `blockers` array (no room assigned, room not clean, payment
+outstanding, guest flagged) and `readyToCheckIn`. Departures carry per-folio
+balances and `readyToCheckOut`, because checkout refuses while money is owed
+and the desk should know that before the guest reaches the counter.
+
+## Split folios and transfers
+
+`POST /folios/split` opens an extra folio on a stay — room and tax to a
+company account, extras to the guest. `POST /folios/{id}/transfer` moves
+postings between folios **of the same stay**.
+
+The ledger is append-only, so a transfer never re-parents a row. Each entry is
+reversed on the source and re-posted on the target, both halves sharing a
+`transferGroupId`, and the original is stamped so it cannot be moved twice.
+The pair is exactly zero-sum: the combined balance of the two folios is
+unchanged, which is asserted directly in the financial-invariant suite.
+Transfers between different stays are refused — that would silently move a
+debt onto another guest.
+
+## Invoices and receipts
+
+`POST /invoices` freezes an immutable snapshot of the folio's lines, taxes and
+guest details, then assigns the next number in the property's yearly series
+(`GPH-LAG/2026/000042`).
+
+Numbering is **gapless**: the counter is a row read and incremented inside the
+issuing transaction, not a `COUNT(*)`, which would both race and skip numbers
+when a transaction rolls back — and a tax authority reads a gap as a deleted
+invoice.
+
+Issued documents never change. Postings made to the folio afterwards do not
+appear on an already-issued invoice. Corrections go through
+`POST /invoices/{id}/void`, which issues an offsetting credit note and marks
+the original VOID while keeping its number. Voiding requires finance, manager
+or owner.
+
+`GET /invoices/{id}/render` returns plain text sized for a 46-column thermal
+printer.
+
+## Financial invariants
+
+The suite in `test/integration/financial-invariants.test.mjs` asserts these
+against real postings rather than against a model:
+
+1. A folio's balance is exactly the sum of its entries.
+2. A reversal is the exact negation; the original entry survives unchanged.
+3. An entry cannot be reversed twice.
+4. Tax and service charge post as separate lines, each stamped with the rule
+   version that priced it; VAT compounds onto base + service.
+5. A transfer conserves total value across the two folios.
+6. The same charge cannot be transferred twice.
+7. An issued invoice's snapshot does not move when the folio changes.
+8. Invoice numbers are gapless and sequential.
+9. A credit note exactly offsets the invoice it cancels.
+10. Checkout is blocked while any folio is owing; a settled folio nets to zero.
+11. A closed folio accepts no further postings.
+12. A repeated payment idempotency key never double-credits.

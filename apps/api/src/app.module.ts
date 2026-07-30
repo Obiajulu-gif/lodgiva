@@ -19,6 +19,8 @@ import { AuditService } from "./common/audit.service";
 import { AdminModule } from "./modules/admin.module";
 import { ConfigModule } from "./modules/config.module";
 import { BookingModule } from "./modules/booking.module";
+import { FrontDeskModule } from "./modules/front-desk.module";
+import { InvoicesModule } from "./modules/invoices.module";
 import { AuthModule } from "./modules/auth.module";
 import { PropertiesModule } from "./modules/properties.module";
 import { GuestsModule } from "./modules/guests.module";
@@ -134,6 +136,8 @@ class CoreModule {}
     AdminModule,
     ConfigModule,
     BookingModule,
+    FrontDeskModule,
+    InvoicesModule,
     PropertiesModule,
     GuestsModule,
     ReservationsModule,

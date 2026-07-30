@@ -96,6 +96,9 @@ export class PropertiesService {
       roomNumber: r.roomNumber,
       floor: r.floor,
       operationalStatus: r.operationalStatus,
+      // The id is needed by clients that must match a room against a
+      // reservation's room type (e.g. drag-and-drop on the calendar).
+      roomTypeId: r.roomTypeId,
       roomType: r.roomType,
       occupant: r.reservationRooms[0]
         ? {

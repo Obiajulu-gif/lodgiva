@@ -17,6 +17,7 @@ interface RackRoom {
   roomNumber: string;
   floor: number;
   operationalStatus: string;
+  roomTypeId: string;
   roomType: { code: string; name: string };
 }
 
@@ -89,6 +90,54 @@ export default function CalendarPage({ propertyId }: { propertyId: string }) {
     onError: (e) => setError(e instanceof ApiError ? e.message : String(e)),
   });
 
+  /**
+   * Moving a stay between rooms.
+   *
+   * An in-house guest goes through room-move (which turns the old room dirty
+   * and raises a housekeeping task); a future booking is just re-assigned.
+   * Using the wrong endpoint would either skip housekeeping or refuse
+   * outright, so the status decides.
+   */
+  const move = useMutation({
+    mutationFn: async ({ res, roomId }: { res: Reservation; roomId: string }) => {
+      if (res.status === "CHECKED_IN") {
+        return api(`/reservations/${res.id}/room-move`, {
+          method: "POST",
+          body: { roomId, reason: "Moved on the calendar" },
+        });
+      }
+      return api(`/reservations/${res.id}/assign-room`, {
+        method: "POST",
+        body: { roomId },
+      });
+    },
+    onSuccess: () => {
+      setError("");
+      qc.invalidateQueries({ queryKey: ["reservations", propertyId] });
+      qc.invalidateQueries({ queryKey: ["room-rack", propertyId] });
+    },
+    onError: (e) => setError(e instanceof ApiError ? e.message : String(e)),
+  });
+
+  const [dragging, setDragging] = useState<Reservation | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+
+  /**
+   * A room can receive the dragged stay only if it is the right type, not the
+   * room it already occupies, and free for those nights. Computing this during
+   * the drag lets invalid rooms be greyed out instead of failing on drop.
+   */
+  const canDrop = (room: RackRoom, res: Reservation | null) => {
+    if (!res) return false;
+    if (res.rooms[0]?.roomId === room.id) return false;
+    if (room.roomTypeId !== res.rooms[0]?.roomTypeId) return false;
+    if (["OUT_OF_ORDER", "OUT_OF_SERVICE"].includes(room.operationalStatus)) return false;
+    const occupants = byRoom.get(room.id) ?? [];
+    return !occupants.some(
+      (o) => o.id !== res.id && o.arrivalDate < res.departureDate && o.departureDate > res.arrivalDate
+    );
+  };
+
   // Only stays that overlap the visible window, and only those that still
   // hold a room — cancelled and no-show bookings must not occupy the grid.
   const visible = (reservations ?? []).filter(
@@ -118,7 +167,7 @@ export default function CalendarPage({ propertyId }: { propertyId: string }) {
           <h1>Reservation Calendar</h1>
           <p className="sub">
             {days[0]} → {days[DAYS - 1]} · rooms down, nights across. Click a
-            stay to see it; click an empty tray card to assign a room.
+            stay to see it, or drag it onto another room to move the guest.
           </p>
         </div>
         <div className="toolbar" style={{ margin: 0 }}>
@@ -151,7 +200,22 @@ export default function CalendarPage({ propertyId }: { propertyId: string }) {
               <div
                 key={r.id}
                 className="card"
-                style={{ padding: 12, minWidth: 210, cursor: "pointer" }}
+                draggable
+                onDragStart={(e) => {
+                  setDragging(r);
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", r.id);
+                }}
+                onDragEnd={() => {
+                  setDragging(null);
+                  setDropTarget(null);
+                }}
+                style={{
+                  padding: 12,
+                  minWidth: 210,
+                  cursor: "grab",
+                  opacity: dragging?.id === r.id ? 0.4 : 1,
+                }}
                 onClick={() => setSelected(r)}
               >
                 <div style={{ fontWeight: 600, fontSize: 13 }}>
@@ -247,11 +311,37 @@ export default function CalendarPage({ propertyId }: { propertyId: string }) {
                     return (
                       <div
                         key={room.id}
+                        onDragOver={(e) => {
+                          if (!canDrop(room, dragging)) return;
+                          e.preventDefault(); // signals "this is a valid drop"
+                          e.dataTransfer.dropEffect = "move";
+                          if (dropTarget !== room.id) setDropTarget(room.id);
+                        }}
+                        onDragLeave={() => {
+                          if (dropTarget === room.id) setDropTarget(null);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const res = dragging;
+                          setDragging(null);
+                          setDropTarget(null);
+                          if (res && canDrop(room, res)) move.mutate({ res, roomId: room.id });
+                        }}
                         style={{
                           display: "flex",
                           borderBottom: "1px solid var(--border)",
                           position: "relative",
                           height: 40,
+                          background:
+                            dropTarget === room.id
+                              ? "var(--brand-100)"
+                              : dragging && !canDrop(room, dragging)
+                                ? "rgba(16,28,23,0.04)"
+                                : undefined,
+                          outline:
+                            dropTarget === room.id ? "2px solid var(--brand-600)" : undefined,
+                          outlineOffset: -2,
+                          transition: "background 120ms ease",
                         }}
                       >
                         <div
@@ -302,8 +392,19 @@ export default function CalendarPage({ propertyId }: { propertyId: string }) {
                           return (
                             <div
                               key={r.id}
+                              draggable={r.status !== "CHECKED_OUT"}
+                              onDragStart={(e) => {
+                                setDragging(r);
+                                e.dataTransfer.effectAllowed = "move";
+                                // Firefox will not start a drag without data.
+                                e.dataTransfer.setData("text/plain", r.id);
+                              }}
+                              onDragEnd={() => {
+                                setDragging(null);
+                                setDropTarget(null);
+                              }}
                               onClick={() => setSelected(r)}
-                              title={`${r.confirmationCode} · ${r.guest.firstName} ${r.guest.lastName} · ${style.label}`}
+                              title={`${r.confirmationCode} · ${r.guest.firstName} ${r.guest.lastName} · ${style.label}${r.status !== "CHECKED_OUT" ? " · drag to another room to move" : ""}`}
                               style={{
                                 position: "absolute",
                                 left: 180 + from * CELL + 3,
@@ -321,8 +422,9 @@ export default function CalendarPage({ propertyId }: { propertyId: string }) {
                                 overflow: "hidden",
                                 whiteSpace: "nowrap",
                                 textOverflow: "ellipsis",
-                                cursor: "pointer",
+                                cursor: r.status === "CHECKED_OUT" ? "pointer" : "grab",
                                 zIndex: 2,
+                                opacity: dragging?.id === r.id ? 0.4 : 1,
                               }}
                             >
                               {r.guest.vip ? "★ " : ""}

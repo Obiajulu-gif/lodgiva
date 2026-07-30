@@ -401,6 +401,10 @@ model Folio {
   propertyId    String
   reservationId String?
   guestId       String
+  // Split folios: a stay may carry several (room to the company, extras to
+  // the guest). Exactly one is the primary.
+  label         String    @default("Main")
+  isPrimary     Boolean   @default(true)
   status        String    @default("OPEN") // OPEN | CLOSED
   currency      String    @default("NGN")
   closedAt      DateTime?
@@ -411,6 +415,7 @@ model Folio {
 
   entries  FolioEntry[]
   payments Payment[]
+  invoices Invoice[]
 
   @@index([tenantId, propertyId, status])
 }
@@ -429,6 +434,9 @@ model FolioEntry {
   // invoices never change when tax configuration is updated.
   taxRuleId      String?
   taxRuleVersion Int?
+  // Both halves of a transfer share this id, so a move between folios can be
+  // proven zero-sum and reconstructed later.
+  transferGroupId String?
   reversalOfId String?  @unique
   businessDate String
   postedById   String?
@@ -790,6 +798,61 @@ model MaintenanceTicket {
 }
 
 // §12.3: append-only. No update/delete path exists in the application.
+/**
+ * §13.3 — issued tax documents.
+ *
+ * An invoice is an immutable snapshot: the folio can carry on receiving
+ * entries afterwards, but what was invoiced never changes. Corrections are
+ * made by voiding and re-issuing, never by editing, because a tax document
+ * that can be silently altered is worthless as evidence.
+ */
+model Invoice {
+  id            String    @id @default(uuid())
+  tenantId      String
+  propertyId    String
+  folioId       String
+  invoiceNumber String // gapless per property/series, e.g. GPH-LAG/2026/000042
+  type          String    @default("INVOICE") // INVOICE | RECEIPT | CREDIT_NOTE
+  status        String    @default("ISSUED") // ISSUED | VOID
+  // Frozen copy of the lines, taxes and guest details at issue time.
+  snapshot      String
+  subtotalMinor BigInt
+  taxMinor      BigInt
+  totalMinor    BigInt
+  paidMinor     BigInt    @default(0)
+  currency      String    @default("NGN")
+  businessDate  String
+  issuedById    String?
+  issuedAt      DateTime  @default(now())
+  voidedAt      DateTime?
+  voidReason    String?
+  // A credit note points at the invoice it reverses.
+  reversesId    String?   @unique
+
+  folio    Folio    @relation(fields: [folioId], references: [id])
+  reverses Invoice? @relation("InvoiceReversal", fields: [reversesId], references: [id])
+  reversedBy Invoice? @relation("InvoiceReversal")
+
+  @@unique([tenantId, propertyId, invoiceNumber])
+  @@index([tenantId, propertyId, businessDate])
+}
+
+/**
+ * Gapless invoice numbering. Tax authorities require an unbroken sequence, so
+ * the counter is a row that is locked and incremented inside the issuing
+ * transaction rather than derived from COUNT(*), which would both race and
+ * skip numbers when a transaction rolls back.
+ */
+model InvoiceSequence {
+  id         String @id @default(uuid())
+  tenantId   String
+  propertyId String
+  series     String // usually the year
+  lastNumber Int    @default(0)
+
+  @@unique([propertyId, series])
+}
+
 model AuditEvent {
   id         String   @id @default(uuid())
   tenantId   String

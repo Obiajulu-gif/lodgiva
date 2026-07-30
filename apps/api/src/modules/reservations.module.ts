@@ -177,7 +177,7 @@ export class ReservationsService {
       excludeRoomId?: string;
     }
   ) {
-    const rooms = await tx.room.findMany({
+    const candidates = await tx.room.findMany({
       where: {
         tenantId: input.tenantId,
         propertyId: input.propertyId,
@@ -187,6 +187,21 @@ export class ReservationsService {
       },
       orderBy: [{ floor: "asc" }, { roomNumber: "asc" }],
     });
+
+    // Readiness first, then lowest floor. Without this a same-day arrival can
+    // be handed a dirty room that check-in then refuses, which looks like the
+    // system contradicting itself. Dirty rooms stay eligible for future dates,
+    // where housekeeping will have turned them over before the guest lands.
+    const READINESS: Record<string, number> = {
+      INSPECTED: 0,
+      VACANT_CLEAN: 1,
+      VACANT_DIRTY: 2,
+      OCCUPIED_CLEAN: 3,
+      OCCUPIED_DIRTY: 3,
+    };
+    const rooms = [...candidates].sort(
+      (a, b) => (READINESS[a.operationalStatus] ?? 9) - (READINESS[b.operationalStatus] ?? 9)
+    );
 
     for (const room of rooms) {
       const clash = await tx.reservationRoom.count({
