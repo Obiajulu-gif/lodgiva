@@ -17,6 +17,9 @@ import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
 import { AuditService } from "../common/audit.service";
 import { nightsBetween } from "../common/money";
+import { InventoryService } from "../common/inventory.service";
+import { inventoryMutex } from "../common/mutex";
+import { BookingModule, BookingService } from "./booking.module";
 import { PropertiesModule, PropertiesService } from "./properties.module";
 import { FoliosModule, FoliosService } from "./folios.module";
 
@@ -48,6 +51,8 @@ const createSchema = z
     children: z.number().int().min(0).default(0),
     source: z.enum(["DIRECT", "WALK_IN", "PHONE", "BOOKING_ENGINE", "CORPORATE"]).default("WALK_IN"),
     notes: z.string().optional(),
+    /** When present, converts an existing hold instead of competing for inventory. */
+    holdToken: z.string().optional(),
   })
   .strict();
 
@@ -79,7 +84,9 @@ export class ReservationsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly properties: PropertiesService,
-    private readonly folios: FoliosService
+    private readonly folios: FoliosService,
+    private readonly inventory: InventoryService,
+    private readonly booking: BookingService
   ) {}
 
   private assertTransition(from: string, to: string) {
@@ -188,7 +195,10 @@ export class ReservationsService {
     }
     await this.properties.assertProperty(auth, dto.propertyId);
 
-    return this.prisma.$transaction(async (tx) => {
+    // Serialise claims against the same room type in this process so writers
+    // queue instead of colliding; the unique index remains the guarantee.
+    return inventoryMutex.runExclusive(`rt:${dto.roomTypeId}`, () =>
+      this.prisma.transactionWithRetry(async (tx) => {
       const roomType = await tx.roomType.findFirst({
         where: { id: dto.roomTypeId, tenantId: auth.tenantId, propertyId: dto.propertyId },
         include: { _count: { select: { rooms: true } } },
@@ -198,25 +208,33 @@ export class ReservationsService {
           error: { code: "ROOM_TYPE_NOT_FOUND", message: "Room type not found." },
         });
       }
-      // No double booking (§2 / Phase 2 gate): capacity check inside the txn.
-      const sold = await tx.reservationRoom.count({
-        where: {
-          tenantId: auth.tenantId,
-          roomTypeId: roomType.id,
-          status: { in: ["RESERVED", "IN_HOUSE"] },
-          ...this.overlapWhere(dto.arrivalDate, dto.departureDate),
-          reservation: { status: { in: ["CONFIRMED", "CHECKED_IN", "PENDING_PAYMENT", "HOLD"] } },
-        },
-      });
-      if (sold >= roomType._count.rooms) {
-        throw new ConflictException({
-          error: {
-            code: "ROOM_NOT_AVAILABLE",
-            message: `No ${roomType.name} rooms available for the requested dates.`,
-            retryable: false,
-          },
-        });
+      // Inventory is claimed below via RoomNightAllocation, whose unique
+      // (roomTypeId, date, slotIndex) constraint is what actually prevents
+      // overbooking. A count-based check here would be a check-then-act race.
+      let hold = null;
+      if (dto.holdToken) {
+        hold = await this.booking.consumeHoldTx(tx, auth.tenantId, dto.holdToken);
+        if (
+          hold.roomTypeId !== roomType.id ||
+          hold.arrivalDate !== dto.arrivalDate ||
+          hold.departureDate !== dto.departureDate
+        ) {
+          throw new ConflictException({
+            error: {
+              code: "HOLD_MISMATCH",
+              message: "This hold was issued for different dates or a different room type.",
+              details: {
+                held: {
+                  roomTypeId: hold.roomTypeId,
+                  arrivalDate: hold.arrivalDate,
+                  departureDate: hold.departureDate,
+                },
+              },
+            },
+          });
+        }
       }
+
       if (dto.roomId) {
         const clash = await tx.reservationRoom.count({
           where: {
@@ -273,6 +291,24 @@ export class ReservationsService {
         },
         include: { rooms: true },
       });
+      // Claim inventory for every night. Throws 409 SOLD_OUT if any night is
+      // full — including when a concurrent request won the last slot.
+      await this.inventory.allocateStay(tx, {
+        tenantId: auth.tenantId,
+        propertyId: dto.propertyId,
+        roomTypeId: roomType.id,
+        arrival: dto.arrivalDate,
+        departure: dto.departureDate,
+        reservationRoomId: reservation.rooms[0].id,
+        consumingHoldId: hold?.id,
+      });
+      if (hold) {
+        await tx.hold.update({
+          where: { id: hold.id },
+          data: { status: "CONSUMED", consumedAt: new Date() },
+        });
+      }
+
       const folio = await tx.folio.create({
         data: {
           tenantId: auth.tenantId,
@@ -295,7 +331,8 @@ export class ReservationsService {
         payload: { confirmationCode, arrivalDate: dto.arrivalDate },
       });
       return { ...reservation, folioId: folio.id };
-    });
+      })
+    );
   }
 
   async checkIn(auth: AuthContext, id: string, body: unknown) {
@@ -680,6 +717,10 @@ export class ReservationsService {
         where: { reservationId: res.id },
         data: { status: "RELEASED" },
       });
+      // Cancelled nights go back on sale immediately.
+      for (const rr of res.rooms) {
+        await this.inventory.releaseReservationRoom(tx, rr.id);
+      }
       const updated = await tx.reservation.update({
         where: { id: res.id },
         data: { status: "CANCELLED", version: { increment: 1 } },
@@ -709,6 +750,9 @@ export class ReservationsService {
         where: { reservationId: res.id },
         data: { status: "RELEASED" },
       });
+      for (const rr of res.rooms) {
+        await this.inventory.releaseReservationRoom(tx, rr.id);
+      }
       const updated = await tx.reservation.update({
         where: { id: res.id },
         data: { status: "NO_SHOW", version: { increment: 1 } },
@@ -789,7 +833,7 @@ export class ReservationsController {
 }
 
 @Module({
-  imports: [PropertiesModule, FoliosModule],
+  imports: [PropertiesModule, FoliosModule, BookingModule],
   controllers: [ReservationsController],
   providers: [ReservationsService],
 })

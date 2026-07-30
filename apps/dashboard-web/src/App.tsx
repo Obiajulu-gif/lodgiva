@@ -13,6 +13,7 @@ import NightAuditPage from "./pages/NightAudit";
 import PosPage from "./pages/Pos";
 import CashieringPage from "./pages/Cashiering";
 import MaintenancePage from "./pages/Maintenance";
+import SettingsPage from "./pages/Settings";
 
 export interface Me {
   user: { id: string; email: string; fullName: string };
@@ -122,6 +123,7 @@ function Shell() {
         <NavLink to="/payments">Payments</NavLink>
         <NavLink to="/cashiering">Cashiering</NavLink>
         <NavLink to="/night-audit">Night Audit</NavLink>
+        <NavLink to="/settings">Settings</NavLink>
         <div className="spacer" />
         <SyncStatus />
         <a href="#logout" onClick={(e) => { e.preventDefault(); logout(); }}>
@@ -140,6 +142,7 @@ function Shell() {
             <Route path="/payments" element={<PaymentsPage propertyId={property.id} />} />
             <Route path="/cashiering" element={<CashieringPage propertyId={property.id} />} />
             <Route path="/night-audit" element={<NightAuditPage propertyId={property.id} />} />
+            <Route path="/settings" element={<SettingsPage propertyId={property.id} />} />
           </Routes>
         )}
       </main>

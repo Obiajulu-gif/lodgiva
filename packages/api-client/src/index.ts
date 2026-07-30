@@ -260,6 +260,51 @@ export class LodgivaClient {
     return this.request<T>("POST", `/api/v1/config/imports/rooms`, { body });
   }
 
+  /** GET /api/v1/availability (Booking) */
+  bookingcontrollerAvailability<T = unknown>(query?: { propertyId?: string | number | boolean; arrival?: string | number | boolean; departure?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/availability`, { query });
+  }
+
+  /** GET /api/v1/quotes (Booking) */
+  bookingcontrollerQuote<T = unknown>(query?: { propertyId?: string | number | boolean; ratePlanId?: string | number | boolean; arrival?: string | number | boolean; departure?: string | number | boolean; adults?: string | number | boolean; children?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/quotes`, { query });
+  }
+
+  /** POST /api/v1/holds (Booking) */
+  bookingcontrollerCreatehold<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/holds`, { body });
+  }
+
+  /** GET /api/v1/holds/{id} (Booking) */
+  bookingcontrollerGethold<T = unknown>(id: string): Promise<T> {
+    return this.request<T>("GET", `/api/v1/holds/${id}`);
+  }
+
+  /** POST /api/v1/holds/{id}/release (Booking) */
+  bookingcontrollerReleasehold<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/holds/${id}/release`, { body });
+  }
+
+  /** POST /api/v1/public/quotes (Booking) */
+  bookingcontrollerPublicquote<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/public/quotes`, { body });
+  }
+
+  /** GET /api/v1/folios/{id} (Folios) */
+  folioscontrollerGet<T = unknown>(id: string): Promise<T> {
+    return this.request<T>("GET", `/api/v1/folios/${id}`);
+  }
+
+  /** POST /api/v1/folios/{id}/charges (Folios) */
+  folioscontrollerPostcharge<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/folios/${id}/charges`, { body });
+  }
+
+  /** POST /api/v1/folios/{id}/entries/{entryId}/reverse (Folios) */
+  folioscontrollerReverse<T = unknown>(id: string, entryId: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/folios/${id}/entries/${entryId}/reverse`, { body });
+  }
+
   /** GET /api/v1/guests (Guests) */
   guestscontrollerSearch<T = unknown>(query?: { q?: string | number | boolean }): Promise<T> {
     return this.request<T>("GET", `/api/v1/guests`, { query });
@@ -273,6 +318,26 @@ export class LodgivaClient {
   /** GET /api/v1/guests/{id} (Guests) */
   guestscontrollerGet<T = unknown>(id: string): Promise<T> {
     return this.request<T>("GET", `/api/v1/guests/${id}`);
+  }
+
+  /** PATCH /api/v1/guests/{id} (Guests) */
+  guestscontrollerUpdate<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("PATCH", `/api/v1/guests/${id}`, { body });
+  }
+
+  /** GET /api/v1/guests/{id}/duplicates (Guests) */
+  guestscontrollerDuplicates<T = unknown>(id: string): Promise<T> {
+    return this.request<T>("GET", `/api/v1/guests/${id}/duplicates`);
+  }
+
+  /** POST /api/v1/guests/merge (Guests) */
+  guestscontrollerMerge<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/guests/merge`, { body });
+  }
+
+  /** POST /api/v1/guests/{id}/blacklist (Guests) */
+  guestscontrollerBlacklist<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/guests/${id}/blacklist`, { body });
   }
 
   /** GET /api/v1/reservations/availability (Reservations) */
@@ -323,21 +388,6 @@ export class LodgivaClient {
   /** POST /api/v1/reservations/{id}/no-show (Reservations) */
   reservationscontrollerNoshow<T = unknown>(id: string, body?: unknown): Promise<T> {
     return this.request<T>("POST", `/api/v1/reservations/${id}/no-show`, { body });
-  }
-
-  /** GET /api/v1/folios/{id} (Folios) */
-  folioscontrollerGet<T = unknown>(id: string): Promise<T> {
-    return this.request<T>("GET", `/api/v1/folios/${id}`);
-  }
-
-  /** POST /api/v1/folios/{id}/charges (Folios) */
-  folioscontrollerPostcharge<T = unknown>(id: string, body?: unknown): Promise<T> {
-    return this.request<T>("POST", `/api/v1/folios/${id}/charges`, { body });
-  }
-
-  /** POST /api/v1/folios/{id}/entries/{entryId}/reverse (Folios) */
-  folioscontrollerReverse<T = unknown>(id: string, entryId: string, body?: unknown): Promise<T> {
-    return this.request<T>("POST", `/api/v1/folios/${id}/entries/${entryId}/reverse`, { body });
   }
 
   /** POST /api/v1/payments (Payments) */
@@ -458,6 +508,16 @@ export class LodgivaClient {
   /** GET /api/v1/rates/quote (Rates) */
   ratescontrollerQuote<T = unknown>(query?: { propertyId?: string | number | boolean; ratePlanId?: string | number | boolean; arrival?: string | number | boolean; departure?: string | number | boolean }): Promise<T> {
     return this.request<T>("GET", `/api/v1/rates/quote`, { query });
+  }
+
+  /** POST /api/v1/rates/restrictions (Rates) */
+  ratescontrollerSetrestrictions<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/rates/restrictions`, { body });
+  }
+
+  /** GET /api/v1/rates/restrictions (Rates) */
+  ratescontrollerListrestrictions<T = unknown>(query?: { ratePlanId?: string | number | boolean; from?: string | number | boolean; to?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/rates/restrictions`, { query });
   }
 
   /** GET /api/v1/properties/tax-rules (Rates) */

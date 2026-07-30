@@ -1,7 +1,7 @@
 # Lodgiva API reference — identity, tenancy and property configuration
 
 Machine-readable spec: [`docs/openapi.json`](openapi.json) (OpenAPI 3.0.0,
-73 paths / 92 operations). Interactive docs are served at
+83 paths / 104 operations). Interactive docs are served at
 `http://localhost:4000/api/v1/docs` when the API is running. The typed client
 generated from it lives in [`packages/api-client`](../packages/api-client).
 
@@ -178,3 +178,124 @@ pollute anything.
 | 404 | `*_NOT_FOUND` — including out-of-scope resources |
 | 409 | State conflicts: `LAST_OWNER`, `ROOM_TYPE_IN_USE`, `ROOM_HAS_HISTORY`, `ROOM_HAS_BOOKINGS`, `AMENITY_EXISTS`, `INVALID_STATE_TRANSITION` |
 | 429 | `RATE_LIMITED` (`retryable: true`) |
+
+---
+
+## Guests and CRM
+
+| Route | Permission | Notes |
+|---|---|---|
+| `GET /guests?q=` | authenticated | Merged tombstones are excluded from search |
+| `GET /guests/:id` | authenticated | Profile with recent stays |
+| `POST /guests` | `guest.manage` | |
+| `PATCH /guests/:id` | `guest.manage` | `409 GUEST_MERGED` if the profile is a tombstone |
+| `GET /guests/:id/duplicates` | authenticated | Ranked candidates |
+| `POST /guests/merge` | `guest.manage` | `{ survivingGuestId, mergedGuestId, reason }` |
+| `POST /guests/:id/blacklist` | `guest.manage` | `{ blacklisted, reason? }` — a reason is required to set |
+
+**Identity documents are minimised (§12.2).** Only `idDocumentType`, the
+**last four digits** and an expiry are accepted; the full document number is
+never transmitted or stored.
+
+**Duplicate detection** ranks by confidence: normalised phone (HIGH), email
+(HIGH), then exact first+last name (LOW). Phone numbers are compared on the
+last 10 digits, so `+234 803 …` and `0803 …` — used interchangeably in
+Nigeria — match.
+
+**Merging** re-points reservations and folios at the survivor, fills only the
+survivor's *blank* fields from the merged record, and keeps the merged row as
+a read-only tombstone so history is never orphaned. Every merge writes a
+`GuestMergeLog` row and an audit event.
+
+---
+
+## Rates, restrictions, availability and booking
+
+| Route | Permission | Notes |
+|---|---|---|
+| `GET /availability` | authenticated | `?propertyId&arrival&departure` — per-night capacity and per-plan sellability |
+| `GET /quotes` | authenticated | `?propertyId&ratePlanId&arrival&departure&adults&children` |
+| `POST /public/quotes` | **public** | `{ propertySlug, arrivalDate, departureDate, adults?, children?, ratePlanCode? }` |
+| `POST /holds` | authenticated | `{ propertyId, ratePlanId, arrivalDate, departureDate, adults?, children? }` |
+| `GET /holds/:id` | authenticated | Accepts a hold id **or** a hold token |
+| `POST /holds/:id/release` | authenticated | Returns the rooms to sale |
+| `GET/POST /rates/plans`, `/rates/calendar` | `settings.rate.manage` to write | |
+| `GET/POST /rates/restrictions` | `settings.rate.manage` to write | |
+
+### Restrictions
+
+Per-date, per-rate-plan: `closed`, `closedToArrival` (CTA),
+`closedToDeparture` (CTD), `minStay`, `maxStay`, `minAdvanceDays`. Sending a
+field as `null` clears it.
+
+Anchoring matters and is unit-tested: **CTA applies to the arrival night only**
+and **CTD to the departure date itself** — a stay may pass *through* a CTA date.
+Length-of-stay and advance-purchase rules are read from the **arrival date's**
+row, with the plan default used when no override exists. A rejected quote
+returns the first violation as `error.code` and **all** violations in
+`error.details.violations`, so a guest adjusting dates is not sent round the
+loop repeatedly.
+
+### Quote → hold → reservation
+
+1. `POST /holds` prices the stay and **claims real inventory**.
+2. The response carries a one-time `holdToken` (stored only as a SHA-256 hash)
+   and an `expiresAt` (`HOLD_MINUTES`, default 15).
+3. `POST /reservations` with `holdToken` converts the hold, **transferring**
+   the already-held slots rather than claiming new ones.
+
+The quoted total is **frozen on the hold**: a rate change while the guest is
+paying cannot move the number they agreed to. A token is single-use
+(`409 HOLD_NOT_ACTIVE`), expires (`409 HOLD_EXPIRED`, retryable), and is
+checked against the dates and room type it was issued for
+(`409 HOLD_MISMATCH`).
+
+Expired holds are swept on read as well as by the worker, so inventory
+recovers even if the sweeper is not running.
+
+### Concurrency-safe inventory
+
+Availability is **not** "capacity minus a count" — that is a check-then-act
+race. Every sold room-night takes an explicit slot in `[0, capacity)` in
+`RoomNightAllocation`, with a unique constraint on
+`(roomTypeId, date, slotIndex)`.
+
+Two concurrent bookings for the last room contend on the same unique index and
+**exactly one wins**. The guarantee is a database invariant, so it does not
+depend on isolation level and behaves identically on SQLite and PostgreSQL.
+Blocked rooms reduce capacity for the dates they cover, so a block can never be
+sold over. Cancellation and no-show release the slots immediately.
+
+This is covered by an integration test that fires `capacity + 4` simultaneous
+bookings and asserts exactly `capacity` succeed and the rest return
+`409 SOLD_OUT`.
+
+---
+
+## Provider and sandbox limitations
+
+These are real constraints of the current environment, stated rather than
+worked around:
+
+1. **SQLite serialises writers (ADR-LOCAL-001).** Concurrent inventory
+   transactions contend; under load SQLite reports a busy/timeout condition.
+   Three mitigations are in place: `PrismaService.transactionWithRetry`
+   (jittered backoff on transient codes `P2024`/`P2034`/`P1008` and
+   busy/timeout messages), a process-local `KeyedMutex` that serialises claims
+   per room type, and a filter that maps exhausted contention to
+   `503 RESOURCE_BUSY` with `retryable: true` instead of a bare 500.
+   **The mutex is a throughput optimisation, not the correctness boundary** —
+   it is process-local and does nothing across instances; the unique index is
+   what prevents overbooking. On PostgreSQL the retry path also covers
+   serialization failures.
+2. **OpenAPI body schemas are absent** — bodies are validated with Zod, which
+   `@nestjs/swagger` cannot introspect. Paths, methods, parameters and security
+   are accurate; the generated client types bodies as `unknown`. Body contracts
+   are documented above by hand. `nestjs-zod` would close this gap.
+3. **Payment providers remain sandboxed.** `SandboxGatewayProvider` stands in
+   for Paystack/Flutterwave; no live keys are configured and no real webhook
+   signature verification runs. Holds therefore expire on time rather than on a
+   real payment callback.
+4. **No PostgreSQL RLS** (§6.2 rules 6–7). Tenant isolation is enforced in the
+   application layer and tested against a second real tenant, but the
+   defence-in-depth database layer is unavailable on SQLite.

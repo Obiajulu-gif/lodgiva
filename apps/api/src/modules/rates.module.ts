@@ -49,6 +49,26 @@ const dailyRateSchema = z
   })
   .strict();
 
+const restrictionsSchema = z
+  .object({
+    ratePlanId: z.string().min(1),
+    restrictions: z
+      .array(
+        z.object({
+          date: isoDate,
+          closed: z.boolean().optional(),
+          closedToArrival: z.boolean().optional(),
+          closedToDeparture: z.boolean().optional(),
+          minStay: z.number().int().min(1).max(365).nullable().optional(),
+          maxStay: z.number().int().min(1).max(365).nullable().optional(),
+          minAdvanceDays: z.number().int().min(0).max(365).nullable().optional(),
+        })
+      )
+      .min(1)
+      .max(370),
+  })
+  .strict();
+
 const taxRuleSchema = z
   .object({
     propertyId: z.string().min(1),
@@ -236,6 +256,75 @@ export class RatesService {
     };
   }
 
+  /**
+   * Upserts per-date selling restrictions. Sending a field as null clears it,
+   * so a calendar edit can remove a rule as well as set one.
+   */
+  async setRestrictions(auth: AuthContext, body: unknown) {
+    const dto = restrictionsSchema.parse(body);
+    const plan = await this.prisma.ratePlan.findFirst({
+      where: { id: dto.ratePlanId, tenantId: auth.tenantId },
+    });
+    if (!plan) {
+      throw new NotFoundException({
+        error: { code: "RATE_PLAN_NOT_FOUND", message: "Rate plan not found." },
+      });
+    }
+    await this.properties.assertProperty(auth, plan.propertyId);
+
+    for (const r of dto.restrictions) {
+      if (r.minStay && r.maxStay && r.minStay > r.maxStay) {
+        throw new BadRequestException({
+          error: {
+            code: "INVALID_STAY_RULE",
+            message: `On ${r.date}, minimum stay (${r.minStay}) cannot exceed maximum stay (${r.maxStay}).`,
+          },
+        });
+      }
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      for (const r of dto.restrictions) {
+        const data = {
+          closed: r.closed ?? false,
+          closedToArrival: r.closedToArrival ?? false,
+          closedToDeparture: r.closedToDeparture ?? false,
+          minStay: r.minStay ?? null,
+          maxStay: r.maxStay ?? null,
+          minAdvanceDays: r.minAdvanceDays ?? null,
+        };
+        await tx.rateRestriction.upsert({
+          where: { ratePlanId_date: { ratePlanId: plan.id, date: r.date } },
+          update: data,
+          create: { tenantId: auth.tenantId, ratePlanId: plan.id, date: r.date, ...data },
+        });
+      }
+      await this.audit.log(tx, auth, {
+        action: "rates.restrictions_updated",
+        entityType: "rate_plan",
+        entityId: plan.id,
+        propertyId: plan.propertyId,
+        summary: { dates: dto.restrictions.length },
+      });
+      return { updated: dto.restrictions.length };
+    });
+  }
+
+  async listRestrictions(auth: AuthContext, ratePlanId: string, from: string, to: string) {
+    const plan = await this.prisma.ratePlan.findFirst({
+      where: { id: ratePlanId, tenantId: auth.tenantId },
+    });
+    if (!plan) {
+      throw new NotFoundException({
+        error: { code: "RATE_PLAN_NOT_FOUND", message: "Rate plan not found." },
+      });
+    }
+    return this.prisma.rateRestriction.findMany({
+      where: { ratePlanId: plan.id, date: { gte: from, lte: to } },
+      orderBy: { date: "asc" },
+    });
+  }
+
   async listTaxRules(auth: AuthContext, propertyId: string) {
     await this.properties.assertProperty(auth, propertyId);
     return this.prisma.taxRule.findMany({
@@ -330,6 +419,22 @@ export class RatesController {
     @Query("departure") departure: string
   ) {
     return this.service.quote(auth, propertyId, ratePlanId, arrival, departure);
+  }
+
+  @RequirePermission("settings.rate.manage")
+  @Post("rates/restrictions")
+  setRestrictions(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
+    return this.service.setRestrictions(auth, body);
+  }
+
+  @Get("rates/restrictions")
+  listRestrictions(
+    @CurrentAuth() auth: AuthContext,
+    @Query("ratePlanId") ratePlanId: string,
+    @Query("from") from: string,
+    @Query("to") to: string
+  ) {
+    return this.service.listRestrictions(auth, ratePlanId, from, to);
   }
 
   @Get("properties/tax-rules")

@@ -60,6 +60,7 @@ model Property {
   approvalRequests   ApprovalRequest[]
   amenities          Amenity[]
   roomBlocks         RoomBlock[]
+  holds              Hold[]
   memberScopes       MembershipProperty[]
 
   @@unique([tenantId, code])
@@ -171,10 +172,12 @@ model RoomType {
   description   String?
   status        String @default("ACTIVE")
 
-  property  Property          @relation(fields: [propertyId], references: [id])
-  rooms     Room[]
-  ratePlans RatePlan[]
-  amenities RoomTypeAmenity[]
+  property    Property              @relation(fields: [propertyId], references: [id])
+  rooms       Room[]
+  ratePlans   RatePlan[]
+  amenities   RoomTypeAmenity[]
+  holds       Hold[]
+  allocations RoomNightAllocation[]
 
   @@unique([tenantId, propertyId, code])
 }
@@ -213,14 +216,133 @@ model Guest {
   nationality String?
   notes       String?
   vip         Boolean  @default(false)
+  // §7 Guests and CRM
+  idDocumentType   String? // PASSPORT | NIN | DRIVERS_LICENCE | VOTERS_CARD
+  idDocumentLast4  String? // only the last 4 are retained (§12.2 minimisation)
+  idDocumentExpiry String?
+  marketingConsent Boolean @default(false)
+  consentUpdatedAt DateTime?
+  blacklisted      Boolean @default(false)
+  blacklistReason  String?
+  // Set when this profile has been merged into another; the row is kept so
+  // historic reservations and folios never lose their subject.
+  mergedIntoId String?
+  mergedAt     DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   reservations Reservation[]
   folios       Folio[]
+  mergedInto   Guest?  @relation("GuestMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom   Guest[] @relation("GuestMerge")
 
   @@index([tenantId, lastName])
   @@index([tenantId, phone])
+  @@index([tenantId, email])
+  @@index([tenantId, mergedIntoId])
+}
+
+/** Audit of guest profile merges so a merge can be explained and reviewed. */
+model GuestMergeLog {
+  id           String   @id @default(uuid())
+  tenantId     String
+  survivingId  String
+  mergedId     String
+  movedCounts  String // JSON: { reservations, folios }
+  performedById String
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+/**
+ * §7 Rates and Availability — per-date selling restrictions.
+ *
+ * Separate from DailyRate because a restriction can apply without a price
+ * override (and a price can change without touching restrictions).
+ */
+model RateRestriction {
+  id           String  @id @default(uuid())
+  tenantId     String
+  ratePlanId   String
+  date         String // ISO date
+  closed       Boolean @default(false) // closed to sale entirely
+  closedToArrival   Boolean @default(false) // CTA
+  closedToDeparture Boolean @default(false) // CTD
+  minStay      Int? // overrides the plan default for stays arriving this date
+  maxStay      Int?
+  minAdvanceDays Int?
+
+  ratePlan RatePlan @relation(fields: [ratePlanId], references: [id], onDelete: Cascade)
+
+  @@unique([ratePlanId, date])
+  @@index([tenantId, date])
+}
+
+/**
+ * A short-lived reservation of inventory created by the booking funnel.
+ *
+ * Holds consume real inventory (they own RoomNightAllocation rows), so a quote
+ * that has been held cannot be oversold while the guest is paying. Expiry is
+ * enforced on read as well as by the worker, so a crashed sweeper can never
+ * leave inventory stuck.
+ */
+model Hold {
+  id            String    @id @default(uuid())
+  tenantId      String
+  propertyId    String
+  roomTypeId    String
+  ratePlanId    String?
+  tokenHash     String    @unique
+  arrivalDate   String
+  departureDate String
+  adults        Int       @default(1)
+  children      Int       @default(0)
+  quotedTotalMinor BigInt
+  quotedBreakdown  String  @default("[]") // JSON night-by-night, frozen at quote time
+  currency      String    @default("NGN")
+  status        String    @default("ACTIVE") // ACTIVE | CONSUMED | RELEASED | EXPIRED
+  expiresAt     DateTime
+  consumedAt    DateTime?
+  releasedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  property    Property                @relation(fields: [propertyId], references: [id])
+  roomType    RoomType                @relation(fields: [roomTypeId], references: [id])
+  allocations RoomNightAllocation[]
+
+  @@index([tenantId, status, expiresAt])
+}
+
+/**
+ * CONCURRENCY-SAFE INVENTORY.
+ *
+ * One row per sold room-night, holding an explicit slot index in
+ * [0, capacity). The unique constraint on (roomTypeId, date, slotIndex) is
+ * what makes overbooking impossible: two concurrent bookings racing for the
+ * last room both try to insert the same slot, and the database rejects one of
+ * them. This is a database invariant rather than an application check, so it
+ * holds under any interleaving and does not depend on transaction isolation
+ * level — it behaves identically on SQLite and PostgreSQL.
+ */
+model RoomNightAllocation {
+  id                String @id @default(uuid())
+  tenantId          String
+  propertyId        String
+  roomTypeId        String
+  date              String // ISO date of the night
+  slotIndex         Int
+  holdId            String?
+  reservationRoomId String?
+  createdAt         DateTime @default(now())
+
+  roomType        RoomType         @relation(fields: [roomTypeId], references: [id])
+  hold            Hold?            @relation(fields: [holdId], references: [id], onDelete: Cascade)
+  reservationRoom ReservationRoom? @relation(fields: [reservationRoomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomTypeId, date, slotIndex])
+  @@index([tenantId, roomTypeId, date])
+  @@index([reservationRoomId])
 }
 
 model Reservation {
@@ -266,8 +388,9 @@ model ReservationRoom {
   nightlyRateMinor BigInt
   status           String  @default("RESERVED") // RESERVED | IN_HOUSE | DEPARTED | RELEASED
 
-  reservation Reservation @relation(fields: [reservationId], references: [id])
-  room        Room?       @relation(fields: [roomId], references: [id])
+  reservation Reservation           @relation(fields: [reservationId], references: [id])
+  room        Room?                 @relation(fields: [roomId], references: [id])
+  allocations RoomNightAllocation[]
 
   @@index([tenantId, roomId, status])
 }
@@ -465,9 +588,10 @@ model RatePlan {
   includesBreakfast Boolean @default(false)
   status       String  @default("ACTIVE")
 
-  property    Property     @relation(fields: [propertyId], references: [id])
-  roomType    RoomType     @relation(fields: [roomTypeId], references: [id])
-  dailyRates  DailyRate[]
+  property     Property          @relation(fields: [propertyId], references: [id])
+  roomType     RoomType          @relation(fields: [roomTypeId], references: [id])
+  dailyRates   DailyRate[]
+  restrictions RateRestriction[]
 
   @@unique([tenantId, propertyId, code])
 }
