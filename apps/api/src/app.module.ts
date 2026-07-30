@@ -12,7 +12,10 @@ import { JwtModule } from "@nestjs/jwt";
 import { ZodError } from "zod";
 import { PrismaService } from "./prisma.service";
 import { AuthGuard, Public } from "./common/auth";
+import { PermissionsGuard } from "./common/permissions.guard";
 import { AuditService } from "./common/audit.service";
+import { AdminModule } from "./modules/admin.module";
+import { ConfigModule } from "./modules/config.module";
 import { AuthModule } from "./modules/auth.module";
 import { PropertiesModule } from "./modules/properties.module";
 import { GuestsModule } from "./modules/guests.module";
@@ -78,6 +81,8 @@ class CoreModule {}
     CoreModule,
     JwtModule.register({ global: true }),
     AuthModule,
+    AdminModule,
+    ConfigModule,
     PropertiesModule,
     GuestsModule,
     ReservationsModule,
@@ -95,7 +100,9 @@ class CoreModule {}
   ],
   controllers: [HealthController],
   providers: [
+    // Order matters: authenticate, then authorise.
     { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_GUARD, useClass: PermissionsGuard },
     { provide: APP_FILTER, useClass: ZodExceptionFilter },
   ],
 })

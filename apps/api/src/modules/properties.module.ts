@@ -38,22 +38,32 @@ export class PropertiesService {
     private readonly audit: AuditService
   ) {}
 
-  /** Every property access is validated against the token tenant (§6.2). */
+  /**
+   * The single chokepoint for property access (§6.2 rules 2 and 3). The
+   * tenant always comes from the verified token, never the request, and a
+   * property-scoped membership cannot reach a property outside its scope.
+   *
+   * Out-of-scope returns 404 rather than 403 so an attacker cannot use the
+   * response to confirm that a property id exists.
+   */
   async assertProperty(auth: AuthContext, propertyId: string) {
     const property = await this.prisma.property.findFirst({
       where: { id: propertyId, tenantId: auth.tenantId },
     });
-    if (!property) {
-      throw new NotFoundException({
-        error: { code: "PROPERTY_NOT_FOUND", message: "Property not found in your tenant." },
-      });
-    }
+    const notFound = new NotFoundException({
+      error: { code: "PROPERTY_NOT_FOUND", message: "Property not found in your tenant." },
+    });
+    if (!property) throw notFound;
+    if (!auth.allProperties && !auth.propertyIds.includes(property.id)) throw notFound;
     return property;
   }
 
   list(auth: AuthContext) {
     return this.prisma.property.findMany({
-      where: { tenantId: auth.tenantId },
+      where: {
+        tenantId: auth.tenantId,
+        ...(auth.allProperties ? {} : { id: { in: auth.propertyIds } }),
+      },
       select: {
         id: true, name: true, code: true, slug: true, timezone: true,
         businessDate: true, checkinTime: true, checkoutTime: true, status: true,

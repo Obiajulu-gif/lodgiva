@@ -13,7 +13,12 @@
     "api": "pnpm --filter @lodgiva/api dev",
     "worker": "pnpm --filter @lodgiva/worker dev",
     "dashboard": "pnpm --filter @lodgiva/dashboard-web dev",
-    "marketing": "pnpm --filter lodgiva dev"
+    "marketing": "pnpm --filter lodgiva dev",
+    "openapi": "node apps/api/scripts/emit-openapi.mjs",
+    "generate:client": "node packages/database/src/generate-client.mjs",
+    "test:unit": "pnpm --filter @lodgiva/api test:unit",
+    "test:integration": "pnpm --filter @lodgiva/api test:integration",
+    "test:e2e": "pnpm --filter @lodgiva/api test:e2e"
   },
   "devDependencies": {
     "turbo": "^2.5.4"

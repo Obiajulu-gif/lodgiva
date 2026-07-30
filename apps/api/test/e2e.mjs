@@ -59,9 +59,16 @@ const mgrLogin = await call("/auth/login", {
   body: { email: "manager@grandpalm.demo", password: "Password123!" },
 });
 const mgrToken = mgrLogin.data.accessToken;
+// Tax configuration is reserved to owner/finance roles (§6.4), so the owner
+// pins the baseline even though the manager drives the rest of the suite.
+const ownerLogin = await call("/auth/login", {
+  method: "POST",
+  body: { email: "owner@grandpalm.demo", password: "Password123!" },
+});
+const ownerToken = ownerLogin.data.accessToken;
 await call("/properties/tax-rules", {
   method: "POST",
-  token: mgrToken,
+  token: ownerToken,
   body: {
     propertyId: property.id, code: "SVC", name: "Service Charge",
     rateBp: 500, compoundOrder: 1, taxOnServiceCharge: false, effectiveFrom: businessDate,
@@ -69,7 +76,7 @@ await call("/properties/tax-rules", {
 });
 const baselineVat = await call("/properties/tax-rules", {
   method: "POST",
-  token: mgrToken,
+  token: ownerToken,
   body: {
     propertyId: property.id, code: "VAT", name: "Value Added Tax",
     rateBp: 750, compoundOrder: 2, taxOnServiceCharge: true, effectiveFrom: businessDate,
@@ -447,7 +454,8 @@ const closed = await call(`/cashiering/shifts/${shiftId}/close`, {
 assert(closed.data.status === "PENDING_APPROVAL", "variance close requires manager approval");
 
 const selfApprove = await call(`/cashiering/shifts/${shiftId}/approve`, { method: "POST", token });
-assert(selfApprove.status === 409, "cashier cannot approve their own variance");
+assert(selfApprove.status === 403 && selfApprove.data.error.code === "PERMISSION_DENIED",
+  "a cashier has no permission to approve a variance at all");
 
 const mgr = await call("/auth/login", {
   method: "POST",
@@ -567,7 +575,8 @@ const forbiddenTax = await call("/properties/tax-rules", {
     rateBp: 1000, compoundOrder: 2, effectiveFrom: businessDate,
   },
 });
-assert(forbiddenTax.status === 409, "front desk cannot change tax configuration");
+assert(forbiddenTax.status === 403 && forbiddenTax.data.error.code === "PERMISSION_DENIED",
+  "front desk cannot change tax configuration");
 
 // The baseline pinned in section 1 is the currently effective VAT version.
 const vatBaselineVersion = baselineVat.data.version;
@@ -596,7 +605,7 @@ assert(v1Vat.amountMinor === 78750 && v1Vat.taxRuleVersion === vatBaselineVersio
 
 const vatV2 = await call("/properties/tax-rules", {
   method: "POST",
-  token: mgrToken,
+  token: ownerToken,
   body: {
     propertyId: property.id, code: "VAT", name: "Value Added Tax",
     rateBp: 1000, compoundOrder: 2, taxOnServiceCharge: true, effectiveFrom: businessDate,
@@ -641,7 +650,8 @@ const noDiscountYet = beforeApproval.data.entries.filter(
 assert(noDiscountYet.length === 0, "pending discount does not touch the ledger");
 
 const selfApproveDiscount = await call(`/approvals/${requestId}/approve`, { method: "POST", token });
-assert(selfApproveDiscount.status === 409, "requester cannot approve their own discount");
+assert(selfApproveDiscount.status === 403 && selfApproveDiscount.data.error.code === "PERMISSION_DENIED",
+  "the requesting front-desk user cannot approve the discount");
 
 const approved = await call(`/approvals/${requestId}/approve`, {
   method: "POST", token: mgrToken, body: { note: "Approved — documented complaint" },

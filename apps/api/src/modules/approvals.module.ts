@@ -2,6 +2,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  ForbiddenException,
   Get,
   Injectable,
   Module,
@@ -10,6 +11,7 @@ import {
   Post,
   Query,
 } from "@nestjs/common";
+import { roleHasPermission } from "../common/permissions";
 import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
@@ -17,9 +19,8 @@ import { AuditService } from "../common/audit.service";
 import { FoliosModule, FoliosService } from "./folios.module";
 
 // §13.4 — a discount at or under this share of the folio may be applied
-// directly by front desk with a reason; above it needs a manager.
+// directly by front desk with a reason; above it needs an approver.
 const SELF_SERVICE_DISCOUNT_BP = 500; // 5%
-const APPROVER_ROLES = ["TENANT_OWNER", "GENERAL_MANAGER", "FINANCE"];
 
 const discountSchema = z
   .object({
@@ -79,8 +80,11 @@ export class ApprovalsService {
       const shareBp = Number((BigInt(dto.amountMinor) * 10000n) / chargeTotal);
       const property = await tx.property.findUniqueOrThrow({ where: { id: folio.propertyId } });
 
+      // Someone who could approve the request anyway does not need to raise
+      // one against themselves.
       const withinSelfService =
-        shareBp <= SELF_SERVICE_DISCOUNT_BP || APPROVER_ROLES.includes(auth.role);
+        shareBp <= SELF_SERVICE_DISCOUNT_BP ||
+        roleHasPermission(auth.role, "approval.decide");
 
       if (withinSelfService) {
         const entry = await tx.folioEntry.create({
@@ -148,9 +152,13 @@ export class ApprovalsService {
         error: { code: "ALREADY_DECIDED", message: `Request is already ${request.status}.` },
       });
     }
-    if (!APPROVER_ROLES.includes(auth.role)) {
-      throw new ConflictException({
-        error: { code: "FORBIDDEN_ROLE", message: "Your role cannot approve this request." },
+    if (!roleHasPermission(auth.role, "approval.decide")) {
+      throw new ForbiddenException({
+        error: {
+          code: "PERMISSION_DENIED",
+          message: `Your role (${auth.role}) cannot approve requests.`,
+          details: { requiredPermission: "approval.decide" },
+        },
       });
     }
     // Separation of duties: the requester is never the approver.

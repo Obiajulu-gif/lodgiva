@@ -38,9 +38,15 @@ const ORDER = [
   "nightAuditRun",
   "auditEvent",
   "outboxEvent",
+  "roomBlock",
+  "roomTypeAmenity",
+  "roomAmenity",
+  "amenity",
   "room",
   "roomType",
   "session",
+  "invitation",
+  "membershipProperty",
   "membership",
   "user",
   "property",
@@ -50,10 +56,34 @@ const ORDER = [
 async function main() {
   // Reversal entries reference other folio entries, so clear the link first.
   await prisma.folioEntry.updateMany({ data: { reversalOfId: null } });
-  for (const model of ORDER) {
-    await prisma[model].deleteMany({});
+
+  // Every model Prisma knows about, so a newly added table cannot be silently
+  // skipped and leave the "clean" database holding rows.
+  const allModels = Object.keys(prisma).filter(
+    (k) => !k.startsWith("$") && !k.startsWith("_") && typeof prisma[k]?.deleteMany === "function"
+  );
+  const unknown = allModels.filter((m) => !ORDER.includes(m));
+  const plan = [...ORDER.filter((m) => allModels.includes(m)), ...unknown];
+
+  // Retry across passes: ordering handles the common case, and any model left
+  // blocked by a foreign key is cleared once its children are gone.
+  let remaining = plan;
+  for (let pass = 0; pass < 5 && remaining.length; pass++) {
+    const blocked = [];
+    for (const model of remaining) {
+      try {
+        await prisma[model].deleteMany({});
+      } catch (err) {
+        if (err?.code === "P2003") blocked.push(model);
+        else throw err;
+      }
+    }
+    remaining = blocked;
   }
-  console.log("Development database cleared.");
+  if (remaining.length) {
+    throw new Error(`Could not clear: ${remaining.join(", ")} (foreign keys still held).`);
+  }
+  console.log(`Development database cleared (${plan.length} tables).`);
 }
 
 main()

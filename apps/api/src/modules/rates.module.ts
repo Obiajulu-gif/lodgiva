@@ -16,6 +16,7 @@ import { AuthContext, CurrentAuth } from "../common/auth";
 import { AuditService } from "../common/audit.service";
 import { TaxService } from "../common/tax.service";
 import { nightsBetween } from "../common/money";
+import { RequirePermission } from "../common/permissions.guard";
 import { PropertiesModule, PropertiesService } from "./properties.module";
 import { FoliosModule } from "./folios.module";
 
@@ -251,14 +252,6 @@ export class RatesService {
   async upsertTaxRule(auth: AuthContext, body: unknown) {
     const dto = taxRuleSchema.parse(body);
     await this.properties.assertProperty(auth, dto.propertyId);
-    if (!["TENANT_OWNER", "GENERAL_MANAGER", "FINANCE"].includes(auth.role)) {
-      throw new ConflictException({
-        error: {
-          code: "FORBIDDEN_ROLE",
-          message: "Only an owner, general manager or finance user can change tax configuration.",
-        },
-      });
-    }
 
     return this.prisma.$transaction(async (tx) => {
       const current = await tx.taxRule.findFirst({
@@ -306,11 +299,13 @@ export class RatesController {
     return this.service.listPlans(auth, propertyId);
   }
 
+  @RequirePermission("settings.rate.manage")
   @Post("rates/plans")
   createPlan(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.createPlan(auth, body);
   }
 
+  @RequirePermission("settings.rate.manage")
   @Post("rates/calendar")
   setDailyRates(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.setDailyRates(auth, body);
@@ -342,6 +337,7 @@ export class RatesController {
     return this.service.listTaxRules(auth, propertyId);
   }
 
+  @RequirePermission("settings.tax.manage")
   @Post("properties/tax-rules")
   upsertTaxRule(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.upsertTaxRule(auth, body);

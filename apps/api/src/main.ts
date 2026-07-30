@@ -5,6 +5,7 @@ import {
   NestFastifyApplication,
 } from "@nestjs/platform-fastify";
 import { AppModule } from "./app.module";
+import { buildOpenApiDocument, mountSwagger } from "./openapi";
 
 // SQLite database lives next to the Prisma schema (see ADR-LOCAL-001).
 process.env.DATABASE_URL ??= "file:./dev.db";
@@ -66,6 +67,21 @@ async function bootstrap() {
       },
     }),
   });
+  // OpenAPI: served at /api/v1/docs and written to disk for client generation.
+  const document = buildOpenApiDocument(app);
+  mountSwagger(app, document);
+  if (process.env.OPENAPI_OUT) {
+    const { writeFileSync, mkdirSync } = await import("fs");
+    const { dirname } = await import("path");
+    mkdirSync(dirname(process.env.OPENAPI_OUT), { recursive: true });
+    writeFileSync(process.env.OPENAPI_OUT, JSON.stringify(document, null, 2));
+    console.log(`OpenAPI written to ${process.env.OPENAPI_OUT}`);
+    if (process.env.OPENAPI_EXIT === "1") {
+      await app.close();
+      return;
+    }
+  }
+
   const port = Number(process.env.API_PORT ?? 4000);
   await app.listen(port, "0.0.0.0");
   console.log(`Lodgiva API listening on http://localhost:${port}/api/v1`);

@@ -28,6 +28,7 @@ model Tenant {
 
   properties  Property[]
   memberships Membership[]
+  invitations Invitation[]
 }
 
 model Property {
@@ -57,6 +58,9 @@ model Property {
   taxRules           TaxRule[]
   ratePlans          RatePlan[]
   approvalRequests   ApprovalRequest[]
+  amenities          Amenity[]
+  roomBlocks         RoomBlock[]
+  memberScopes       MembershipProperty[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, slug])
@@ -71,25 +75,70 @@ model User {
   status       String    @default("ACTIVE")
   mfaEnabled   Boolean   @default(false)
   lastLoginAt  DateTime?
+  // §6.3 — progressive delay rather than permanent lock, so a staff member
+  // is never locked out of the front desk during a rush.
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   memberships Membership[]
   sessions    Session[]
+  invitesSent Invitation[] @relation("InvitedBy")
 }
 
 model Membership {
   id            String  @id @default(uuid())
   tenantId      String
   userId        String
-  role          String // TENANT_OWNER | GENERAL_MANAGER | FRONT_DESK | CASHIER | HOUSEKEEPING | FINANCE | AUDITOR
+  role          String // TENANT_OWNER | GENERAL_MANAGER | FRONT_DESK | CASHIER | HOUSEKEEPING | MAINTENANCE | FINANCE | AUDITOR
   status        String  @default("ACTIVE")
+  // When false, access is limited to the properties listed in `properties`.
   allProperties Boolean @default(true)
+  createdAt     DateTime @default(now())
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  user   User   @relation(fields: [userId], references: [id])
+  tenant     Tenant               @relation(fields: [tenantId], references: [id])
+  user       User                 @relation(fields: [userId], references: [id])
+  properties MembershipProperty[]
 
   @@unique([tenantId, userId])
+  @@index([tenantId, role])
+}
+
+/** §6.4 resource scope: which properties a scoped membership may access. */
+model MembershipProperty {
+  id           String @id @default(uuid())
+  tenantId     String
+  membershipId String
+  propertyId   String
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  property   Property   @relation(fields: [propertyId], references: [id])
+
+  @@unique([membershipId, propertyId])
+  @@index([tenantId, propertyId])
+}
+
+/** Staff onboarding: an invitation is accepted to create the user + membership. */
+model Invitation {
+  id            String    @id @default(uuid())
+  tenantId      String
+  email         String
+  fullName      String
+  role          String
+  tokenHash     String    @unique
+  allProperties Boolean   @default(true)
+  propertyIds   String    @default("[]") // JSON array when scoped
+  status        String    @default("PENDING") // PENDING | ACCEPTED | REVOKED | EXPIRED
+  expiresAt     DateTime
+  acceptedAt    DateTime?
+  invitedById   String
+  createdAt     DateTime  @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  invitedBy User   @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@index([tenantId, status])
 }
 
 model Session {
@@ -98,8 +147,10 @@ model Session {
   refreshTokenHash String
   expiresAt        DateTime
   revokedAt        DateTime?
+  revokedReason    String?
   ipHash           String?
   userAgent        String?
+  lastActivityAt   DateTime  @default(now())
   createdAt        DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id])
@@ -117,9 +168,13 @@ model RoomType {
   maxOccupancy  Int    @default(2)
   baseRateMinor BigInt // kobo per night
 
-  property  Property   @relation(fields: [propertyId], references: [id])
+  description   String?
+  status        String @default("ACTIVE")
+
+  property  Property          @relation(fields: [propertyId], references: [id])
   rooms     Room[]
   ratePlans RatePlan[]
+  amenities RoomTypeAmenity[]
 
   @@unique([tenantId, propertyId, code])
 }
@@ -141,6 +196,8 @@ model Room {
   reservationRooms   ReservationRoom[]
   housekeepingTasks  HousekeepingTask[]
   maintenanceTickets MaintenanceTicket[]
+  amenities          RoomAmenity[]
+  blocks             RoomBlock[]
 
   @@unique([tenantId, propertyId, roomNumber])
   @@index([tenantId, propertyId, operationalStatus])
@@ -302,6 +359,73 @@ model HousekeepingTask {
   room     Room     @relation(fields: [roomId], references: [id])
 
   @@index([tenantId, propertyId, businessDate, status])
+}
+
+/** Amenities are shared vocabulary, attachable to a room type or a room. */
+model Amenity {
+  id         String @id @default(uuid())
+  tenantId   String
+  propertyId String
+  code       String
+  name       String
+  category   String @default("ROOM") // ROOM | BATHROOM | TECH | ACCESSIBILITY | PROPERTY
+  icon       String?
+
+  property  Property        @relation(fields: [propertyId], references: [id])
+  roomTypes RoomTypeAmenity[]
+  rooms     RoomAmenity[]
+
+  @@unique([tenantId, propertyId, code])
+}
+
+model RoomTypeAmenity {
+  id         String @id @default(uuid())
+  tenantId   String
+  roomTypeId String
+  amenityId  String
+
+  roomType RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  amenity  Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@unique([roomTypeId, amenityId])
+}
+
+model RoomAmenity {
+  id        String @id @default(uuid())
+  tenantId  String
+  roomId    String
+  amenityId String
+
+  room    Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  amenity Amenity @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, amenityId])
+}
+
+/**
+ * A dated removal of a room from sellable inventory (§7.2). Distinct from the
+ * momentary operational status: a block has a range, a reason and an owner,
+ * and availability must subtract it.
+ */
+model RoomBlock {
+  id           String    @id @default(uuid())
+  tenantId     String
+  propertyId   String
+  roomId       String
+  type         String    @default("OUT_OF_ORDER") // OUT_OF_ORDER | OUT_OF_SERVICE | HOUSE_USE
+  reason       String
+  startDate    String // ISO date, inclusive
+  endDate      String // ISO date, exclusive
+  status       String    @default("ACTIVE") // ACTIVE | RELEASED
+  createdById  String
+  releasedById String?
+  releasedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id])
+  room     Room     @relation(fields: [roomId], references: [id])
+
+  @@index([tenantId, propertyId, status, startDate])
 }
 
 // §13.3 — tax rules are versioned by effective date. Posted folio lines store

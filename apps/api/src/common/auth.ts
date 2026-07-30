@@ -16,6 +16,8 @@ export interface AuthContext {
   tenantId: string;
   role: string;
   allProperties: boolean;
+  /** Property ids this membership may touch when allProperties is false. */
+  propertyIds: string[];
 }
 
 export const IS_PUBLIC = "isPublic";

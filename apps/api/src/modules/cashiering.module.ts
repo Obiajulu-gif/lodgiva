@@ -2,6 +2,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  ForbiddenException,
   Get,
   Injectable,
   Module,
@@ -14,6 +15,7 @@ import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
 import { AuditService } from "../common/audit.service";
+import { roleHasPermission } from "../common/permissions";
 import { PropertiesModule, PropertiesService } from "./properties.module";
 
 const openSchema = z
@@ -248,9 +250,13 @@ export class CashieringService {
         error: { code: "NOT_PENDING", message: "Shift is not awaiting approval." },
       });
     }
-    if (!["TENANT_OWNER", "GENERAL_MANAGER", "FINANCE"].includes(auth.role)) {
-      throw new ConflictException({
-        error: { code: "FORBIDDEN_ROLE", message: "Only a manager, owner or finance user can approve a cash variance." },
+    if (!roleHasPermission(auth.role, "cashier.approve_variance")) {
+      throw new ForbiddenException({
+        error: {
+          code: "PERMISSION_DENIED",
+          message: `Your role (${auth.role}) cannot approve a cash variance.`,
+          details: { requiredPermission: "cashier.approve_variance" },
+        },
       });
     }
     if (shift.userId === auth.userId) {
