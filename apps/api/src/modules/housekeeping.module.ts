@@ -88,6 +88,12 @@ export class HousekeepingService {
           status: next,
           startedAt: next === "IN_PROGRESS" ? new Date() : task.startedAt,
           completedAt: next === "COMPLETED" ? new Date() : task.completedAt,
+          // The version must move on EVERY write, not only on writes that
+          // arrive through /sync/mutations. Without this an offline device's
+          // baseVersion still looks current after someone advanced the task
+          // here, and its queued change would overwrite their work instead of
+          // being reported as a conflict.
+          version: { increment: 1 },
         },
       });
       // Room condition follows the cleaning flow when the room is vacant.
@@ -111,14 +117,17 @@ export class HousekeepingService {
         propertyId: task.propertyId,
         summary: { room: task.room.roomNumber, from: task.status, to: next },
       });
-      if (next === "COMPLETED") {
-        await this.audit.emit(tx, auth.tenantId, {
-          aggregateType: "housekeeping_task",
-          aggregateId: task.id,
-          eventType: "housekeeping.task_completed",
-          payload: { room: task.room.roomNumber, type: task.type },
-        });
-      }
+      // Emit on EVERY transition, not just completion: a supervisor watching
+      // the board should see a room start being cleaned, not only finish.
+      await this.audit.emit(tx, auth.tenantId, {
+        aggregateType: "housekeeping_task",
+        aggregateId: task.id,
+        eventType:
+          next === "COMPLETED"
+            ? "housekeeping.task_completed"
+            : "housekeeping.task_advanced",
+        payload: { room: task.room.roomNumber, type: task.type, status: next },
+      });
       return updated;
     });
   }

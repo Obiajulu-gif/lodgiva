@@ -560,3 +560,58 @@ through a URL that was issued earlier and has not yet expired.
 objects and enforces retention (identity documents are kept far more briefly
 than room images). Metadata rows survive purging so a deletion can still be
 explained during an audit.
+
+## Live updates (SSE)
+
+`GET /events/stream?token=…` is a Server-Sent Events stream. SSE rather than
+WebSockets because the traffic is one-directional, it survives ordinary HTTP
+proxies, and the browser reconnects on its own — on the connections these
+devices actually use, recovery without application code is worth more than
+bidirectional capability nobody needs.
+
+The stream carries **change notifications, not payloads**. A client is told
+"this aggregate changed" and re-reads through the normal endpoints, so
+permissions are enforced in one place instead of being duplicated into a push
+path. `EventSource` cannot set headers, so the token travels as a query
+parameter and is verified with the same secret; the connection is scoped to
+the tenant in that verified token.
+
+If the stream cannot be established the app is not broken — the existing
+polling intervals still refresh it, just less promptly.
+
+## Offline read cache (§10.2)
+
+Reads are cached in **IndexedDB**, not localStorage: a 5MB shared quota and
+synchronous main-thread access are the wrong trade for cached responses.
+
+What may be cached is deliberately narrow and **fails closed** — a new
+endpoint is uncacheable until explicitly opted in:
+
+| Cached | Never cached |
+|---|---|
+| room rack, housekeeping tasks, maintenance tickets, rooms, room types, `auth/me`, front-desk worklists | folios, payments, invoices, reports, cashiering, gateway, settlements |
+
+Money is never cached because a stale balance is worse than no balance —
+someone could take payment against a figure that moved minutes ago.
+
+When a cached copy is served the UI says so, with its age. Verified in the
+browser: with the API process killed, a **cold page load** of the room board
+renders the full task list from IndexedDB and displays *"Showing an offline
+copy from just now."*
+
+## Browser-verified offline behaviour
+
+These were exercised against a real running stack, not simulated:
+
+1. **Cold offline load** — API killed, page reloaded: board renders from
+   IndexedDB with a staleness banner.
+2. **Offline mutation** — tapping "Start cleaning" with the API down queues
+   the change with its `baseVersion` and `operationId` rather than erroring.
+3. **Reconnect** — on `online`, the queue flushes and the server moves the
+   task to `IN_PROGRESS` v2; the queue empties.
+4. **Duplicate replay** — replaying the same `operationId` returns
+   `replayed: true` and the version stays at 2. No double application.
+5. **Route permissions** — signed in as HOUSEKEEPING, the sidebar exposes only
+   Overview, Room Board, Room Rack, Housekeeping and Maintenance; Cashiering,
+   Night Audit and Settings are hidden. The API remains the real boundary —
+   hiding a route is a usability decision, not a security one.

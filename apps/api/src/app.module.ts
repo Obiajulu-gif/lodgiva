@@ -23,6 +23,7 @@ import { FrontDeskModule } from "./modules/front-desk.module";
 import { InvoicesModule } from "./modules/invoices.module";
 import { GatewayModule } from "./modules/gateway.module";
 import { FilesModule } from "./modules/files.module";
+import { EventsModule } from "./modules/events.module";
 import { AuthModule } from "./modules/auth.module";
 import { PropertiesModule } from "./modules/properties.module";
 import { GuestsModule } from "./modules/guests.module";
@@ -142,6 +143,7 @@ class CoreModule {}
     InvoicesModule,
     GatewayModule,
     FilesModule,
+    EventsModule,
     PropertiesModule,
     GuestsModule,
     ReservationsModule,

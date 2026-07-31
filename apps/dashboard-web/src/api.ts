@@ -1,6 +1,19 @@
 // Typed-ish fetch client for the Lodgiva API with refresh-token rotation.
 
+import { isCacheable, readCache, writeCache } from "./cache";
+
 const BASE = "/api/v1";
+
+/** Set when the last successful read came from the offline cache. */
+export interface StaleInfo {
+  fromCache: boolean;
+  cachedAt?: number;
+}
+const staleness = new Map<string, StaleInfo>();
+
+export function stalenessFor(path: string): StaleInfo {
+  return staleness.get(path) ?? { fromCache: false };
+}
 
 export interface Session {
   accessToken: string;
@@ -51,15 +64,40 @@ export async function api<T = unknown>(
   options: { method?: string; body?: unknown } = {},
   retried = false
 ): Promise<T> {
+  const isRead = (options.method ?? "GET") === "GET";
   const session = getSession();
-  const res = await fetch(`${BASE}${path}`, {
+
+  // Known-offline reads go straight to the cache rather than waiting for a
+  // request that cannot succeed.
+  if (isRead && !navigator.onLine && isCacheable(path)) {
+    const cached = await readCache<T>(path);
+    if (cached) {
+      staleness.set(path, { fromCache: true, cachedAt: cached.cachedAt });
+      return cached.data;
+    }
+  }
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
     method: options.method ?? "GET",
     headers: {
       "Content-Type": "application/json",
       ...(session ? { Authorization: `Bearer ${session.accessToken}` } : {}),
     },
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-  });
+    });
+  } catch (err) {
+    // The server was unreachable. For a cacheable read, serving a labelled
+    // stale copy beats an error screen for someone standing in a corridor.
+    if (isRead && isCacheable(path)) {
+      const cached = await readCache<T>(path);
+      if (cached) {
+        staleness.set(path, { fromCache: true, cachedAt: cached.cachedAt });
+        return cached.data;
+      }
+    }
+    throw err;
+  }
   if (res.status === 401 && !retried) {
     const next = await refresh();
     if (next) return api<T>(path, options, true);
@@ -67,6 +105,19 @@ export async function api<T = unknown>(
     throw new ApiError("UNAUTHENTICATED", "Session expired", 401);
   }
   const data = await res.json().catch(() => ({}));
+  if (res.ok && isRead && isCacheable(path)) {
+    // Populate the offline copy on every successful read, so the cache is
+    // warm from ordinary use rather than needing a separate sync step.
+    staleness.set(path, { fromCache: false });
+    void writeCache(path, data);
+  }
+  if (!res.ok && isRead && res.status >= 500 && isCacheable(path)) {
+    const cached = await readCache<T>(path);
+    if (cached) {
+      staleness.set(path, { fromCache: true, cachedAt: cached.cachedAt });
+      return cached.data;
+    }
+  }
   if (!res.ok) {
     const err = (data as { error?: { code?: string; message?: string; details?: unknown } }).error;
     throw new ApiError(

@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getSession, setSession } from "./api";
-import { lastSyncAt, readQueue, startAutoSync, type SyncResult } from "./offline";
+import { lastSyncAt, readQueue, startAutoSync, flush, type SyncResult } from "./offline";
+import { getSession as sessionForStream } from "./api";
 import LoginPage from "./pages/Login";
 import OverviewPage from "./pages/Overview";
 import RoomRackPage from "./pages/RoomRack";
+import RoomBoardPage from "./pages/RoomBoard";
 import ReservationsPage from "./pages/Reservations";
 import CalendarPage from "./pages/Calendar";
 import HousekeepingPage from "./pages/Housekeeping";
@@ -24,15 +26,53 @@ export interface Me {
 }
 
 /** §10.4 — the UI must show offline state, unsynced count and last sync. */
+/**
+ * Live updates.
+ *
+ * The stream carries change notifications only; the app re-reads through the
+ * normal endpoints, so permissions are enforced in exactly one place. If the
+ * stream cannot be established the app is not broken — the existing polling
+ * intervals still refresh it, just less promptly.
+ */
+function useLiveUpdates(enabled: boolean) {
+  const qc = useQueryClient();
+  const [live, setLive] = useState(false);
+
+  useEffect(() => {
+    if (!enabled || typeof EventSource === "undefined") return;
+    const session = sessionForStream();
+    if (!session) return;
+
+    const es = new EventSource(
+      `/api/v1/events/stream?token=${encodeURIComponent(session.accessToken)}`
+    );
+    es.addEventListener("ready", () => setLive(true));
+    es.addEventListener("change", () => {
+      // Refetch rather than patching from the payload: the server decides
+      // what this user may see.
+      qc.invalidateQueries();
+    });
+    es.onerror = () => setLive(false);
+    return () => {
+      es.close();
+      setLive(false);
+    };
+  }, [enabled, qc]);
+
+  return live;
+}
+
 function SyncStatus() {
   const qc = useQueryClient();
   const [online, setOnline] = useState(navigator.onLine);
   const [pending, setPending] = useState(readQueue().length);
   const [synced, setSynced] = useState(lastSyncAt());
-  const [conflicts, setConflicts] = useState<string[]>([]);
+  const [conflicts, setConflicts] = useState<{ message: string; resolution?: string }[]>([]);
+  const live = useLiveUpdates(true);
+  const [flushing, setFlushing] = useState(false);
+  const refresh = () => setPending(readQueue().length);
 
   useEffect(() => {
-    const refresh = () => setPending(readQueue().length);
     const on = () => setOnline(true);
     const off = () => setOnline(false);
     window.addEventListener("lodgiva:queue", refresh);
@@ -44,8 +84,8 @@ function SyncStatus() {
       setSynced(lastSyncAt());
       if (r.conflicts.length || r.rejected.length) {
         setConflicts([
-          ...r.conflicts.map((c) => `${c.message}${c.resolution ? ` — ${c.resolution}` : ""}`),
-          ...r.rejected.map((c) => c.message),
+          ...r.conflicts.map((c) => ({ message: c.message, resolution: c.resolution })),
+          ...r.rejected.map((c) => ({ message: c.message })),
         ]);
       }
       if (r.applied.length || r.serverChanges.length) qc.invalidateQueries();
@@ -69,9 +109,35 @@ function SyncStatus() {
           color: online ? "rgba(255,255,255,0.65)" : "#eddfb9",
         }}
       >
-        {online ? "● Online" : "○ Offline — changes are queued"}
-        {pending > 0 && <div>{pending} change{pending > 1 ? "s" : ""} waiting to sync</div>}
+        {online ? (live ? "● Live" : "● Online") : "○ Offline — changes are queued"}
+        {pending > 0 && (
+          <div>
+            {pending} change{pending > 1 ? "s" : ""} waiting to sync
+          </div>
+        )}
         {synced && <div>Last sync {new Date(synced).toLocaleTimeString()}</div>}
+        {online && pending > 0 && (
+          <button
+            className="small"
+            style={{ marginTop: 6, padding: "4px 10px", fontSize: 11 }}
+            disabled={flushing}
+            onClick={async () => {
+              setFlushing(true);
+              const r = await flush();
+              setFlushing(false);
+              refresh();
+              setSynced(lastSyncAt());
+              if (r && (r.conflicts.length || r.rejected.length)) {
+                setConflicts([
+                  ...r.conflicts.map((c) => ({ message: c.message, resolution: c.resolution })),
+                  ...r.rejected.map((c) => ({ message: c.message })),
+                ]);
+              }
+            }}
+          >
+            {flushing ? "Syncing…" : "Sync now"}
+          </button>
+        )}
       </div>
       {conflicts.length > 0 && (
         <div
@@ -81,12 +147,59 @@ function SyncStatus() {
             background: "rgba(220,38,38,0.2)", color: "#fecaca", cursor: "pointer",
           }}
         >
-          {conflicts.map((c, i) => <div key={i}>{c}</div>)}
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>
+            {conflicts.length} change{conflicts.length > 1 ? "s" : ""} could not be applied
+          </div>
+          {conflicts.map((c, i) => (
+            <div key={i} style={{ marginBottom: 6 }}>
+              <div>{c.message}</div>
+              {/* The server proposes what to do; guessing on the device would
+                  risk silently overwriting somebody else's work. */}
+              {c.resolution && (
+                <div style={{ opacity: 0.85, fontStyle: "italic" }}>→ {c.resolution}</div>
+              )}
+            </div>
+          ))}
           <div style={{ opacity: 0.7, marginTop: 4 }}>(tap to dismiss)</div>
         </div>
       )}
     </div>
   );
+}
+
+
+/**
+ * Route-level permissions.
+ *
+ * The API is the real boundary — every endpoint is guarded server-side. This
+ * mirrors those rules in the UI so a housekeeper is not shown a Cashiering tab
+ * that would only ever return 403. Hiding a route is a usability decision, not
+ * a security one.
+ */
+const ROUTE_ROLES: Record<string, string[] | null> = {
+  "/": null,
+  "/board": null,
+  "/rooms": null,
+  "/reservations": ["TENANT_OWNER", "GENERAL_MANAGER", "FRONT_DESK", "CASHIER"],
+  "/calendar": ["TENANT_OWNER", "GENERAL_MANAGER", "FRONT_DESK", "CASHIER"],
+  "/housekeeping": null,
+  "/maintenance": null,
+  "/pos": ["TENANT_OWNER", "GENERAL_MANAGER", "FRONT_DESK", "CASHIER"],
+  "/payments": ["TENANT_OWNER", "GENERAL_MANAGER", "FINANCE", "CASHIER", "FRONT_DESK"],
+  "/cashiering": ["TENANT_OWNER", "GENERAL_MANAGER", "FINANCE", "CASHIER"],
+  "/night-audit": ["TENANT_OWNER", "GENERAL_MANAGER", "FINANCE"],
+  "/settings": ["TENANT_OWNER", "GENERAL_MANAGER", "FINANCE"],
+};
+
+export function canAccess(path: string, role?: string): boolean {
+  const allowed = ROUTE_ROLES[path];
+  if (allowed === null || allowed === undefined) return true;
+  return !!role && allowed.includes(role);
+}
+
+/** Inspection is a supervisory step, not something a cleaner signs off. */
+export function canInspect(role?: string): boolean {
+  return ["TENANT_OWNER", "GENERAL_MANAGER"].includes(role ?? "");
 }
 
 function Shell() {
@@ -116,16 +229,17 @@ function Shell() {
           Business date: {property?.businessDate ?? "…"}
         </div>
         <NavLink to="/" end>Overview</NavLink>
+        <NavLink to="/board">Room Board</NavLink>
         <NavLink to="/rooms">Room Rack</NavLink>
-        <NavLink to="/reservations">Reservations</NavLink>
-        <NavLink to="/calendar">Calendar</NavLink>
+        {canAccess("/reservations", me?.role) && <NavLink to="/reservations">Reservations</NavLink>}
+        {canAccess("/calendar", me?.role) && <NavLink to="/calendar">Calendar</NavLink>}
         <NavLink to="/housekeeping">Housekeeping</NavLink>
         <NavLink to="/maintenance">Maintenance</NavLink>
-        <NavLink to="/pos">POS</NavLink>
-        <NavLink to="/payments">Payments</NavLink>
-        <NavLink to="/cashiering">Cashiering</NavLink>
-        <NavLink to="/night-audit">Night Audit</NavLink>
-        <NavLink to="/settings">Settings</NavLink>
+        {canAccess("/pos", me?.role) && <NavLink to="/pos">POS</NavLink>}
+        {canAccess("/payments", me?.role) && <NavLink to="/payments">Payments</NavLink>}
+        {canAccess("/cashiering", me?.role) && <NavLink to="/cashiering">Cashiering</NavLink>}
+        {canAccess("/night-audit", me?.role) && <NavLink to="/night-audit">Night Audit</NavLink>}
+        {canAccess("/settings", me?.role) && <NavLink to="/settings">Settings</NavLink>}
         <div className="spacer" />
         <SyncStatus />
         <a href="#logout" onClick={(e) => { e.preventDefault(); logout(); }}>
@@ -136,6 +250,7 @@ function Shell() {
         {property && (
           <Routes>
             <Route path="/" element={<OverviewPage propertyId={property.id} />} />
+            <Route path="/board" element={<RoomBoardPage propertyId={property.id} canInspect={canInspect(me?.role)} />} />
             <Route path="/rooms" element={<RoomRackPage propertyId={property.id} />} />
             <Route path="/reservations" element={<ReservationsPage propertyId={property.id} />} />
             <Route path="/calendar" element={<CalendarPage propertyId={property.id} />} />

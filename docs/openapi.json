@@ -3662,6 +3662,43 @@
           }
         }
       }
+    },
+    "/events/stream": {
+      "get": {
+        "tags": [
+          "Live updates"
+        ],
+        "summary": "Server-Sent Events change stream",
+        "description": "Emits change notifications, never payloads: a client is told what changed and re-reads through the normal permission-checked endpoints, so authorisation lives in exactly one place.\n\nEventSource cannot set an Authorization header, so the access token is passed as a query parameter and verified with the same secret; the connection is scoped to the tenant in that verified token. Frames: `ready` on connect, `change` per event, and comment heartbeats every 20s so intermediaries do not close an idle connection. `retry: 5000` tells the browser how long to wait before reconnecting.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A valid access token."
+          },
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "text/event-stream"
+          },
+          "401": {
+            "description": "Invalid stream token"
+          }
+        }
+      }
     }
   },
   "info": {
