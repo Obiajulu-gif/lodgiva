@@ -21,6 +21,7 @@ import { ConfigModule } from "./modules/config.module";
 import { BookingModule } from "./modules/booking.module";
 import { FrontDeskModule } from "./modules/front-desk.module";
 import { InvoicesModule } from "./modules/invoices.module";
+import { GatewayModule } from "./modules/gateway.module";
 import { AuthModule } from "./modules/auth.module";
 import { PropertiesModule } from "./modules/properties.module";
 import { GuestsModule } from "./modules/guests.module";
@@ -138,6 +139,7 @@ class CoreModule {}
     BookingModule,
     FrontDeskModule,
     InvoicesModule,
+    GatewayModule,
     PropertiesModule,
     GuestsModule,
     ReservationsModule,

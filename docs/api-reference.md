@@ -404,3 +404,92 @@ against real postings rather than against a model:
 10. Checkout is blocked while any folio is owing; a settled folio nets to zero.
 11. A closed folio accepts no further postings.
 12. A repeated payment idempotency key never double-credits.
+
+## Payments: providers, webhooks and reconciliation
+
+### Provider interface
+
+`PaymentProvider` (`src/common/payment-providers.ts`) covers initialise,
+verify, `verifySignature`, `parseWebhook` and refund. The folio layer never
+learns which gateway took the money.
+
+Two rules are enforced in the interface rather than left to each adapter:
+
+1. **A payment is only confirmed from a server-side signal** — a verified
+   webhook or an explicit verify call. A browser redirect to a success URL
+   proves nothing; anyone can navigate there.
+2. **Signatures are verified over the exact received bytes.** The Fastify JSON
+   parser stashes the raw buffer on the request; re-serialising parsed JSON
+   changes whitespace and key order and silently breaks verification. There is
+   a unit test asserting a re-serialised body fails against its own signature.
+
+**Live mode fails closed.** `live` is not inferred from a key's prefix — a
+placeholder like `sk_test_placeholder` looks exactly like a real test key, and
+treating it as live means a misconfigured environment starts calling a third
+party. The operator must set `PAYMENTS_MODE=live` explicitly. Signature
+verification is deliberately *not* gated on this, so a sandbox deployment
+still rejects forged webhooks.
+
+### Signature schemes
+
+| Provider | Header | Scheme |
+|---|---|---|
+| Paystack | `x-paystack-signature` | HMAC-SHA512 of the raw body, keyed by the secret key |
+| Flutterwave | `verif-hash` | Shared secret echoed verbatim |
+
+Flutterwave's scheme proves the sender knows the secret but says nothing about
+the payload, so amounts from Flutterwave are treated as advisory and a
+mismatch against the intent raises a reconciliation exception.
+
+Amounts: Paystack sends **kobo** (1:1 with our minor units). Flutterwave sends
+**naira**, converted with rounding — truncation would lose a kobo on values
+like ₦46,500.50.
+
+### Webhook handling
+
+Order: store the delivery → verify the signature → deduplicate → act. Storing
+first means rejected deliveries stay visible; a burst of bad signatures is
+what an attack looks like.
+
+Deduplication is on `(provider, externalId)`. Providers retry aggressively, so
+a replay is a no-op — asserted by a test that posts the same payload twice and
+checks the folio has exactly one payment line.
+
+Business-level problems return **2xx**: an unknown reference raises a
+reconciliation exception rather than failing, because a non-2xx would make the
+provider retry forever. Only a bad signature returns 4xx.
+
+### Refunds
+
+`POST /refunds` raises a request; nothing reaches the ledger until
+`POST /refunds/{id}/approve` by a *different* user holding finance, manager or
+owner. Approval posts a positive `REFUND` folio entry and, for card payments,
+calls the provider. A refund can never exceed what remains unrefunded.
+
+### Settlement import and reconciliation
+
+`POST /settlements/import` takes a payout and matches each line to a recorded
+payment. Four exception kinds, all worked by finance rather than auto-cleared:
+
+| Kind | Meaning |
+|---|---|
+| `MISSING_IN_SETTLEMENT` | We confirmed a payment the provider has not paid out |
+| `UNKNOWN_IN_SETTLEMENT` | The provider paid out something we never recorded |
+| `AMOUNT_MISMATCH` | The settled amount differs from ours; both figures are kept |
+| `DUPLICATE_REFERENCE` | The same reference appears twice in one payout |
+
+Import is idempotent on the payout reference.
+
+## Calendar drag-and-drop
+
+Drag a stay **vertically** to change room, **horizontally** to shift its
+dates, or diagonally for both. A dashed ghost bar previews the landing dates
+during the drag, and rooms that cannot accept the stay are greyed out rather
+than rejecting the drop.
+
+The gesture picks the right endpoint by status: an in-house guest routes
+through `room-move` (dirty room + housekeeping task), a future booking through
+`assign-room`. Date shifts go through `PATCH /reservations/{id}`, which
+re-allocates inventory in one transaction — a shift into a full window is
+refused and the guest keeps the dates they had. In-house and departed stays
+cannot have their arrival moved.

@@ -119,8 +119,49 @@ export default function CalendarPage({ propertyId }: { propertyId: string }) {
     onError: (e) => setError(e instanceof ApiError ? e.message : String(e)),
   });
 
+  /**
+   * Shifting a stay's dates.
+   *
+   * Modify re-allocates inventory inside one transaction, so a shift into a
+   * full window is refused and the guest keeps the dates they had.
+   */
+  const shiftDates = useMutation({
+    mutationFn: ({
+      res,
+      arrivalDate,
+      departureDate,
+    }: {
+      res: Reservation;
+      arrivalDate: string;
+      departureDate: string;
+    }) =>
+      api(`/reservations/${res.id}`, {
+        method: "PATCH",
+        body: { arrivalDate, departureDate, reason: "Dates moved on the calendar" },
+      }),
+    onSuccess: () => {
+      setError("");
+      qc.invalidateQueries({ queryKey: ["reservations", propertyId] });
+      qc.invalidateQueries({ queryKey: ["room-rack", propertyId] });
+    },
+    onError: (e) => setError(e instanceof ApiError ? e.message : String(e)),
+  });
+
   const [dragging, setDragging] = useState<Reservation | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  // Which night the pointer grabbed, so a horizontal drag can be expressed as
+  // an offset rather than snapping the arrival to wherever the cursor landed.
+  const [grabOffset, setGrabOffset] = useState(0);
+  const [datePreview, setDatePreview] = useState<{ roomId: string; from: string; to: string } | null>(
+    null
+  );
+
+  /**
+   * An in-house or departed stay cannot have its arrival moved — the guest is
+   * already there. Those keep room-only drag.
+   */
+  const canShiftDates = (res: Reservation | null) =>
+    !!res && ["CONFIRMED", "PENDING_PAYMENT", "HOLD", "DRAFT"].includes(res.status);
 
   /**
    * A room can receive the dragged stay only if it is the right type, not the
@@ -135,6 +176,36 @@ export default function CalendarPage({ propertyId }: { propertyId: string }) {
     const occupants = byRoom.get(room.id) ?? [];
     return !occupants.some(
       (o) => o.id !== res.id && o.arrivalDate < res.departureDate && o.departureDate > res.arrivalDate
+    );
+  };
+
+  /**
+   * Translates a drop position into new dates, or null when the stay did not
+   * move horizontally (a pure room move).
+   */
+  const dateShiftFor = (
+    e: { currentTarget: HTMLElement; clientX: number },
+    res: Reservation
+  ): { from: string; to: string } | null => {
+    if (!canShiftDates(res)) return null;
+    const grid = e.currentTarget.getBoundingClientRect();
+    // 180px is the fixed room-label column.
+    const night = Math.floor((e.clientX - grid.left - 180) / CELL);
+    if (night < 0) return null;
+    const newArrivalIndex = night - grabOffset;
+    const from = addDays(start, newArrivalIndex);
+    if (from === res.arrivalDate) return null;
+    const nights = dayDiff(res.arrivalDate, res.departureDate);
+    return { from, to: addDays(from, nights) };
+  };
+
+  /** Whether a stay of these dates fits in this room, ignoring itself. */
+  const fitsAt = (room: RackRoom, res: Reservation, from: string, to: string) => {
+    if (room.roomTypeId !== res.rooms[0]?.roomTypeId) return false;
+    if (["OUT_OF_ORDER", "OUT_OF_SERVICE"].includes(room.operationalStatus)) return false;
+    const occupants = byRoom.get(room.id) ?? [];
+    return !occupants.some(
+      (o) => o.id !== res.id && o.arrivalDate < to && o.departureDate > from
     );
   };
 
@@ -167,7 +238,7 @@ export default function CalendarPage({ propertyId }: { propertyId: string }) {
           <h1>Reservation Calendar</h1>
           <p className="sub">
             {days[0]} → {days[DAYS - 1]} · rooms down, nights across. Click a
-            stay to see it, or drag it onto another room to move the guest.
+            stay to see it. Drag it up or down to change room, or sideways to shift its dates.
           </p>
         </div>
         <div className="toolbar" style={{ margin: 0 }}>
@@ -312,10 +383,29 @@ export default function CalendarPage({ propertyId }: { propertyId: string }) {
                       <div
                         key={room.id}
                         onDragOver={(e) => {
-                          if (!canDrop(room, dragging)) return;
-                          e.preventDefault(); // signals "this is a valid drop"
+                          const res = dragging;
+                          if (!res) return;
+                          const shift = dateShiftFor(e, res);
+                          const sameRoom = res.rooms[0]?.roomId === room.id;
+                          // Valid if it is a room move, or a date shift that
+                          // still fits (possibly in the same room).
+                          const ok = shift
+                            ? fitsAt(room, res, shift.from, shift.to)
+                            : canDrop(room, res);
+                          if (!ok) return;
+                          e.preventDefault();
                           e.dataTransfer.dropEffect = "move";
                           if (dropTarget !== room.id) setDropTarget(room.id);
+                          if (shift) {
+                            if (
+                              datePreview?.roomId !== room.id ||
+                              datePreview?.from !== shift.from
+                            ) {
+                              setDatePreview({ roomId: room.id, from: shift.from, to: shift.to });
+                            }
+                          } else if (datePreview && !sameRoom) {
+                            setDatePreview(null);
+                          }
                         }}
                         onDragLeave={() => {
                           if (dropTarget === room.id) setDropTarget(null);
@@ -323,9 +413,37 @@ export default function CalendarPage({ propertyId }: { propertyId: string }) {
                         onDrop={(e) => {
                           e.preventDefault();
                           const res = dragging;
+                          const shift = res ? dateShiftFor(e, res) : null;
+                          const movedRoom = res && res.rooms[0]?.roomId !== room.id;
                           setDragging(null);
                           setDropTarget(null);
-                          if (res && canDrop(room, res)) move.mutate({ res, roomId: room.id });
+                          setDatePreview(null);
+                          if (!res) return;
+                          if (shift && fitsAt(room, res, shift.from, shift.to)) {
+                            // Room first so the stay is where the user dropped
+                            // it, then the dates.
+                            if (movedRoom && canDrop(room, res)) {
+                              move.mutate(
+                                { res, roomId: room.id },
+                                {
+                                  onSuccess: () =>
+                                    shiftDates.mutate({
+                                      res,
+                                      arrivalDate: shift.from,
+                                      departureDate: shift.to,
+                                    }),
+                                }
+                              );
+                            } else {
+                              shiftDates.mutate({
+                                res,
+                                arrivalDate: shift.from,
+                                departureDate: shift.to,
+                              });
+                            }
+                            return;
+                          }
+                          if (canDrop(room, res)) move.mutate({ res, roomId: room.id });
                         }}
                         style={{
                           display: "flex",
@@ -362,6 +480,40 @@ export default function CalendarPage({ propertyId }: { propertyId: string }) {
                           {ooo && <span className="pill gray">OOO</span>}
                         </div>
 
+                        {/* Preview of where a date shift will land */}
+                        {datePreview && datePreview.roomId === room.id && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              left:
+                                180 + Math.max(0, dayDiff(start, datePreview.from)) * CELL + 3,
+                              width:
+                                Math.max(
+                                  1,
+                                  Math.min(DAYS, dayDiff(start, datePreview.to)) -
+                                    Math.max(0, dayDiff(start, datePreview.from))
+                                ) *
+                                  CELL -
+                                6,
+                              top: 5,
+                              height: 30,
+                              border: "2px dashed var(--brand-600)",
+                              borderRadius: 8,
+                              background: "rgba(31,107,80,0.12)",
+                              pointerEvents: "none",
+                              zIndex: 1,
+                              fontSize: 10,
+                              color: "var(--brand-700)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {datePreview.from}
+                          </div>
+                        )}
+
                         {/* Night cells */}
                         {days.map((d) => (
                           <div
@@ -395,6 +547,13 @@ export default function CalendarPage({ propertyId }: { propertyId: string }) {
                               draggable={r.status !== "CHECKED_OUT"}
                               onDragStart={(e) => {
                                 setDragging(r);
+                                // Which night within the bar was grabbed, so a
+                                // sideways drag moves by a delta instead of
+                                // snapping the arrival under the cursor.
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setGrabOffset(
+                                  Math.max(0, Math.floor((e.clientX - rect.left) / CELL))
+                                );
                                 e.dataTransfer.effectAllowed = "move";
                                 // Firefox will not start a drag without data.
                                 e.dataTransfer.setData("text/plain", r.id);
@@ -402,6 +561,7 @@ export default function CalendarPage({ propertyId }: { propertyId: string }) {
                               onDragEnd={() => {
                                 setDragging(null);
                                 setDropTarget(null);
+                                setDatePreview(null);
                               }}
                               onClick={() => setSelected(r)}
                               title={`${r.confirmationCode} · ${r.guest.firstName} ${r.guest.lastName} · ${style.label}${r.status !== "CHECKED_OUT" ? " · drag to another room to move" : ""}`}

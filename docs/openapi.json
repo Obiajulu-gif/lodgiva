@@ -2773,6 +2773,490 @@
           }
         }
       }
+    },
+    "/payments/providers": {
+      "get": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Provider status",
+        "description": "Reports whether each adapter is LIVE or SANDBOX and what that means. Live mode requires PAYMENTS_MODE=live plus credentials — it is never inferred from the shape of a key.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/payments/intents": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Create a payment intent",
+        "description": "Creates a local record and a provider checkout URL. Nothing touches the folio: money is only posted from a verified webhook or an explicit verify call, because a browser redirect proves nothing.",
+        "responses": {
+          "201": {
+            "description": "Intent created; returns checkoutUrl and a sandbox flag"
+          },
+          "409": {
+            "description": "FOLIO_CLOSED"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "folioId",
+                  "provider",
+                  "amountMinor",
+                  "email"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "folioId": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "PAYSTACK",
+                      "FLUTTERWAVE"
+                    ]
+                  },
+                  "amountMinor": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "callbackUrl": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payments/intents/{id}/verify": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Verify an intent server-side",
+        "description": "Asks the provider directly whether the transaction succeeded. Used when a webhook is delayed or lost. Idempotent: confirming twice creates one payment.",
+        "responses": {
+          "201": {
+            "description": "Verification result"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/webhooks/{provider}": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Provider webhook (public)",
+        "description": "Signature-verified provider callback. Paystack: HMAC-SHA512 of the RAW body in x-paystack-signature. Flutterwave: shared secret echoed in verif-hash.\n\nVerification runs over the exact received bytes — a re-serialised body will not validate. Every delivery is stored before being acted on, deduplicated by provider event id, and replays are no-ops. Returns 2xx for business-level problems (unknown reference, duplicate) because a non-2xx makes providers retry forever; only a bad signature returns 4xx.",
+        "responses": {
+          "201": {
+            "description": "Accepted (may be duplicate, ignored or unmatched)"
+          },
+          "400": {
+            "description": "INVALID_SIGNATURE or EMPTY_BODY"
+          },
+          "404": {
+            "description": "UNKNOWN_PROVIDER"
+          }
+        },
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "paystack",
+                "flutterwave"
+              ]
+            }
+          }
+        ],
+        "security": []
+      }
+    },
+    "/refunds": {
+      "get": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "List refunds",
+        "description": "Refund requests, newest first.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Request a refund",
+        "description": "Raises a refund for approval. Nothing is posted to the ledger until a different, authorised user approves it. Cannot exceed what remains unrefunded on the payment.",
+        "responses": {
+          "201": {
+            "description": "PENDING_APPROVAL"
+          },
+          "409": {
+            "description": "REFUND_EXCEEDS_PAYMENT or PAYMENT_NOT_REFUNDABLE"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "paymentId",
+                  "amountMinor",
+                  "reason"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "paymentId": {
+                    "type": "string"
+                  },
+                  "amountMinor": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 5
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/refunds/{id}/approve": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Approve a refund",
+        "description": "Finance, manager or owner only. The requester can never approve their own request. Approval posts a REFUND entry to the folio and, for card payments, calls the provider.",
+        "responses": {
+          "201": {
+            "description": "Decided"
+          },
+          "409": {
+            "description": "ALREADY_DECIDED, SELF_APPROVAL or FORBIDDEN_ROLE"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "note": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/refunds/{id}/reject": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Reject a refund",
+        "description": "Finance, manager or owner only. The requester can never approve their own request. Approval posts a REFUND entry to the folio and, for card payments, calls the provider.",
+        "responses": {
+          "201": {
+            "description": "Decided"
+          },
+          "409": {
+            "description": "ALREADY_DECIDED, SELF_APPROVAL or FORBIDDEN_ROLE"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "note": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settlements/import": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Import a provider settlement",
+        "description": "Imports a payout and reconciles it against recorded payments. Idempotent on the payout reference. Anything that does not reconcile becomes an exception rather than a silent adjustment.",
+        "responses": {
+          "201": {
+            "description": "Imported; returns matched count and exceptions"
+          },
+          "409": {
+            "description": "SETTLEMENT_ALREADY_IMPORTED or FORBIDDEN_ROLE"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "propertyId",
+                  "provider",
+                  "reference",
+                  "settledOn",
+                  "lines"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "propertyId": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "PAYSTACK",
+                      "FLUTTERWAVE"
+                    ]
+                  },
+                  "reference": {
+                    "type": "string"
+                  },
+                  "settledOn": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "lines": {
+                    "type": "array",
+                    "maxItems": 5000,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "providerRef",
+                        "amountMinor"
+                      ],
+                      "properties": {
+                        "providerRef": {
+                          "type": "string"
+                        },
+                        "amountMinor": {
+                          "type": "integer"
+                        },
+                        "feeMinor": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "paidOn": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settlements": {
+      "get": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "List settlements",
+        "description": "Payouts with gross, fees, net and exception counts.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/reconciliation/exceptions": {
+      "get": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "List reconciliation exceptions",
+        "description": "MISSING_IN_SETTLEMENT (we recorded it, the provider did not pay it), UNKNOWN_IN_SETTLEMENT (they paid something we never recorded), AMOUNT_MISMATCH, DUPLICATE_REFERENCE.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/reconciliation/exceptions/{id}/resolve": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Resolve an exception",
+        "description": "Finance, manager or owner only. Requires a note; exceptions are worked, never auto-cleared.",
+        "responses": {
+          "201": {
+            "description": "Resolved"
+          },
+          "409": {
+            "description": "ALREADY_RESOLVED or FORBIDDEN_ROLE"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "resolution",
+                  "note"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "resolution": {
+                    "type": "string",
+                    "enum": [
+                      "RESOLVED",
+                      "WRITTEN_OFF"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 3
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "info": {

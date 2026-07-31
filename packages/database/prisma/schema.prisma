@@ -416,6 +416,7 @@ model Folio {
   entries  FolioEntry[]
   payments Payment[]
   invoices Invoice[]
+  intents  PaymentIntent[]
 
   @@index([tenantId, propertyId, status])
 }
@@ -462,10 +463,175 @@ model Payment {
   idempotencyKey    String?
   receivedAt        DateTime @default(now())
   recordedById      String?
+  intentId          String?
+  // Settled through a provider payout; set by settlement import.
+  settlementLineId  String?  @unique
+  feeMinor          BigInt   @default(0)
+  refundedMinor     BigInt   @default(0)
 
-  folio Folio @relation(fields: [folioId], references: [id])
+  folio          Folio           @relation(fields: [folioId], references: [id])
+  intent         PaymentIntent?  @relation(fields: [intentId], references: [id])
+  settlementLine SettlementLine? @relation(fields: [settlementLineId], references: [id])
+  refunds        Refund[]
 
   @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, propertyId, status])
+  @@index([tenantId, externalReference])
+}
+
+/**
+ * §13.1 — a payment the guest has been asked for but which the provider has
+ * not yet confirmed.
+ *
+ * The intent is created before the guest is sent to the gateway, so an
+ * inbound webhook always has a local record to attach to. Nothing touches
+ * the folio until the provider confirms server-side: a redirect back from a
+ * gateway is a UI event, not evidence of payment.
+ */
+model PaymentIntent {
+  id            String    @id @default(uuid())
+  tenantId      String
+  propertyId    String
+  folioId       String
+  provider      String // PAYSTACK | FLUTTERWAVE
+  reference     String // our reference, sent to the provider
+  providerRef   String? // the provider's own id, learned on confirmation
+  amountMinor   BigInt
+  currency      String    @default("NGN")
+  status        String    @default("PENDING") // PENDING | CONFIRMED | FAILED | ABANDONED
+  checkoutUrl   String?
+  failureReason String?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  confirmedAt   DateTime?
+
+  folio    Folio     @relation(fields: [folioId], references: [id])
+  payments Payment[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, status])
+}
+
+/**
+ * Every webhook delivery, stored before it is acted upon.
+ *
+ * The raw body is kept verbatim because the signature is computed over the
+ * exact bytes — re-serialising parsed JSON changes whitespace and key order
+ * and silently breaks verification. Storing deliveries also makes replay
+ * attacks visible and gives an audit trail when a provider disputes what it
+ * sent.
+ */
+model WebhookEvent {
+  id            String    @id @default(uuid())
+  provider      String
+  // Provider's event id where available; falls back to a hash of the body.
+  externalId    String
+  eventType     String?
+  rawBody       String
+  signature     String?
+  signatureValid Boolean  @default(false)
+  status        String    @default("RECEIVED") // RECEIVED | PROCESSED | REJECTED | IGNORED
+  rejectReason  String?
+  tenantId      String?
+  intentId      String?
+  receivedAt    DateTime  @default(now())
+  processedAt   DateTime?
+
+  @@unique([provider, externalId])
+  @@index([provider, status, receivedAt])
+}
+
+/** §13.4 — refunds are approval-gated and never silently reduce a payment. */
+model Refund {
+  id            String    @id @default(uuid())
+  tenantId      String
+  propertyId    String
+  paymentId     String
+  folioId       String
+  amountMinor   BigInt
+  reason        String
+  status        String    @default("PENDING_APPROVAL") // PENDING_APPROVAL | APPROVED | REJECTED | FAILED
+  method        String // Mirrors the original payment method.
+  providerRef   String?
+  requestedById String
+  approvedById  String?
+  decisionNote  String?
+  createdAt     DateTime  @default(now())
+  settledAt     DateTime?
+
+  payment Payment @relation(fields: [paymentId], references: [id])
+
+  @@index([tenantId, propertyId, status])
+}
+
+/**
+ * A provider payout: the money that actually reached the bank account, which
+ * is rarely the sum of the day's payments (fees, timing, reversals).
+ */
+model Settlement {
+  id             String   @id @default(uuid())
+  tenantId       String
+  propertyId     String
+  provider       String
+  reference      String
+  settledOn      String // ISO date the payout landed
+  grossMinor     BigInt
+  feeMinor       BigInt   @default(0)
+  netMinor       BigInt
+  status         String   @default("IMPORTED") // IMPORTED | RECONCILED
+  importedById   String?
+  createdAt      DateTime @default(now())
+
+  lines      SettlementLine[]
+  exceptions ReconciliationException[]
+
+  @@unique([tenantId, provider, reference])
+  @@index([tenantId, propertyId, settledOn])
+}
+
+model SettlementLine {
+  id            String  @id @default(uuid())
+  tenantId      String
+  settlementId  String
+  providerRef   String // the provider's transaction reference
+  amountMinor   BigInt
+  feeMinor      BigInt  @default(0)
+  netMinor      BigInt
+  paidOn        String?
+  status        String  @default("UNMATCHED") // UNMATCHED | MATCHED | EXCEPTION
+
+  settlement Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  payment    Payment?
+
+  @@unique([settlementId, providerRef])
+  @@index([tenantId, status])
+}
+
+/**
+ * §13.2 — anything that did not reconcile cleanly. These are worked by
+ * finance rather than auto-resolved, because every one of them is either
+ * money the hotel has not received or money it cannot account for.
+ */
+model ReconciliationException {
+  id            String    @id @default(uuid())
+  tenantId      String
+  propertyId    String
+  settlementId  String?
+  kind          String // MISSING_IN_SETTLEMENT | UNKNOWN_IN_SETTLEMENT | AMOUNT_MISMATCH | DUPLICATE_REFERENCE
+  severity      String    @default("WARNING") // WARNING | CRITICAL
+  providerRef   String?
+  paymentId     String?
+  expectedMinor BigInt?
+  actualMinor   BigInt?
+  detail        String
+  status        String    @default("OPEN") // OPEN | RESOLVED | WRITTEN_OFF
+  resolvedById  String?
+  resolutionNote String?
+  createdAt     DateTime  @default(now())
+  resolvedAt    DateTime?
+
+  settlement Settlement? @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+
   @@index([tenantId, propertyId, status])
 }
 

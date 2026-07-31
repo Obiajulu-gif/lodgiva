@@ -25,11 +25,21 @@ async function bootstrap() {
   // our own parser (with Nest's disabled below) that treats it as {}.
   adapter.getInstance().addContentTypeParser(
     "application/json",
-    { parseAs: "string" },
-    (_req: unknown, body: string, done: (err: Error | null, result?: unknown) => void) => {
-      if (!body || !body.trim()) return done(null, {});
+    { parseAs: "buffer" },
+    (
+      req: unknown,
+      body: Buffer,
+      done: (err: Error | null, result?: unknown) => void
+    ) => {
+      // Webhook signatures are computed over the exact bytes the provider
+      // sent. Re-serialising the parsed object changes whitespace and key
+      // order, so the raw buffer is stashed on the request and the JSON is
+      // parsed from it separately.
+      (req as { rawBody?: Buffer }).rawBody = body;
+      const text = body.toString("utf8");
+      if (!text.trim()) return done(null, {});
       try {
-        done(null, JSON.parse(body));
+        done(null, JSON.parse(text));
       } catch (err) {
         done(err as Error);
       }
