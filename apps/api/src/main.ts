@@ -46,6 +46,18 @@ async function bootstrap() {
     }
   );
 
+  // Binary bodies (presigned file uploads). Without a parser for these types
+  // Fastify answers 415 before the route is ever reached. The buffer is left
+  // untouched — it is the payload, not something to interpret.
+  adapter.getInstance().addContentTypeParser(
+    /^(image|application|text)\/(?!json).*/,
+    { parseAs: "buffer" },
+    (req: unknown, body: Buffer, done: (err: Error | null, result?: unknown) => void) => {
+      (req as { rawBody?: Buffer }).rawBody = body;
+      done(null, body);
+    }
+  );
+
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, {
     bodyParser: false, // our parser above is the only JSON parser
   });

@@ -3257,6 +3257,411 @@
           }
         }
       }
+    },
+    "/settlements/import-csv": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Import a settlement from a provider CSV",
+        "description": "Parses a Paystack or Flutterwave settlement export and reconciles it through the same path as the JSON import.\n\nAmounts in these exports are in MAJOR units (naira) even where the provider's API uses minor units, so they are converted explicitly. Column lookup is case- and punctuation-insensitive with known aliases. Unreadable rows are reported with their row numbers rather than dropped; `strict` refuses the whole import if any row failed.",
+        "responses": {
+          "201": {
+            "description": "Imported; returns matched count, exceptions and parse report"
+          },
+          "400": {
+            "description": "NO_USABLE_ROWS or CSV_HAS_UNREADABLE_ROWS"
+          },
+          "409": {
+            "description": "SETTLEMENT_ALREADY_IMPORTED or FORBIDDEN_ROLE"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "propertyId",
+                  "provider",
+                  "reference",
+                  "settledOn",
+                  "csv"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "propertyId": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "PAYSTACK",
+                      "FLUTTERWAVE"
+                    ]
+                  },
+                  "reference": {
+                    "type": "string"
+                  },
+                  "settledOn": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "csv": {
+                    "type": "string",
+                    "maxLength": 5000000
+                  },
+                  "amountsAreMajor": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "strict": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/night-audit/preflight": {
+      "get": {
+        "tags": [
+          "Night audit"
+        ],
+        "summary": "Night audit pre-flight",
+        "description": "Reports whether the day can close. Blockers stop the run (open cashier shifts, open POS orders, already run); warnings must be acknowledged but do not stop it (unapproved variances, due-outs still in house, unarrived bookings).",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/files/storage-status": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Storage status",
+        "description": "Reports the active adapter, whether it is a real object store, bucket policy, size limits and allowed content types.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/files/intents": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Create an upload intent",
+        "description": "Validates purpose, content type and size, reserves a metadata row and returns a presigned PUT. The row exists before the bytes do, so an abandoned upload is visible and sweepable rather than an orphan. Object keys are generated — the uploaded filename is never used as a path component.",
+        "responses": {
+          "201": {
+            "description": "Intent created with a presigned upload"
+          },
+          "400": {
+            "description": "CONTENT_TYPE_NOT_ALLOWED or FILE_TOO_LARGE"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "purpose",
+                  "originalName",
+                  "contentType",
+                  "sizeBytes"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "purpose": {
+                    "type": "string",
+                    "enum": [
+                      "GUEST_ID",
+                      "ROOM_IMAGE",
+                      "INVOICE",
+                      "EXPORT",
+                      "GENERAL"
+                    ]
+                  },
+                  "originalName": {
+                    "type": "string",
+                    "maxLength": 255
+                  },
+                  "contentType": {
+                    "type": "string"
+                  },
+                  "sizeBytes": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "propertyId": {
+                    "type": "string"
+                  },
+                  "entityType": {
+                    "type": "string"
+                  },
+                  "entityId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/files/upload": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Presigned upload target (public)",
+        "description": "Accepts raw bytes for a presigned URL. Public because the signature and expiry ARE the authorisation. Rejects tampered or expired URLs and refuses a second upload to the same key.",
+        "responses": {
+          "201": {
+            "description": "Bytes stored"
+          },
+          "400": {
+            "description": "INVALID_UPLOAD_URL, MALFORMED_UPLOAD_URL or EMPTY_UPLOAD"
+          },
+          "409": {
+            "description": "ALREADY_UPLOADED"
+          }
+        },
+        "security": []
+      }
+    },
+    "/files/{id}/complete": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Complete and validate an upload",
+        "description": "Verifies size and checksum, then sniffs the stored bytes. A declared content type is only a hint: a mismatch quarantines the file, which is what stops an HTML payload being stored as an image and served back. Idempotent once CLEAN.",
+        "responses": {
+          "201": {
+            "description": "CLEAN"
+          },
+          "409": {
+            "description": "FILE_QUARANTINED or NOT_UPLOADED"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "checksumSha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/files/{id}/download-url": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Signed download URL",
+        "description": "Short-lived signed URL for private objects; public-bucket objects are returned unsigned. Quarantined, deleted or incomplete files are never served.",
+        "responses": {
+          "200": {
+            "description": "URL"
+          },
+          "409": {
+            "description": "FILE_QUARANTINED or FILE_NOT_READY"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/files/download": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Serve a signed object (public)",
+        "description": "Verifies the signature and expiry, then re-checks the metadata row: a valid signature alone is not enough, because the row is the authority on whether bytes may still be served. Always sent as an attachment with nosniff.",
+        "responses": {
+          "200": {
+            "description": "Bytes"
+          },
+          "404": {
+            "description": "FILE_NOT_AVAILABLE"
+          }
+        },
+        "security": []
+      }
+    },
+    "/files": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "List files",
+        "description": "Filter by attached entity or status.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "entityType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/files/{id}/quarantine": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Quarantine a file",
+        "description": "Manual quarantine. Requires the file.manage permission.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/files/{id}/delete": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Soft delete a file",
+        "description": "Marks the file deleted. Previously issued download URLs stop working immediately; the bytes are purged by the lifecycle sweep while the metadata row is kept for audit.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/files/lifecycle/run": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Run the lifecycle sweep",
+        "description": "Expires abandoned intents, purges soft-deleted objects and enforces retention (identity documents are kept far more briefly than room images). Metadata rows survive so a deletion can still be explained.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     }
   },
   "info": {

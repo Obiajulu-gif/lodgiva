@@ -1055,12 +1055,54 @@ model NightAuditRun {
   tenantId     String
   propertyId   String
   businessDate String
-  status       String    @default("COMPLETED")
+  // §7.4 state machine: PREFLIGHT -> POSTING -> SNAPSHOT -> ADVANCING -> COMPLETED,
+  // or FAILED with the phase that stopped it recorded in `steps`.
+  status       String    @default("COMPLETED") // COMPLETED | FAILED
+  phase        String    @default("COMPLETED")
+  steps        String    @default("[]") // JSON: per-phase outcome and timing
+  blockers     String    @default("[]") // JSON: unresolved pre-flight blockers
   summary      String // JSON text of KPI snapshot
+  runById      String?
   completedAt  DateTime  @default(now())
 
   property Property @relation(fields: [propertyId], references: [id])
 
   // §7.4: idempotent by property + business date
   @@unique([propertyId, businessDate])
+}
+
+/**
+ * §11 — file metadata. PostgreSQL stays the source of truth for ownership,
+ * access policy, checksum, status and retention; the object store only holds
+ * bytes. A row exists before the upload does, so an abandoned upload is
+ * visible rather than being an orphaned object nobody can account for.
+ */
+model FileObject {
+  id           String    @id @default(uuid())
+  tenantId     String
+  propertyId   String?
+  bucket       String // PUBLIC | PRIVATE
+  objectKey    String
+  originalName String
+  contentType  String
+  declaredSize Int
+  actualSize   Int?
+  checksumSha256 String?
+  // PENDING -> UPLOADED -> SCANNING -> CLEAN | QUARANTINED, or EXPIRED.
+  status       String    @default("PENDING")
+  quarantineReason String?
+  // What this file is attached to, so retention can reason about it.
+  entityType   String?
+  entityId     String?
+  purpose      String    @default("GENERAL") // GUEST_ID | ROOM_IMAGE | INVOICE | EXPORT | GENERAL
+  uploadedById String?
+  expiresAt    DateTime? // intent expiry while PENDING; retention date once CLEAN
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  @@unique([bucket, objectKey])
+  @@index([tenantId, status])
+  @@index([tenantId, entityType, entityId])
+  @@index([status, expiresAt])
 }

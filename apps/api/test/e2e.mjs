@@ -737,18 +737,53 @@ assert(staleVersion.data.conflicts[0]?.code === "VERSION_CONFLICT",
 assert(!!staleVersion.data.conflicts[0].resolution, "conflict includes a resolution path");
 
 console.log("8. Night audit (idempotent)");
+// The suite has been opening drawers and tickets all the way down; a night
+// auditor would close them before attempting the day, so do the same.
+const openShifts = await call(`/cashiering/shifts?propertyId=${property.id}`, { token });
+for (const sh of openShifts.data.filter((x) => x.status === "OPEN")) {
+  const detail = await call(`/cashiering/shifts/${sh.id}`, { token });
+  await call(`/cashiering/shifts/${sh.id}/close`, {
+    method: "POST", token, body: { countedMinor: detail.data.expectedMinor },
+  });
+}
+const openOrders = await call(`/pos/orders?propertyId=${property.id}`, { token });
+for (const o of openOrders.data.filter((x) => x.status === "OPEN")) {
+  await call(`/pos/orders/${o.id}/void`, {
+    method: "POST", token, body: { reason: "Cleared before night audit" },
+  });
+}
+
+// Pre-flight must surface anything unfinished before the day can close.
+const pre = await call(`/night-audit/preflight?propertyId=${property.id}`, { token });
+assert(pre.data.canRun === true,
+  "pre-flight is clear once shifts and orders are closed",
+  JSON.stringify(pre.data.blockers));
+assert(pre.status === 200 && typeof pre.data.canRun === "boolean",
+  "night audit pre-flight reports readiness");
+
+if (pre.data.warnings.length > 0) {
+  // Deliberately omits acknowledgeWarnings — that is the point of the check.
+  const unacked = await call("/night-audit/run", {
+    method: "POST", token, body: { propertyId: property.id },
+  });
+  assert(unacked.status === 409 && unacked.data.error.code === "NIGHT_AUDIT_WARNINGS",
+    "unacknowledged warnings block the night audit");
+}
+
 const audit1 = await call("/night-audit/run", {
   method: "POST",
   token,
-  body: { propertyId: property.id },
+  body: { propertyId: property.id, acknowledgeWarnings: true },
 });
 assert(audit1.status === 201, "night audit runs", JSON.stringify(audit1.data));
+assert(Array.isArray(audit1.data.phases) && audit1.data.phases.length === 5,
+  "the audit records its five phases");
 assert(audit1.data.newBusinessDate === addDays(businessDate, 1), "business date advanced by audit only");
 
 const audit2 = await call("/night-audit/run", {
   method: "POST",
   token,
-  body: { propertyId: property.id },
+  body: { propertyId: property.id, acknowledgeWarnings: true },
 });
 // Second run is for the NEW business date, so it should succeed;
 // rerunning the SAME date must fail. Verify via direct duplicate:

@@ -21,6 +21,8 @@ export const PERMISSIONS = [
   // Guests
   "guest.read",
   "guest.manage",
+  "file.manage",
+  "file.manage",
   // Folio & money
   "folio.read",
   "folio.post_charge",
@@ -113,6 +115,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "frontdesk.check_out",
     "frontdesk.room_move",
     "guest.manage",
+    "file.manage",
     "folio.post_charge",
     "folio.apply_discount",
     "folio.reverse_entry",
@@ -140,6 +143,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "reservation.cancel",
     "guest.read",
     "guest.manage",
+    "file.manage",
     "frontdesk.check_in",
     "frontdesk.check_out",
     "frontdesk.room_move",

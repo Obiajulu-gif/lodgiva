@@ -16,7 +16,13 @@ import { addDaysIso } from "../common/money";
 import { PropertiesModule, PropertiesService } from "./properties.module";
 import { FoliosModule, FoliosService } from "./folios.module";
 
-const runSchema = z.object({ propertyId: z.string().min(1) }).strict();
+const runSchema = z
+  .object({
+    propertyId: z.string().min(1),
+    /** Warnings must be seen and accepted; blockers can never be waived. */
+    acknowledgeWarnings: z.boolean().default(false),
+  })
+  .strict();
 
 /**
  * §7.4 — night audit: validates the day, posts room charges for every
@@ -32,10 +38,140 @@ export class NightAuditService {
     private readonly folios: FoliosService
   ) {}
 
+  /**
+   * §7.4 pre-flight.
+   *
+   * The day cannot be closed while the property is still mid-transaction.
+   * Each blocker names the thing to fix, because a night auditor at 2am needs
+   * to act on this list, not interpret it.
+   *
+   * Blockers stop the run; warnings are recorded and allowed through.
+   */
+  async preflight(auth: AuthContext, propertyId: string) {
+    const property = await this.properties.assertProperty(auth, propertyId);
+    const businessDate = property.businessDate;
+
+    const openShifts = await this.prisma.cashierShift.findMany({
+      where: { tenantId: auth.tenantId, propertyId, status: "OPEN" },
+      select: { id: true, shiftNumber: true, userId: true },
+    });
+    const pendingShifts = await this.prisma.cashierShift.count({
+      where: { tenantId: auth.tenantId, propertyId, status: "PENDING_APPROVAL" },
+    });
+    const openPosOrders = await this.prisma.posOrder.count({
+      where: { tenantId: auth.tenantId, propertyId, status: "OPEN" },
+    });
+    const dueOut = await this.prisma.reservation.count({
+      where: {
+        tenantId: auth.tenantId,
+        propertyId,
+        status: "CHECKED_IN",
+        departureDate: { lte: businessDate },
+      },
+    });
+    const unarrived = await this.prisma.reservation.count({
+      where: {
+        tenantId: auth.tenantId,
+        propertyId,
+        status: "CONFIRMED",
+        arrivalDate: { lte: businessDate },
+      },
+    });
+    const alreadyRun = await this.prisma.nightAuditRun.findFirst({
+      where: { propertyId, businessDate },
+      select: { id: true, status: true },
+    });
+
+    const blockers: { code: string; message: string; count?: number }[] = [];
+    const warnings: { code: string; message: string; count?: number }[] = [];
+
+    if (alreadyRun && alreadyRun.status === "COMPLETED") {
+      blockers.push({
+        code: "ALREADY_RUN",
+        message: `Night audit for ${businessDate} has already completed.`,
+      });
+    }
+    // An open drawer means cash is unaccounted for: closing the day over it
+    // would bake an unbalanced float into the day's numbers.
+    if (openShifts.length > 0) {
+      blockers.push({
+        code: "OPEN_CASHIER_SHIFTS",
+        message: `Close ${openShifts.length} open cashier shift(s) first: ${openShifts
+          .map((s) => s.shiftNumber)
+          .join(", ")}.`,
+        count: openShifts.length,
+      });
+    }
+    if (openPosOrders > 0) {
+      blockers.push({
+        code: "OPEN_POS_ORDERS",
+        message: `${openPosOrders} POS order(s) are still open and would not be billed tonight.`,
+        count: openPosOrders,
+      });
+    }
+    if (pendingShifts > 0) {
+      warnings.push({
+        code: "SHIFTS_AWAITING_APPROVAL",
+        message: `${pendingShifts} cash variance(s) still await manager approval.`,
+        count: pendingShifts,
+      });
+    }
+    if (dueOut > 0) {
+      warnings.push({
+        code: "DUE_OUT_STILL_IN_HOUSE",
+        message: `${dueOut} guest(s) were due to depart but are still checked in.`,
+        count: dueOut,
+      });
+    }
+    if (unarrived > 0) {
+      warnings.push({
+        code: "UNARRIVED_BOOKINGS",
+        message: `${unarrived} confirmed booking(s) did not arrive and may need marking as no-show.`,
+        count: unarrived,
+      });
+    }
+
+    return {
+      businessDate,
+      canRun: blockers.length === 0,
+      blockers,
+      warnings,
+    };
+  }
+
   async run(auth: AuthContext, body: unknown) {
     const dto = runSchema.parse(body);
     const property = await this.properties.assertProperty(auth, dto.propertyId);
     const businessDate = property.businessDate;
+
+    // PHASE 1 — PREFLIGHT. Refuse rather than close a day that is not
+    // actually finished. `force` skips warnings, never blockers.
+    const checks = await this.preflight(auth, dto.propertyId);
+    const steps: { phase: string; ok: boolean; detail?: string; at: string }[] = [];
+    const mark = (phase: string, detail?: string) =>
+      steps.push({ phase, ok: true, detail, at: new Date().toISOString() });
+
+    if (!checks.canRun) {
+      throw new ConflictException({
+        error: {
+          code: "NIGHT_AUDIT_BLOCKED",
+          message: checks.blockers[0].message,
+          retryable: false,
+          details: { blockers: checks.blockers, warnings: checks.warnings },
+        },
+      });
+    }
+    if (checks.warnings.length > 0 && !dto.acknowledgeWarnings) {
+      throw new ConflictException({
+        error: {
+          code: "NIGHT_AUDIT_WARNINGS",
+          message: `${checks.warnings.length} item(s) need acknowledging before the day can close.`,
+          retryable: false,
+          details: { warnings: checks.warnings },
+        },
+      });
+    }
+    mark("PREFLIGHT", `${checks.warnings.length} warning(s) acknowledged`);
 
     return this.prisma.$transaction(async (tx) => {
       // Idempotency gate first (§7.4): a rerun for the same date must fail
@@ -96,7 +232,9 @@ export class NightAuditService {
         roomRevenueMinor += rr.nightlyRateMinor;
       }
 
-      // 2. KPI snapshot.
+      mark("POSTING", `${postedCount} room charge(s) posted`);
+
+      // PHASE 3 — SNAPSHOT.
       const totalRooms = await tx.room.count({
         where: { tenantId: auth.tenantId, propertyId: property.id },
       });
@@ -124,15 +262,26 @@ export class NightAuditService {
         confirmedPaymentsToDateMinor: Number(paymentsToday._sum.amountMinor ?? 0n),
       };
 
-      // 3. Advance the business date — the ONLY place this happens (ADR-009).
+      mark("SNAPSHOT");
+
+      // PHASE 4 — ADVANCING. The only place the business date moves (ADR-009).
       const nextDate = addDaysIso(businessDate, 1);
       await tx.property.update({
         where: { id: property.id },
         data: { businessDate: nextDate },
       });
+      mark("ADVANCING", `business date -> ${nextDate}`);
+      mark("COMPLETED");
       await tx.nightAuditRun.updateMany({
         where: { propertyId: property.id, businessDate },
-        data: { summary: JSON.stringify(summary) },
+        data: {
+          summary: JSON.stringify(summary),
+          phase: "COMPLETED",
+          status: "COMPLETED",
+          steps: JSON.stringify(steps),
+          blockers: JSON.stringify(checks.warnings),
+          runById: auth.userId,
+        },
       });
       await this.audit.log(tx, auth, {
         action: "night_audit.run",
@@ -147,7 +296,7 @@ export class NightAuditService {
         eventType: "night_audit.completed",
         payload: summary,
       });
-      return { ...summary, newBusinessDate: nextDate };
+      return { ...summary, newBusinessDate: nextDate, phases: steps, acknowledgedWarnings: checks.warnings };
     });
   }
 
@@ -158,7 +307,12 @@ export class NightAuditService {
       orderBy: { businessDate: "desc" },
       take: 30,
     });
-    return runs.map((r) => ({ ...r, summary: JSON.parse(r.summary) }));
+    return runs.map((r) => ({
+      ...r,
+      summary: JSON.parse(r.summary),
+      steps: JSON.parse(r.steps ?? "[]"),
+      blockers: JSON.parse(r.blockers ?? "[]"),
+    }));
   }
 }
 
@@ -169,6 +323,11 @@ export class NightAuditController {
   @Post("run")
   run(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.run(auth, body);
+  }
+
+  @Get("preflight")
+  preflight(@CurrentAuth() auth: AuthContext, @Query("propertyId") propertyId: string) {
+    return this.service.preflight(auth, propertyId);
   }
 
   @Get("history")

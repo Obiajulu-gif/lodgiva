@@ -493,3 +493,70 @@ through `room-move` (dirty room + housekeeping task), a future booking through
 re-allocates inventory in one transaction — a shift into a full window is
 refused and the guest keeps the dates they had. In-house and departed stays
 cannot have their arrival moved.
+
+## Settlement CSV import
+
+`POST /settlements/import-csv` parses a provider export and reconciles it
+through the same path as the JSON import, so the two cannot diverge.
+
+**Amounts in settlement exports are in naira**, even though Paystack's API
+speaks kobo. Reading a CSV as kobo would understate every payout 100-fold and
+mark every line as a mismatch, so conversion is explicit and unit-tested.
+Parenthesised and negative values are preserved as negatives — refund rows in
+a payout must not be silently dropped, or the payout is overstated.
+
+Column lookup is case- and punctuation-insensitive with known aliases
+(`Transaction Reference`, `tx_ref`, `reference`…). Unreadable rows are
+reported with 1-based row numbers rather than skipped silently; `strict: true`
+refuses the whole import if any row failed.
+
+## Night audit state machine
+
+`GET /night-audit/preflight` reports whether the day can close.
+
+| | Effect |
+|---|---|
+| **Blockers** | Stop the run. Open cashier shifts, open POS orders, already audited. |
+| **Warnings** | Must be acknowledged, but do not stop it. Unapproved variances, due-outs still in house, unarrived bookings. |
+
+An open cash drawer is a blocker because closing the day over one bakes an
+unbalanced float into the day's numbers. `POST /night-audit/run` refuses
+blockers outright and requires `acknowledgeWarnings: true` when warnings
+exist, so nobody closes a day without having seen what was unfinished.
+
+The run records five phases — `PREFLIGHT → POSTING → SNAPSHOT → ADVANCING →
+COMPLETED` — returned with the result and stored on the run for history. It
+stays idempotent per (property, business date) and remains the only place the
+business date advances.
+
+## File storage (§11)
+
+Two buckets with genuinely different policies: **PUBLIC** for room images
+(served unsigned) and **PRIVATE** for identity documents, invoices and exports
+(short-lived signed URLs only). Purpose decides the bucket — an identity
+document can never land in the public one.
+
+The flow is intent → presigned PUT → complete:
+
+1. **Intent** validates purpose, content type and size, then reserves a
+   metadata row *before* any bytes exist, so an abandoned upload is visible
+   rather than an orphaned object. Object keys are generated; the uploaded
+   filename is never used as a path component, so `../../etc/passwd.jpg`
+   cannot traverse anywhere.
+2. **Upload** goes to a presigned URL whose signature and expiry are the
+   authorisation. Tampered or expired URLs are refused, and a key cannot be
+   uploaded twice.
+3. **Complete** verifies the checksum and sniffs the stored bytes. A declared
+   content type is only a hint — renaming `payload.html` to `photo.jpg` costs
+   an attacker nothing — so a mismatch quarantines the file. This is what
+   stops stored XSS from reaching the public bucket.
+
+Downloads are always sent as attachments with `X-Content-Type-Options:
+nosniff`. A valid signature is not sufficient on its own: the metadata row is
+re-checked, so a soft-deleted or quarantined file stops being served even
+through a URL that was issued earlier and has not yet expired.
+
+`POST /files/lifecycle/run` expires abandoned intents, purges soft-deleted
+objects and enforces retention (identity documents are kept far more briefly
+than room images). Metadata rows survive purging so a deletion can still be
+explained during an audit.

@@ -20,6 +20,7 @@ import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth, Public } from "../common/auth";
 import { AuditService } from "../common/audit.service";
 import { getProvider, PROVIDERS } from "../common/payment-providers";
+import { parseSettlementCsv } from "../common/settlement-csv";
 import { FoliosModule, FoliosService } from "./folios.module";
 import { PropertiesModule, PropertiesService } from "./properties.module";
 
@@ -63,6 +64,20 @@ const settlementSchema = z
       )
       .min(1)
       .max(5000),
+  })
+  .strict();
+
+const settlementCsvSchema = z
+  .object({
+    propertyId: z.string().min(1),
+    provider: z.enum(["PAYSTACK", "FLUTTERWAVE"]),
+    reference: z.string().min(1),
+    settledOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    csv: z.string().min(10).max(5_000_000),
+    /** Set false only when an export is already in minor units. */
+    amountsAreMajor: z.boolean().default(true),
+    /** Refuse the import if any row failed to parse. */
+    strict: z.boolean().default(false),
   })
   .strict();
 
@@ -823,6 +838,59 @@ export class GatewayService {
     });
   }
 
+  /**
+   * Imports a provider settlement from its CSV export.
+   *
+   * Parsing is separated from reconciliation: this maps the file onto lines
+   * and then hands them to the same importSettlement path, so a CSV and a
+   * JSON import cannot diverge in how they reconcile.
+   */
+  async importSettlementCsv(auth: AuthContext, body: unknown) {
+    const dto = settlementCsvSchema.parse(body);
+    const parsed = parseSettlementCsv(dto.provider, dto.csv, {
+      amountsAreMajor: dto.amountsAreMajor,
+    });
+
+    if (parsed.lines.length === 0) {
+      throw new BadRequestException({
+        error: {
+          code: "NO_USABLE_ROWS",
+          message: "No rows in this file could be read as settlement lines.",
+          details: { skipped: parsed.skipped.slice(0, 20) },
+        },
+      });
+    }
+    // Silently importing a file with unreadable rows understates the payout,
+    // so strict mode lets finance refuse rather than reconcile against a
+    // partial picture.
+    if (dto.strict && parsed.skipped.length > 0) {
+      throw new BadRequestException({
+        error: {
+          code: "CSV_HAS_UNREADABLE_ROWS",
+          message: `${parsed.skipped.length} row(s) could not be read. Fix the file or import without strict mode.`,
+          details: { skipped: parsed.skipped.slice(0, 20) },
+        },
+      });
+    }
+
+    const result = await this.importSettlement(auth, {
+      propertyId: dto.propertyId,
+      provider: dto.provider,
+      reference: dto.reference,
+      settledOn: dto.settledOn,
+      lines: parsed.lines,
+    });
+    return {
+      ...result,
+      parsed: {
+        rows: parsed.lines.length,
+        skipped: parsed.skipped,
+        totalMinor: parsed.totalMinor,
+        feeTotalMinor: parsed.feeTotalMinor,
+      },
+    };
+  }
+
   async listExceptions(auth: AuthContext, propertyId: string, status = "OPEN") {
     await this.properties.assertProperty(auth, propertyId);
     const rows = await this.prisma.reconciliationException.findMany({
@@ -984,6 +1052,11 @@ export class GatewayController {
   @Post("settlements/import")
   importSettlement(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.importSettlement(auth, body);
+  }
+
+  @Post("settlements/import-csv")
+  importSettlementCsv(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
+    return this.service.importSettlementCsv(auth, body);
   }
 
   @Get("settlements")
