@@ -22,7 +22,7 @@ export const PERMISSIONS = [
   "guest.read",
   "guest.manage",
   "file.manage",
-  "file.manage",
+  "inventory.manage",
   // Folio & money
   "folio.read",
   "folio.post_charge",
@@ -104,6 +104,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "settings.tax.manage",
     "approval.decide",
     "user.manage",
+    "inventory.manage",
   ],
   GENERAL_MANAGER: [
     ...READ_ONLY,
@@ -116,6 +117,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "frontdesk.room_move",
     "guest.manage",
     "file.manage",
+    "inventory.manage",
     "folio.post_charge",
     "folio.apply_discount",
     "folio.reverse_entry",
@@ -144,6 +146,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "guest.read",
     "guest.manage",
     "file.manage",
+    "inventory.manage",
     "frontdesk.check_in",
     "frontdesk.check_out",
     "frontdesk.room_move",

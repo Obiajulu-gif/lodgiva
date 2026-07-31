@@ -23,7 +23,11 @@ export default defineConfig({
           },
         ],
       },
+      // Push handling is injected into the generated worker: the plugin owns
+      // precaching, we only add the push listeners.
+      injectManifest: undefined,
       workbox: {
+        importScripts: ["/sw-push.js"],
         // §10.1: precache the app shell; never cache authenticated API data.
         navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [],

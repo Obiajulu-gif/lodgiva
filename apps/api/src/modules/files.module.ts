@@ -380,6 +380,54 @@ export class FilesService {
     };
   }
 
+  /**
+   * Stores bytes the server itself produced (report exports, invoices).
+   *
+   * These skip the intent/upload/scan dance because their provenance is not in
+   * question — we generated them. They still get a metadata row so retention,
+   * signed download and audit behave identically to an uploaded file.
+   */
+  async storeGenerated(
+    auth: AuthContext,
+    input: {
+      propertyId?: string;
+      purpose: string;
+      contentType: string;
+      originalName: string;
+      bytes: Buffer;
+      entityType?: string;
+      entityId?: string;
+    }
+  ) {
+    const bucket = bucketFor(input.purpose);
+    const objectKey = buildObjectKey({
+      tenantId: auth.tenantId,
+      purpose: input.purpose,
+      originalName: input.originalName,
+    });
+    await this.storage.put(bucket, objectKey, input.bytes);
+
+    return this.prisma.fileObject.create({
+      data: {
+        tenantId: auth.tenantId,
+        propertyId: input.propertyId,
+        bucket,
+        objectKey,
+        originalName: input.originalName,
+        contentType: input.contentType,
+        declaredSize: input.bytes.length,
+        actualSize: input.bytes.length,
+        checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+        status: "CLEAN",
+        purpose: input.purpose,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        uploadedById: auth.userId,
+        completedAt: new Date(),
+      },
+    });
+  }
+
   /** A signed, short-lived URL. Quarantined files are never served. */
   async downloadUrl(auth: AuthContext, fileId: string) {
     const file = await this.prisma.fileObject.findFirst({

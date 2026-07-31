@@ -62,6 +62,8 @@ model Property {
   roomBlocks         RoomBlock[]
   holds              Hold[]
   memberScopes       MembershipProperty[]
+  inventoryItems     InventoryItem[]
+  stockLocations     StockLocation[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, slug])
@@ -643,7 +645,8 @@ model HousekeepingTask {
   businessDate String
   type         String    @default("FULL_CLEAN") // FULL_CLEAN | TURNOVER | INSPECTION | DEEP_CLEAN | MAINTENANCE
   priority     String    @default("NORMAL")
-  assignedTo   String?
+  assignedTo     String?
+  assignedUserId String? // set when the assignee is a real user, for push
   status       String    @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | INSPECTED
   notes        String?
   startedAt    DateTime?
@@ -1105,4 +1108,112 @@ model FileObject {
   @@index([tenantId, status])
   @@index([tenantId, entityType, entityId])
   @@index([status, expiresAt])
+}
+
+/**
+ * Web Push subscriptions. One row per device, because a housekeeper may use
+ * the ward phone in the morning and their own in the afternoon.
+ */
+model PushSubscription {
+  id           String    @id @default(uuid())
+  tenantId     String
+  userId       String
+  endpoint     String    @unique
+  p256dh       String
+  auth         String
+  deviceLabel  String?
+  // Push services return 404/410 for a subscription the browser has dropped.
+  // Counting failures lets dead endpoints be pruned instead of retried forever.
+  failureCount Int       @default(0)
+  lastSentAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([tenantId, userId])
+}
+
+/** §7 Inventory — what the property buys, holds and consumes. */
+model InventoryItem {
+  id            String  @id @default(uuid())
+  tenantId      String
+  propertyId    String
+  sku           String
+  name          String
+  category      String  @default("GENERAL") // HOUSEKEEPING | FB | MAINTENANCE | GENERAL
+  unit          String  @default("EACH") // EACH | KG | LITRE | PACK | BOTTLE
+  // Quantities are integers in thousandths so 0.5kg is exact. Floats would
+  // drift the same way they would on money.
+  reorderLevel  Int     @default(0)
+  unitCostMinor BigInt  @default(0)
+  active        Boolean @default(true)
+
+  property  Property        @relation(fields: [propertyId], references: [id])
+  movements StockMovement[]
+
+  @@unique([tenantId, propertyId, sku])
+  @@index([tenantId, propertyId, category])
+}
+
+model StockLocation {
+  id         String @id @default(uuid())
+  tenantId   String
+  propertyId String
+  code       String
+  name       String
+  active     Boolean @default(true)
+
+  property  Property        @relation(fields: [propertyId], references: [id])
+  movements StockMovement[]
+
+  @@unique([tenantId, propertyId, code])
+}
+
+/**
+ * Append-only stock ledger, mirroring the folio ledger's discipline: a
+ * correction is a counter-movement, never an edit, so shrinkage cannot be
+ * quietly erased.
+ */
+model StockMovement {
+  id            String   @id @default(uuid())
+  tenantId      String
+  propertyId    String
+  itemId        String
+  locationId    String
+  type          String // RECEIPT | ISSUE | CONSUMPTION | ADJUSTMENT | TRANSFER_IN | TRANSFER_OUT | WASTAGE
+  quantity      Int // signed thousandths: positive adds, negative removes
+  unitCostMinor BigInt   @default(0)
+  reference     String?
+  note          String?
+  businessDate  String
+  performedById String?
+  createdAt     DateTime @default(now())
+
+  item     InventoryItem @relation(fields: [itemId], references: [id])
+  location StockLocation @relation(fields: [locationId], references: [id])
+
+  @@index([tenantId, propertyId, itemId, businessDate])
+  @@index([tenantId, propertyId, businessDate])
+}
+
+/**
+ * §14 asynchronous exports. A report over a long date range must not hold an
+ * HTTP connection open, so the job is queued, run by the worker, and the
+ * result stored as a file the requester downloads through a signed URL.
+ */
+model ExportJob {
+  id            String    @id @default(uuid())
+  tenantId      String
+  propertyId    String
+  type          String // DAILY_FLASH | REVENUE | OCCUPANCY | CASHIER | TAX | RECEIVABLES | GUEST_LEDGER | AUDIT
+  format        String    @default("CSV") // CSV | PDF
+  params        String    @default("{}")
+  status        String    @default("QUEUED") // QUEUED | RUNNING | COMPLETE | FAILED
+  fileId        String?
+  rowCount      Int?
+  error         String?
+  requestedById String
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([tenantId, propertyId, status])
 }

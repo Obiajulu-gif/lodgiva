@@ -615,3 +615,63 @@ These were exercised against a real running stack, not simulated:
    Overview, Room Board, Room Rack, Housekeeping and Maintenance; Cashiering,
    Night Audit and Settings are hidden. The API remains the real boundary —
    hiding a route is a usability decision, not a security one.
+
+## Push notifications for task assignments
+
+A housekeeper does not sit watching a dashboard — they are in a corridor with
+the screen off. Push is the only channel that reaches them when the app is
+closed.
+
+`POST /housekeeping/tasks/{id}/assign` queues the notification **in the same
+transaction as the assignment**, so nobody is ever told to clean a room for an
+assignment that rolled back. Delivery happens out of band in the worker, which
+prunes subscriptions returning 404/410 (the browser dropped them) rather than
+retrying dead endpoints forever.
+
+`GET /push/status` reports whether VAPID keys are configured. When they are
+not, `POST /push/subscribe` returns **`PUSH_DISABLED`** rather than accepting a
+subscription that can never deliver — a notification system that silently does
+nothing is worse than one that is visibly off. Assignments still appear in-app
+and in the sync change feed regardless.
+
+## Inventory and stock ledger
+
+Quantities are integers in **thousandths**, for the same reason money is in
+minor units: `0.1 + 0.2` must equal exactly `0.3`. A float ledger drifts, and a
+drifting stock ledger cannot distinguish rounding from theft — which is the
+whole point of keeping one.
+
+The ledger is append-only like the folio: a mistake is corrected with an
+opposing `ADJUSTMENT`, never an edit, so shrinkage cannot be quietly erased.
+Callers always send a **positive** quantity and the movement type decides the
+sign. Stock cannot be driven negative — a location holding −3 bottles hides
+either an unrecorded delivery or a theft.
+
+Wastage is reported in its own column rather than folded into consumption,
+because "we used it" and "we ruined it" are different problems.
+
+## Reporting and owner dashboards
+
+**ADR divides room revenue by rooms sold; RevPAR divides the same revenue by
+rooms available.** Conflating them flatters a half-empty hotel, so both
+denominators are returned alongside the rates and blocked rooms reduce
+availability.
+
+The revenue report excludes payments and refunds — those *settle* revenue,
+they are not revenue; counting them would double the figures. Tax, service
+charge and discounts are reported separately from gross.
+
+The cashier report totals **shortages and overages separately**. Netting them
+produces a comfortable near-zero that conceals both a till that is short and
+one that is over.
+
+Receivables age balances into buckets and count folios that are `CLOSED` but
+still owing separately — that is a debt that walked out of the building.
+
+### Asynchronous exports
+
+`POST /analytics/exports` records a job, runs it out of band, stores the CSV
+through the file service and exposes it via a signed download URL. Poll
+`GET /analytics/exports/{id}`. An unimplemented export type fails **visibly**
+with `status: FAILED` and a reason, rather than returning an empty file that
+looks like a quiet period of trading.

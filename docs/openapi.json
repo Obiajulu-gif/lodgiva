@@ -3699,6 +3699,814 @@
           }
         }
       }
+    },
+    "/push/status": {
+      "get": {
+        "tags": [
+          "Push"
+        ],
+        "summary": "Push configuration status",
+        "description": "Reports whether VAPID keys are configured and returns the public key. When push is off it says so plainly rather than accepting subscriptions that can never deliver.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/push/subscribe": {
+      "post": {
+        "tags": [
+          "Push"
+        ],
+        "summary": "Register a device",
+        "description": "Upserts on the endpoint, so re-subscribing the same browser updates the row instead of accumulating duplicates that would double-notify.",
+        "responses": {
+          "201": {
+            "description": "Subscribed"
+          },
+          "400": {
+            "description": "PUSH_DISABLED"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "endpoint",
+                  "keys"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "endpoint": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "keys": {
+                    "type": "object",
+                    "required": [
+                      "p256dh",
+                      "auth"
+                    ],
+                    "properties": {
+                      "p256dh": {
+                        "type": "string"
+                      },
+                      "auth": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "deviceLabel": {
+                    "type": "string",
+                    "maxLength": 60
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/push/unsubscribe": {
+      "post": {
+        "tags": [
+          "Push"
+        ],
+        "summary": "Remove a device",
+        "description": "Removes the subscription for this user.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "endpoint"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "endpoint": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/push/subscriptions": {
+      "get": {
+        "tags": [
+          "Push"
+        ],
+        "summary": "List my devices",
+        "description": "Devices this user has registered.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/push/test": {
+      "post": {
+        "tags": [
+          "Push"
+        ],
+        "summary": "Send a test notification",
+        "description": "Lets a user prove push works on this device before relying on it. Returns per-device outcomes: sent, failed and pruned.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/housekeeping/tasks/{id}/assign": {
+      "post": {
+        "tags": [
+          "Housekeeping"
+        ],
+        "summary": "Assign a task and notify",
+        "description": "Assigns the task and queues a push notification in the SAME transaction, so nobody is told to clean a room for an assignment that rolled back. Bumps the version so offline devices see the reassignment. The assignee must be an active member of the tenant.",
+        "responses": {
+          "201": {
+            "description": "Assigned"
+          },
+          "404": {
+            "description": "ASSIGNEE_NOT_FOUND"
+          },
+          "400": {
+            "description": "TASK_FINISHED"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "assignedUserId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "assignedUserId": {
+                    "type": "string"
+                  },
+                  "assignedTo": {
+                    "type": "string",
+                    "maxLength": 80
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/items": {
+      "get": {
+        "tags": [
+          "Inventory"
+        ],
+        "summary": "List items",
+        "description": "Active catalogue for a property.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Inventory"
+        ],
+        "summary": "Create an item",
+        "description": "Quantities are held as integers in thousandths so 0.1 + 0.2 is exactly 0.3 - a float ledger drifts, and a drifting stock ledger cannot distinguish rounding from theft.",
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "409": {
+            "description": "SKU_EXISTS"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "propertyId",
+                  "sku",
+                  "name"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "propertyId": {
+                    "type": "string"
+                  },
+                  "sku": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "HOUSEKEEPING",
+                      "FB",
+                      "MAINTENANCE",
+                      "GENERAL"
+                    ]
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "EACH",
+                      "KG",
+                      "LITRE",
+                      "PACK",
+                      "BOTTLE"
+                    ]
+                  },
+                  "reorderLevel": {
+                    "type": "number"
+                  },
+                  "unitCostMinor": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/locations": {
+      "get": {
+        "tags": [
+          "Inventory"
+        ],
+        "summary": "List stock locations",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Inventory"
+        ],
+        "summary": "Create a stock location",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "propertyId",
+                  "code",
+                  "name"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "propertyId": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/movements": {
+      "post": {
+        "tags": [
+          "Inventory"
+        ],
+        "summary": "Record a stock movement",
+        "description": "Append-only: a mistake is corrected with an opposing ADJUSTMENT, never an edit, so shrinkage cannot be quietly erased. Send a POSITIVE quantity - the type decides the sign. Stock cannot be driven negative, because a location holding -3 bottles hides either an unrecorded delivery or a theft.",
+        "responses": {
+          "201": {
+            "description": "Recorded"
+          },
+          "400": {
+            "description": "ZERO_QUANTITY or NEGATIVE_QUANTITY"
+          },
+          "409": {
+            "description": "INSUFFICIENT_STOCK"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "propertyId",
+                  "itemId",
+                  "locationId",
+                  "type",
+                  "quantity"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "propertyId": {
+                    "type": "string"
+                  },
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "locationId": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "RECEIPT",
+                      "ISSUE",
+                      "CONSUMPTION",
+                      "ADJUSTMENT",
+                      "TRANSFER_IN",
+                      "TRANSFER_OUT",
+                      "WASTAGE"
+                    ]
+                  },
+                  "quantity": {
+                    "type": "number"
+                  },
+                  "unitCostMinor": {
+                    "type": "integer"
+                  },
+                  "reference": {
+                    "type": "string"
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/stock-on-hand": {
+      "get": {
+        "tags": [
+          "Inventory"
+        ],
+        "summary": "Stock on hand",
+        "description": "Current levels with valuation and reorder flags.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lowOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/inventory/movement-summary": {
+      "get": {
+        "tags": [
+          "Inventory"
+        ],
+        "summary": "Movement summary",
+        "description": "Consumption and wastage over a period. Wastage is reported in its own column rather than folded into consumption.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/inventory/ledger": {
+      "get": {
+        "tags": [
+          "Inventory"
+        ],
+        "summary": "Item ledger",
+        "description": "Every movement for one item with a running balance.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/analytics/occupancy": {
+      "get": {
+        "tags": [
+          "Analytics"
+        ],
+        "summary": "Occupancy, ADR and RevPAR",
+        "description": "ADR divides room revenue by rooms SOLD; RevPAR divides the same revenue by rooms AVAILABLE. Confusing the two flatters a half-empty hotel, so both denominators are returned alongside the rates. Blocked rooms reduce availability.",
+        "responses": {
+          "200": {
+            "description": "Per-day figures and totals"
+          },
+          "400": {
+            "description": "INVALID_DATE_RANGE or RANGE_TOO_LONG"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/analytics/revenue": {
+      "get": {
+        "tags": [
+          "Analytics"
+        ],
+        "summary": "Revenue by category",
+        "description": "Payments and refunds are excluded: they settle revenue, they are not revenue. Tax and discounts are reported separately from gross.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/analytics/cashier": {
+      "get": {
+        "tags": [
+          "Analytics"
+        ],
+        "summary": "Cashier report",
+        "description": "Shifts with expected vs counted. Shortages and overages are totalled SEPARATELY - netting them hides two different problems behind one number.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/analytics/receivables": {
+      "get": {
+        "tags": [
+          "Analytics"
+        ],
+        "summary": "Aged receivables",
+        "description": "Open balances bucketed by age. Folios that are CLOSED but still owing are counted separately: that is a debt that walked out of the building.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/analytics/owner-dashboard": {
+      "get": {
+        "tags": [
+          "Analytics"
+        ],
+        "summary": "Owner dashboard",
+        "description": "Month-to-date occupancy/ADR/RevPAR, receivables ageing, and a needs-attention block covering pending approvals, unapproved cash variances and open reconciliation exceptions.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/analytics/exports": {
+      "get": {
+        "tags": [
+          "Analytics"
+        ],
+        "summary": "List export jobs",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Analytics"
+        ],
+        "summary": "Request an asynchronous export",
+        "description": "A year of ledger will not return inside an HTTP request, so the job is recorded, run out of band, and the result stored as a file downloaded through a signed URL. Poll the job for status.",
+        "responses": {
+          "201": {
+            "description": "Job queued"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "propertyId",
+                  "type",
+                  "from",
+                  "to"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "propertyId": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "DAILY_FLASH",
+                      "REVENUE",
+                      "OCCUPANCY",
+                      "CASHIER",
+                      "TAX",
+                      "RECEIVABLES",
+                      "GUEST_LEDGER",
+                      "AUDIT"
+                    ]
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "CSV"
+                    ]
+                  },
+                  "from": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "to": {
+                    "type": "string",
+                    "format": "date"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analytics/exports/{id}": {
+      "get": {
+        "tags": [
+          "Analytics"
+        ],
+        "summary": "Export job status",
+        "description": "Returns status, row count and - once COMPLETE - a signed download URL.",
+        "responses": {
+          "200": {
+            "description": "Job"
+          },
+          "404": {
+            "description": "JOB_NOT_FOUND"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "info": {

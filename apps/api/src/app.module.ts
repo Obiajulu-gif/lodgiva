@@ -24,6 +24,9 @@ import { InvoicesModule } from "./modules/invoices.module";
 import { GatewayModule } from "./modules/gateway.module";
 import { FilesModule } from "./modules/files.module";
 import { EventsModule } from "./modules/events.module";
+import { PushModule } from "./modules/push.module";
+import { InventoryModule } from "./modules/inventory.module";
+import { AnalyticsModule } from "./modules/analytics.module";
 import { AuthModule } from "./modules/auth.module";
 import { PropertiesModule } from "./modules/properties.module";
 import { GuestsModule } from "./modules/guests.module";
@@ -144,6 +147,9 @@ class CoreModule {}
     GatewayModule,
     FilesModule,
     EventsModule,
+    PushModule,
+    InventoryModule,
+    AnalyticsModule,
     PropertiesModule,
     GuestsModule,
     ReservationsModule,
