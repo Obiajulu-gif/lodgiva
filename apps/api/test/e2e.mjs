@@ -433,6 +433,72 @@ const cashSettle = await call(`/pos/orders/${order2.data.id}/settle`, {
 });
 assert(cashSettle.status === 201, "POS cash settlement recorded against shift");
 
+// §13.4 POS void approvals. A void is how cash walks out of a till — ring the
+// order, take the money, void the ticket — so above the correction window it
+// needs a second person. `token` is front desk, which cannot approve.
+const voidTarget = await call("/pos/orders", {
+  method: "POST",
+  token,
+  body: { outletId: restaurant.id, lines: [{ menuItemId: jollof.id, quantity: 2 }] },
+});
+const voidReq = await call(`/pos/orders/${voidTarget.data.id}/void`, {
+  method: "POST",
+  token,
+  body: { reason: "Guest disputed the bill" },
+});
+assert(voidReq.status === 201 && voidReq.data.status === "PENDING_APPROVAL",
+  "a large void by front desk raises an approval request", JSON.stringify(voidReq.data));
+
+const parked = await call(`/pos/orders/${voidTarget.data.id}/settle`, {
+  method: "POST", token, body: { settlement: "CASH", shiftId },
+});
+assert(parked.status === 409 && parked.data.error.code === "VOID_PENDING",
+  "an order awaiting a void decision cannot be settled around");
+
+const selfApproveVoid = await call(`/approvals/${voidReq.data.request.id}/approve`, {
+  method: "POST", token, body: {},
+});
+assert(selfApproveVoid.status === 403,
+  "the requester cannot approve their own void", JSON.stringify(selfApproveVoid.data));
+
+const voidBlocked = await call(`/night-audit/preflight?propertyId=${property.id}`, { token });
+assert(voidBlocked.data.blockers.some((b) => b.code === "POS_VOIDS_AWAITING_APPROVAL"),
+  "an undecided void blocks the night audit");
+
+const voidApproved = await call(`/approvals/${voidReq.data.request.id}/approve`, {
+  method: "POST", token: mgrToken, body: { note: "Verified with the floor" },
+});
+assert(voidApproved.status === 201 && voidApproved.data.status === "APPROVED",
+  "a manager approves the void", JSON.stringify(voidApproved.data));
+
+const voidedOrder = (await call(`/pos/orders?propertyId=${property.id}`, { token }))
+  .data.find((o) => o.id === voidTarget.data.id);
+assert(voidedOrder.status === "VOIDED", "approval actually voids the order");
+
+// A rejected void puts the order back on the floor, with no stale reason left
+// behind to make a live ticket look cancelled.
+const rejectTarget = await call("/pos/orders", {
+  method: "POST", token,
+  body: { outletId: restaurant.id, lines: [{ menuItemId: jollof.id, quantity: 2 }] },
+});
+const rejectReq = await call(`/pos/orders/${rejectTarget.data.id}/void`, {
+  method: "POST", token, body: { reason: "Claimed the guest left" },
+});
+const rejected = await call(`/approvals/${rejectReq.data.request.id}/reject`, {
+  method: "POST", token: ownerToken, body: { note: "The guest was served" },
+});
+assert(rejected.status === 201 && rejected.data.status === "REJECTED", "a void can be rejected");
+const restored = (await call(`/pos/orders?propertyId=${property.id}`, { token }))
+  .data.find((o) => o.id === rejectTarget.data.id);
+assert(restored.status === "OPEN" && restored.voidReason === null,
+  "a rejected void returns the order to the floor", JSON.stringify(restored));
+// Settled by card, so this check does not disturb the drawer arithmetic the
+// cashiering assertions below depend on.
+const restoredSettle = await call(`/pos/orders/${rejectTarget.data.id}/settle`, {
+  method: "POST", token, body: { settlement: "CARD" },
+});
+assert(restoredSettle.status === 201, "the restored order can be settled");
+
 const shiftState = await call(`/cashiering/shifts/${shiftId}`, { token });
 const expected = shiftState.data.expectedMinor;
 assert(expected === 5000000 + order2.data.totalMinor, "drawer expected = float + cash taken");
@@ -746,11 +812,16 @@ for (const sh of openShifts.data.filter((x) => x.status === "OPEN")) {
     method: "POST", token, body: { countedMinor: detail.data.expectedMinor },
   });
 }
+// Voided by the manager, not front desk: a front-desk void of this size now
+// parks for approval, which would leave the day unable to close — exactly the
+// control the night audit blocker exists to enforce.
 const openOrders = await call(`/pos/orders?propertyId=${property.id}`, { token });
 for (const o of openOrders.data.filter((x) => x.status === "OPEN")) {
-  await call(`/pos/orders/${o.id}/void`, {
-    method: "POST", token, body: { reason: "Cleared before night audit" },
+  const cleared = await call(`/pos/orders/${o.id}/void`, {
+    method: "POST", token: mgrToken, body: { reason: "Cleared before night audit" },
   });
+  assert(cleared.data.status === "VOIDED",
+    `an approver clears order ${o.orderNumber} outright`, JSON.stringify(cleared.data));
 }
 
 // Pre-flight must surface anything unfinished before the day can close.
@@ -826,6 +897,40 @@ const badExport = await call(
   { token: mgrToken }
 );
 assert(badExport.status === 400, "unknown export type is rejected");
+
+// §14 Asynchronous exports. Every declared type must actually build — a type
+// in the enum with no builder behind it returns an empty file that reads like
+// a quiet trading period.
+const exportFrom = new Date(Date.parse(businessDate) - 30 * 86400000).toISOString().slice(0, 10);
+async function runExport(type, format) {
+  const job = await call("/analytics/exports", {
+    method: "POST", token: ownerToken,
+    body: { propertyId: property.id, type, format, from: exportFrom, to: businessDate },
+  });
+  if (job.status !== 201) return { status: "REJECTED", error: JSON.stringify(job.data) };
+  for (let i = 0; i < 50; i++) {
+    const st = await call(`/analytics/exports/${job.data.jobId}`, { token: ownerToken });
+    if (st.data.status === "COMPLETE" || st.data.status === "FAILED") return st.data;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return { status: "TIMEOUT" };
+}
+for (const type of ["DAILY_FLASH", "REVENUE", "OCCUPANCY", "CASHIER", "TAX",
+                    "RECEIVABLES", "GUEST_LEDGER", "AUDIT"]) {
+  const done = await runExport(type, "CSV");
+  assert(done.status === "COMPLETE" && !!done.download?.url,
+    `${type} export completes with a download link`, JSON.stringify(done.error ?? done.status));
+}
+
+const pdfJob = await runExport("GUEST_LEDGER", "PDF");
+assert(pdfJob.status === "COMPLETE", "PDF export completes", JSON.stringify(pdfJob.error));
+const pdfRes = await fetch(pdfJob.download.url);
+const pdfBuf = Buffer.from(await pdfRes.arrayBuffer());
+assert(pdfRes.headers.get("content-type") === "application/pdf",
+  "PDF export is served with a PDF content type");
+assert(pdfBuf.subarray(0, 5).toString("latin1") === "%PDF-" &&
+  pdfBuf.toString("latin1").trimEnd().endsWith("%%EOF"),
+  "the PDF is a complete document, not a renamed CSV");
 
 const headRes = await fetch(`${BASE}/health/live`);
 assert(headRes.headers.get("x-frame-options") || headRes.headers.get("content-security-policy"),

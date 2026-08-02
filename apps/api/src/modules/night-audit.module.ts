@@ -61,6 +61,9 @@ export class NightAuditService {
     const openPosOrders = await this.prisma.posOrder.count({
       where: { tenantId: auth.tenantId, propertyId, status: "OPEN" },
     });
+    const pendingVoids = await this.prisma.posOrder.count({
+      where: { tenantId: auth.tenantId, propertyId, status: "VOID_PENDING" },
+    });
     const dueOut = await this.prisma.reservation.count({
       where: {
         tenantId: auth.tenantId,
@@ -107,6 +110,16 @@ export class NightAuditService {
         code: "OPEN_POS_ORDERS",
         message: `${openPosOrders} POS order(s) are still open and would not be billed tonight.`,
         count: openPosOrders,
+      });
+    }
+    // A void nobody decided on is revenue in limbo: the order is neither
+    // billed nor written off, and rolling the date makes it yesterday's
+    // problem, which is how it stops being anyone's problem.
+    if (pendingVoids > 0) {
+      blockers.push({
+        code: "POS_VOIDS_AWAITING_APPROVAL",
+        message: `${pendingVoids} POS void(s) await supervisor approval. Decide them before closing the day.`,
+        count: pendingVoids,
       });
     }
     if (pendingShifts > 0) {

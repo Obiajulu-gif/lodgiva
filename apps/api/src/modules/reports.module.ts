@@ -257,5 +257,6 @@ export class ReportsController {
   imports: [PropertiesModule],
   controllers: [ReportsController],
   providers: [ReportsService],
+  exports: [ReportsService],
 })
 export class ReportsModule {}

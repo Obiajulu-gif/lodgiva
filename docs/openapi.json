@@ -4424,7 +4424,7 @@
           "Analytics"
         ],
         "summary": "Request an asynchronous export",
-        "description": "A year of ledger will not return inside an HTTP request, so the job is recorded, run out of band, and the result stored as a file downloaded through a signed URL. Poll the job for status.",
+        "description": "A year of guest ledger will not return inside an HTTP request, so the job is recorded, run out of band, and the result stored as a file downloaded through a signed URL. Poll the job for status. Every type in the enum has a builder behind it; a type without one fails the job with a reason rather than returning an empty file that reads like a quiet trading period. PDF output is A4 landscape, fixed pitch, paginated and numbered; the naira sign is written NGN because it has no WinAnsi code point. CSV and PDF of the same report always carry the same columns.",
         "responses": {
           "201": {
             "description": "Job queued"
@@ -4463,8 +4463,10 @@
                   "format": {
                     "type": "string",
                     "enum": [
-                      "CSV"
-                    ]
+                      "CSV",
+                      "PDF"
+                    ],
+                    "default": "CSV"
                   },
                   "from": {
                     "type": "string",
@@ -4506,6 +4508,80 @@
             }
           }
         ]
+      }
+    },
+    "/pos/orders/{id}/void": {
+      "post": {
+        "tags": [
+          "POS"
+        ],
+        "summary": "Void an order (approval above the correction window)",
+        "description": "A void is the one POS action that makes revenue disappear, which makes it the obvious way to take cash from a till: ring the order, collect, void the ticket, keep the difference. Small voids (at or under NGN5,000) caught within 15 minutes of the order opening are treated as keying corrections and apply immediately. Anything larger or older parks the order in VOID_PENDING and raises a POS_VOID approval request; the order can then be neither settled nor voided again until a different user with approval.decide decides it. Approval voids the order; rejection returns it to OPEN and clears the reason, so a live ticket never looks cancelled. Holders of approval.decide void directly - their name is on the audit entry, which is where the control actually rests. A SETTLED order is never voidable: reverse the folio entry or refund.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "VOIDED, or PENDING_APPROVAL with the raised request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "VOIDED",
+                        "PENDING_APPROVAL"
+                      ]
+                    },
+                    "message": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "request": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ORDER_NOT_FOUND"
+          },
+          "409": {
+            "description": "ORDER_SETTLED, ALREADY_VOIDED or VOID_PENDING"
+          }
+        }
       }
     }
   },

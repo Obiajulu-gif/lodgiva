@@ -426,25 +426,21 @@ test("a receivables export completes and matches the report", async () => {
   assert.equal(state.data.rowCount, report.data.rows.length, "export and report must agree");
 });
 
-test("an unimplemented export type fails visibly rather than silently", async () => {
+test("an export type the API does not accept is rejected at the boundary", async () => {
+  // AUDIT used to fail here as unimplemented; it is built now. What still
+  // needs guarding is the boundary itself: an unknown type must be refused
+  // outright rather than accepted and quietly producing an empty file.
   const job = await call("/analytics/exports", {
     method: "POST",
     token: ownerToken,
     body: {
       propertyId: property.id,
-      type: "AUDIT",
+      type: "NOT_A_REPORT",
       from: addDays(businessDate, -7),
       to: businessDate,
     },
   });
-  let state;
-  for (let i = 0; i < 20; i++) {
-    state = await call(`/analytics/exports/${job.data.jobId}`, { token: ownerToken });
-    if (["COMPLETE", "FAILED"].includes(state.data.status)) break;
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  assert.equal(state.data.status, "FAILED");
-  assert.match(state.data.error, /not implemented/i);
+  assert.equal(job.status, 400, JSON.stringify(job.data));
 });
 
 test("export jobs are listed for the property", async () => {

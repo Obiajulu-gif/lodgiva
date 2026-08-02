@@ -179,6 +179,50 @@ export class ApprovalsService {
         },
       });
 
+      // §13.4 POS void. The order is applied or released here rather than by
+      // calling back into PosService, which would make the two modules
+      // circular; the state change is two fields and belongs in the same
+      // transaction as the decision either way.
+      if (request.type === "POS_VOID") {
+        const order = await tx.posOrder.findFirst({
+          where: { id: request.entityId, tenantId: auth.tenantId },
+        });
+        if (!order) {
+          throw new NotFoundException({
+            error: { code: "ORDER_NOT_FOUND", message: "The order this request covers is gone." },
+          });
+        }
+        if (order.status !== "VOID_PENDING") {
+          throw new ConflictException({
+            error: {
+              code: "ORDER_NOT_PENDING",
+              message: `The order is ${order.status}, not awaiting a void decision.`,
+            },
+          });
+        }
+        await tx.posOrder.update({
+          where: { id: order.id },
+          data: approve
+            ? { status: "VOIDED", voidRequestId: null }
+            : // A rejected void returns the order to the floor, and the reason
+              // is cleared so it cannot be mistaken for a void that happened.
+              { status: "OPEN", voidRequestId: null, voidReason: null },
+        });
+        await this.audit.log(tx, auth, {
+          action: approve ? "pos.order_voided" : "pos.void_rejected",
+          entityType: "pos_order",
+          entityId: order.id,
+          propertyId: order.propertyId,
+          summary: {
+            orderNumber: order.orderNumber,
+            amountMinor: Number(order.totalMinor),
+            reason: request.reason,
+            requestedBy: request.requestedById,
+            approval: "supervisor",
+          },
+        });
+      }
+
       if (approve && request.type === "DISCOUNT") {
         const payload = JSON.parse(request.payload) as { folioId: string; amountMinor: number };
         const folio = await this.folios.getFolioOrThrow(auth, payload.folioId, tx);

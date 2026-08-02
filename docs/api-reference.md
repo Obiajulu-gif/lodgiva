@@ -670,8 +670,76 @@ still owing separately — that is a debt that walked out of the building.
 
 ### Asynchronous exports
 
-`POST /analytics/exports` records a job, runs it out of band, stores the CSV
+`POST /analytics/exports` records a job, runs it out of band, stores the result
 through the file service and exposes it via a signed download URL. Poll
-`GET /analytics/exports/{id}`. An unimplemented export type fails **visibly**
-with `status: FAILED` and a reason, rather than returning an empty file that
-looks like a quiet period of trading.
+`GET /analytics/exports/{id}`.
+
+All eight types are built: `DAILY_FLASH`, `REVENUE`, `OCCUPANCY`, `CASHIER`,
+`TAX`, `RECEIVABLES`, `GUEST_LEDGER`, `AUDIT`. A type reaching the runner
+without a builder fails **visibly** with `status: FAILED` and a reason, rather
+than returning an empty file that looks like a quiet period of trading; a type
+outside the enum is rejected at the boundary with `400`.
+
+`DAILY_FLASH` is emitted as label/value pairs rather than rows: it is a snapshot
+of the current business date, not a range, and stamping the requested range on
+it would put a date on the figures that they do not have.
+
+#### PDF output
+
+`format: "PDF"` renders through `src/common/pdf.ts`, a dependency-free PDF 1.4
+writer: A4 landscape, Courier, paginated and numbered, with the report's
+assumptions printed under the table so a figure cannot be read out of context
+once the file has left the building.
+
+Deliberate limits:
+
+- **One font family.** Fixed pitch makes column alignment arithmetic rather
+  than font-metric lookup.
+- **WinAnsi only.** The naira sign has no WinAnsi code point, so money is
+  written `NGN` — dropping the currency marker silently would be worse.
+- **No compression.** A few thousand rows is well under a megabyte, and an
+  uncompressed stream is inspectable when something looks wrong.
+- **Columns come from the first row**, so a CSV and a PDF of the same report
+  always carry the same fields; one file cannot quietly hold less than the other.
+
+Correctness is asserted by parsing the file back — every xref offset must land
+on its object header and every declared `/Length` must match the actual stream
+bytes (`test/unit/pdf.test.mjs`). A wrong offset produces a file some readers
+repair silently and others reject, which a byte count would never catch. The
+integration and e2e suites additionally download a generated PDF and check it
+starts `%PDF-` and ends `%%EOF` — that it is a real document, not a renamed CSV.
+
+## POS void approvals (§13.4)
+
+A void is the one POS action that makes revenue disappear, which makes it the
+obvious route for taking cash from a till: ring the order, collect the money,
+void the ticket, keep the difference.
+
+| Condition | Outcome |
+| --- | --- |
+| Actor holds `approval.decide` | Voids directly; their name is on the audit entry |
+| Total ≤ ₦5,000 **and** order opened ≤ 15 min ago | Voids directly — a keying correction |
+| Total > ₦5,000, **or** opened > 15 min ago | `PENDING_APPROVAL`; order moves to `VOID_PENDING` |
+| Order already `SETTLED` | `409 ORDER_SETTLED` — reverse the folio entry or refund instead |
+
+While an order is `VOID_PENDING`:
+
+- `POST /pos/orders/:id/settle` returns `409 VOID_PENDING`. Settling underneath
+  a pending void would let a waiter collect on an order they have already asked
+  to make disappear.
+- A second void request returns `409 VOID_PENDING`.
+- Night audit pre-flight raises the **blocker** `POS_VOIDS_AWAITING_APPROVAL`.
+  A void nobody decided on is revenue in limbo — neither billed nor written off
+  — and rolling the business date over it makes it yesterday's problem, which is
+  how it stops being anyone's problem.
+
+Decisions go through the existing approval engine, so separation of duties comes
+for free: the requester is never the approver (`409 SELF_APPROVAL`), and a role
+without `approval.decide` gets `403 PERMISSION_DENIED`. Approval voids the
+order; **rejection returns it to `OPEN` and clears `voidReason`**, so a live
+ticket never carries the trace of a void that did not happen.
+
+The threshold rule lives in `src/common/pos-void.ts` as a pure function. The
+aged-order branch cannot be produced against a live clock without waiting
+fifteen real minutes, and a rule exercised only through HTTP is a rule nobody
+tests.

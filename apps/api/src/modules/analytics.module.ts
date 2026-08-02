@@ -15,11 +15,33 @@ import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
 import { AuditService } from "../common/audit.service";
 import { nightsBetween } from "../common/money";
-import { toCsv } from "./reports.module";
+import { toCsv, ReportsModule, ReportsService } from "./reports.module";
+import { renderTablePdf } from "../common/pdf";
 import { PropertiesModule, PropertiesService } from "./properties.module";
 import { FilesModule, FilesService } from "./files.module";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+const EXPORT_TITLES: Record<string, string> = {
+  DAILY_FLASH: "Daily flash",
+  REVENUE: "Revenue by category",
+  OCCUPANCY: "Occupancy, ADR and RevPAR",
+  CASHIER: "Cashier report",
+  TAX: "Tax summary",
+  RECEIVABLES: "Aged receivables",
+  GUEST_LEDGER: "Guest ledger",
+  AUDIT: "Audit trail",
+};
+
+// Printed on the PDF so a figure cannot be read out of context once the file
+// has left the building.
+const EXPORT_NOTES: Record<string, string> = {
+  REVENUE: "Excludes payments and refunds: those settle revenue, they are not revenue.",
+  OCCUPANCY: "ADR is per room sold; RevPAR is per room available. Blocked rooms reduce availability.",
+  CASHIER: "Shortages and overages are listed separately; netting them hides two different problems.",
+  RECEIVABLES: "Ageing runs from the departure date, against the current business date.",
+  TAX: "Rule version records which rate was in force when each line was posted.",
+};
 
 const exportSchema = z
   .object({
@@ -34,7 +56,7 @@ const exportSchema = z
       "GUEST_LEDGER",
       "AUDIT",
     ]),
-    format: z.enum(["CSV"]).default("CSV"),
+    format: z.enum(["CSV", "PDF"]).default("CSV"),
     from: isoDate,
     to: isoDate,
   })
@@ -54,7 +76,8 @@ export class AnalyticsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly properties: PropertiesService,
-    private readonly files: FilesService
+    private readonly files: FilesService,
+    private readonly reports: ReportsService
   ) {}
 
   private assertRange(from: string, to: string) {
@@ -388,14 +411,39 @@ export class AnalyticsService {
     try {
       const { from, to } = JSON.parse(job.params) as { from: string; to: string };
       const rows = await this.rowsFor(auth, job.type, job.propertyId, from, to);
-      const csv = toCsv(rows as unknown as Record<string, unknown>[]);
-      const bytes = Buffer.from(csv, "utf8");
+      const isPdf = job.format === "PDF";
+
+      let bytes: Buffer;
+      if (isPdf) {
+        const property = await this.prisma.property.findUniqueOrThrow({
+          where: { id: job.propertyId },
+          select: { name: true, code: true },
+        });
+        // Columns come from the first row, so a CSV and a PDF of the same
+        // report always carry the same fields — one file cannot quietly hold
+        // less than the other.
+        const columns = rows.length ? Object.keys(rows[0]) : ["result"];
+        bytes = renderTablePdf({
+          title: `${EXPORT_TITLES[job.type] ?? job.type} — ${property.name}`,
+          meta: [
+            `Property: ${property.code}`,
+            `Range: ${from} to ${to}`,
+            `Generated: ${new Date().toISOString().replace("T", " ").slice(0, 19)} UTC`,
+            `Rows: ${rows.length}`,
+          ],
+          columns,
+          rows: rows.map((r) => columns.map((c) => r[c] as string)),
+          notes: EXPORT_NOTES[job.type] ? [EXPORT_NOTES[job.type]] : undefined,
+        });
+      } else {
+        bytes = Buffer.from(toCsv(rows as unknown as Record<string, unknown>[]), "utf8");
+      }
 
       const file = await this.files.storeGenerated(auth, {
         propertyId: job.propertyId,
         purpose: "EXPORT",
-        contentType: "text/csv",
-        originalName: `${job.type.toLowerCase()}-${from}_to_${to}.csv`,
+        contentType: isPdf ? "application/pdf" : "text/csv",
+        originalName: `${job.type.toLowerCase()}-${from}_to_${to}.${isPdf ? "pdf" : "csv"}`,
         bytes,
         entityType: "export_job",
         entityId: job.id,
@@ -474,7 +522,81 @@ export class AnalyticsService {
           folioStatus: row.status,
         }));
       }
+      case "DAILY_FLASH": {
+        // The flash is a snapshot of the current business date rather than a
+        // range, so it is emitted as label/value pairs — pretending it spans
+        // the requested range would put a date on it that it does not have.
+        const r = await this.reports.dailyFlash(auth, propertyId);
+        const rows: Record<string, unknown>[] = [
+          { metric: "Business date", value: r.businessDate },
+          { metric: "Rooms", value: r.totalRooms },
+          { metric: "Occupied", value: r.occupied },
+          { metric: "Occupancy %", value: r.occupancyPct },
+          { metric: "Arrivals today", value: r.arrivalsToday },
+          { metric: "Departures today", value: r.departuresToday },
+          { metric: "Revenue today (NGN)", value: (r.revenueTodayMinor / 100).toFixed(2) },
+          { metric: "Outstanding (NGN)", value: (r.outstandingMinor / 100).toFixed(2) },
+        ];
+        for (const p of r.paymentsByMethod) {
+          rows.push({
+            metric: `Payments — ${p.method} (${p.count})`,
+            value: (p.totalMinor / 100).toFixed(2),
+          });
+        }
+        return rows;
+      }
+      case "TAX": {
+        const r = await this.reports.taxSummary(auth, propertyId, from, to);
+        return r.map((t) => ({
+          businessDate: t.businessDate,
+          taxCode: t.taxCode,
+          // The rule version is what makes a filing defensible months later:
+          // it says which rate was in force when the line was posted.
+          ruleVersion: t.ruleVersion ?? "",
+          lines: t.lines,
+          totalNaira: (Number(t.totalMinor) / 100).toFixed(2),
+        }));
+      }
+      case "GUEST_LEDGER": {
+        const r = await this.reports.guestLedger(auth, propertyId, from, to);
+        return r.map((e) => ({
+          businessDate: e.businessDate,
+          confirmationCode: e.confirmationCode,
+          guest: e.guest,
+          type: e.type,
+          description: e.description,
+          taxCode: e.taxCode,
+          amountNaira: e.amountNaira,
+        }));
+      }
+      case "AUDIT": {
+        const events = await this.prisma.auditEvent.findMany({
+          where: {
+            tenantId: auth.tenantId,
+            propertyId,
+            createdAt: {
+              gte: new Date(`${from}T00:00:00.000Z`),
+              lte: new Date(`${to}T23:59:59.999Z`),
+            },
+          },
+          orderBy: { createdAt: "asc" },
+          take: 20000,
+        });
+        return events.map((e) => ({
+          at: e.createdAt.toISOString(),
+          actorType: e.actorType,
+          actorId: e.actorId ?? "",
+          action: e.action,
+          entityType: e.entityType,
+          entityId: e.entityId,
+          requestId: e.requestId ?? "",
+          summary: e.summary ?? "",
+        }));
+      }
       default:
+        // Reached only if a type is added to the schema enum without a builder.
+        // Failing loudly beats delivering an empty CSV that reads like a quiet
+        // trading period.
         throw new Error(`Export type ${type} is not implemented.`);
     }
   }
@@ -586,7 +708,7 @@ export class AnalyticsController {
 }
 
 @Module({
-  imports: [PropertiesModule, FilesModule],
+  imports: [PropertiesModule, FilesModule, ReportsModule],
   controllers: [AnalyticsController],
   providers: [AnalyticsService],
 })

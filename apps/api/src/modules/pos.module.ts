@@ -16,6 +16,8 @@ import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
 import { AuditService } from "../common/audit.service";
 import { TaxService } from "../common/tax.service";
+import { roleHasPermission } from "../common/permissions";
+import { decideVoid } from "../common/pos-void";
 import { PropertiesModule, PropertiesService } from "./properties.module";
 import { FoliosModule, FoliosService } from "./folios.module";
 
@@ -186,6 +188,18 @@ export class PosService {
           error: { code: "ORDER_NOT_FOUND", message: "Order not found." },
         });
       }
+      if (order.status === "VOID_PENDING") {
+        // Settling underneath a pending void would let a waiter collect on an
+        // order they have already asked to make disappear.
+        throw new ConflictException({
+          error: {
+            code: "VOID_PENDING",
+            message:
+              "This order has a void awaiting approval. It must be approved or rejected before it can be settled.",
+            details: { approvalRequestId: order.voidRequestId },
+          },
+        });
+      }
       if (order.status !== "OPEN") {
         throw new ConflictException({
           error: { code: "ORDER_NOT_OPEN", message: `Order is already ${order.status}.` },
@@ -263,7 +277,20 @@ export class PosService {
     });
   }
 
-  /** Voids require a reason and are only possible before settlement. */
+  /**
+   * §13.4 Voiding an order.
+   *
+   * A void is the one POS action that makes revenue disappear, which makes it
+   * the obvious way to take cash from a till: ring the order, collect the
+   * money, void the ticket, pocket the difference. So voids are only free for
+   * genuine keying mistakes — small, and caught within a few minutes of the
+   * order being opened. Everything else goes to a supervisor, and the order
+   * sits in VOID_PENDING where it can be neither settled nor voided again.
+   *
+   * A settled order is never voidable at all: the money has already reached a
+   * folio or a drawer, and the honest correction there is a reversal or refund
+   * that leaves both sides of the story on the ledger.
+   */
   async void(auth: AuthContext, orderId: string, body: unknown) {
     const dto = voidSchema.parse(body);
     return this.prisma.$transaction(async (tx) => {
@@ -283,6 +310,65 @@ export class PosService {
           },
         });
       }
+      if (order.status === "VOIDED") {
+        throw new ConflictException({
+          error: { code: "ALREADY_VOIDED", message: "This order is already voided." },
+        });
+      }
+      if (order.status === "VOID_PENDING") {
+        throw new ConflictException({
+          error: {
+            code: "VOID_PENDING",
+            message: "A void is already awaiting supervisor approval for this order.",
+            details: { approvalRequestId: order.voidRequestId },
+          },
+        });
+      }
+
+      const ageMinutes = (Date.now() - order.createdAt.getTime()) / 60_000;
+      const total = Number(order.totalMinor);
+      const canApprove = roleHasPermission(auth.role, "approval.decide");
+      const decision = decideVoid({ totalMinor: total, ageMinutes, canApprove });
+
+      if (decision.requiresApproval) {
+        const request = await tx.approvalRequest.create({
+          data: {
+            tenantId: auth.tenantId,
+            propertyId: order.propertyId,
+            type: "POS_VOID",
+            entityType: "pos_order",
+            entityId: order.id,
+            amountMinor: order.totalMinor,
+            reason: dto.reason,
+            payload: JSON.stringify({ orderId: order.id, orderNumber: order.orderNumber }),
+            requestedById: auth.userId,
+          },
+        });
+        await tx.posOrder.update({
+          where: { id: order.id },
+          data: { status: "VOID_PENDING", voidRequestId: request.id, voidReason: dto.reason },
+        });
+        await this.audit.log(tx, auth, {
+          action: "approval.requested",
+          entityType: "approval_request",
+          entityId: request.id,
+          propertyId: order.propertyId,
+          summary: {
+            type: "POS_VOID",
+            orderNumber: order.orderNumber,
+            amountMinor: total,
+            ageMinutes: Math.round(ageMinutes),
+            reason: dto.reason,
+          },
+        });
+        return {
+          status: "PENDING_APPROVAL",
+          request,
+          order: { id: order.id, orderNumber: order.orderNumber, status: "VOID_PENDING" },
+          message: decision.message,
+        };
+      }
+
       const voided = await tx.posOrder.update({
         where: { id: order.id },
         data: { status: "VOIDED", voidReason: dto.reason },
@@ -292,9 +378,14 @@ export class PosService {
         entityType: "pos_order",
         entityId: order.id,
         propertyId: order.propertyId,
-        summary: { orderNumber: order.orderNumber, reason: dto.reason },
+        summary: {
+          orderNumber: order.orderNumber,
+          reason: dto.reason,
+          amountMinor: total,
+          approval: canApprove ? "self (approver)" : "not required (within correction window)",
+        },
       });
-      return voided;
+      return { status: "VOIDED", order: voided };
     });
   }
 }

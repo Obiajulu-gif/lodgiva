@@ -22,6 +22,16 @@ interface Reservation {
   folios: { id: string; status: string }[];
 }
 interface Shift { id: string; shiftNumber: string; status: string }
+interface Approval {
+  id: string;
+  type: string;
+  entityId: string;
+  amountMinor: number | null;
+  reason: string;
+  status: string;
+  requestedById: string;
+  createdAt: string;
+}
 
 export default function PosPage({ propertyId }: { propertyId: string }) {
   const qc = useQueryClient();
@@ -29,6 +39,8 @@ export default function PosPage({ propertyId }: { propertyId: string }) {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [voidFor, setVoidFor] = useState<Order | null>(null);
+  const [voidReason, setVoidReason] = useState("");
 
   const { data: outlets } = useQuery({
     queryKey: ["outlets", propertyId],
@@ -46,6 +58,13 @@ export default function PosPage({ propertyId }: { propertyId: string }) {
   const { data: shifts } = useQuery({
     queryKey: ["shifts", propertyId],
     queryFn: () => api<Shift[]>(`/cashiering/shifts?propertyId=${propertyId}`),
+  });
+  // Pending voids are money in limbo, so they are polled rather than waiting
+  // for someone to reload the page.
+  const { data: approvals } = useQuery({
+    queryKey: ["pos-approvals", propertyId],
+    queryFn: () => api<Approval[]>(`/approvals?propertyId=${propertyId}&status=PENDING`),
+    refetchInterval: 10_000,
   });
 
   const outlet = outlets?.find((o) => o.id === outletId) ?? outlets?.[0];
@@ -65,6 +84,7 @@ export default function PosPage({ propertyId }: { propertyId: string }) {
     qc.invalidateQueries({ queryKey: ["pos-orders", propertyId] });
     qc.invalidateQueries({ queryKey: ["shifts", propertyId] });
     qc.invalidateQueries({ queryKey: ["daily-flash", propertyId] });
+    qc.invalidateQueries({ queryKey: ["pos-approvals", propertyId] });
   };
 
   const createOrder = useMutation({
@@ -96,13 +116,40 @@ export default function PosPage({ propertyId }: { propertyId: string }) {
   });
 
   const voidOrder = useMutation({
-    mutationFn: (id: string) =>
-      api(`/pos/orders/${id}/void`, { method: "POST", body: { reason: "Voided from POS screen" } }),
-    onSuccess: refresh,
+    // The reason is typed by the person voiding: "Voided from POS screen"
+    // tells an auditor nothing, and this is the field they will read first.
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api<{ status: string; message: string | null }>(`/pos/orders/${id}/void`, {
+        method: "POST",
+        body: { reason },
+      }),
+    onSuccess: (res) => {
+      setVoidFor(null);
+      setVoidReason("");
+      setError("");
+      setNotice(
+        res.status === "PENDING_APPROVAL"
+          ? `${res.message ?? "A supervisor must approve this void."} The order is held until then — it cannot be settled.`
+          : "Order voided."
+      );
+      refresh();
+    },
+    onError: (e) => setError(e instanceof ApiError ? e.message : String(e)),
+  });
+
+  const decideVoid = useMutation({
+    mutationFn: ({ id, approve }: { id: string; approve: boolean }) =>
+      api(`/approvals/${id}/${approve ? "approve" : "reject"}`, { method: "POST", body: {} }),
+    onSuccess: (_r, v) => {
+      setError("");
+      setNotice(v.approve ? "Void approved — the order is cancelled." : "Void rejected — the order is back on the floor.");
+      refresh();
+    },
     onError: (e) => setError(e instanceof ApiError ? e.message : String(e)),
   });
 
   const openFolios = (inHouse ?? []).filter((r) => r.folios.some((f) => f.status === "OPEN"));
+  const pendingVoids = (approvals ?? []).filter((a) => a.type === "POS_VOID");
 
   return (
     <>
@@ -126,6 +173,39 @@ export default function PosPage({ propertyId }: { propertyId: string }) {
           ))}
         </div>
       </div>
+
+      {voidFor && (
+        <div className="card" style={{ marginBottom: 16, padding: 16, borderLeft: "3px solid var(--danger, #b3261e)" }}>
+          <h3 style={{ marginTop: 0 }}>Void {voidFor.orderNumber} — {naira(voidFor.totalMinor)}</h3>
+          <p className="sub" style={{ marginTop: 0 }}>
+            Voids above ₦5,000, or more than 15 minutes after the order was
+            opened, need a supervisor. The reason is permanent and appears on
+            the audit trail.
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              autoFocus
+              style={{ flex: 1, minWidth: 220 }}
+              placeholder="Why is this being voided?"
+              value={voidReason}
+              onChange={(e) => setVoidReason(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && voidReason.trim().length >= 3) {
+                  voidOrder.mutate({ id: voidFor.id, reason: voidReason.trim() });
+                }
+                if (e.key === "Escape") setVoidFor(null);
+              }}
+            />
+            <button
+              disabled={voidReason.trim().length < 3 || voidOrder.isPending}
+              onClick={() => voidOrder.mutate({ id: voidFor.id, reason: voidReason.trim() })}
+            >
+              Void order
+            </button>
+            <button className="secondary" onClick={() => setVoidFor(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       {error && <div className="error-box" onClick={() => setError("")}>{error}</div>}
       {notice && !error && (
@@ -212,6 +292,53 @@ export default function PosPage({ propertyId }: { propertyId: string }) {
 
       <div className="card mt">
         <h3>Orders</h3>
+        {!!pendingVoids.length && (
+          <div
+            className="card"
+            style={{ marginBottom: 14, padding: 14, borderLeft: "3px solid var(--danger, #b3261e)" }}
+          >
+            <h3 style={{ marginTop: 0 }}>Voids awaiting approval</h3>
+            <p className="sub" style={{ marginTop: 0 }}>
+              These orders are held: they cannot be settled, and the day cannot
+              close until each one is decided.
+            </p>
+            {pendingVoids.map((a) => {
+              const order = orders?.find((o) => o.id === a.entityId);
+              return (
+                <div
+                  key={a.id}
+                  style={{
+                    display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
+                    padding: "8px 0", borderTop: "1px solid var(--line, #e6e2d9)",
+                  }}
+                >
+                  <span style={{ fontFamily: "monospace", fontSize: 12 }}>
+                    {order?.orderNumber ?? a.entityId.slice(0, 8)}
+                  </span>
+                  <strong>{naira(a.amountMinor ?? 0)}</strong>
+                  <span style={{ fontSize: 12, color: "var(--ink-50)", flex: 1, minWidth: 160 }}>
+                    “{a.reason}”
+                  </span>
+                  <button
+                    className="small"
+                    disabled={decideVoid.isPending}
+                    onClick={() => decideVoid.mutate({ id: a.id, approve: true })}
+                  >
+                    Approve void
+                  </button>
+                  <button
+                    className="small secondary"
+                    disabled={decideVoid.isPending}
+                    onClick={() => decideVoid.mutate({ id: a.id, approve: false })}
+                  >
+                    Reject
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         <table>
           <thead>
             <tr><th>Order</th><th>Outlet</th><th>Items</th><th>Total</th><th>Status</th><th>Settle</th></tr>
@@ -227,7 +354,8 @@ export default function PosPage({ propertyId }: { propertyId: string }) {
                 <td>{naira(o.totalMinor)}</td>
                 <td>
                   <span className={`pill ${o.status === "SETTLED" ? "green" : o.status === "VOIDED" ? "red" : "gold"}`}>
-                    {o.status}{o.settlement ? ` · ${o.settlement.replace("_", " ")}` : ""}
+                    {o.status === "VOID_PENDING" ? "VOID — AWAITING APPROVAL" : o.status}
+                    {o.settlement ? ` · ${o.settlement.replace("_", " ")}` : ""}
                   </span>
                 </td>
                 <td>
@@ -252,7 +380,12 @@ export default function PosPage({ propertyId }: { propertyId: string }) {
                           </option>
                         ))}
                       </select>
-                      <button className="small secondary" onClick={() => voidOrder.mutate(o.id)}>Void</button>
+                      <button
+                        className="small secondary"
+                        onClick={() => { setVoidFor(o); setVoidReason(""); }}
+                      >
+                        Void
+                      </button>
                     </div>
                   )}
                 </td>

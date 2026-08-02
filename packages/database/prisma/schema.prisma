@@ -792,7 +792,7 @@ model ApprovalRequest {
   id            String    @id @default(uuid())
   tenantId      String
   propertyId    String
-  type          String // DISCOUNT | REFUND | FOLIO_REOPEN | CASH_VARIANCE | RATE_OVERRIDE
+  type          String // DISCOUNT | POS_VOID | REFUND | FOLIO_REOPEN | CASH_VARIANCE | RATE_OVERRIDE
   entityType    String
   entityId      String
   amountMinor   BigInt?
@@ -867,7 +867,7 @@ model PosOrder {
   propertyId    String
   outletId      String
   orderNumber   String
-  status        String    @default("OPEN") // OPEN | SETTLED | VOIDED
+  status        String    @default("OPEN") // OPEN | VOID_PENDING | SETTLED | VOIDED
   settlement    String? // ROOM_POSTING | CASH | CARD | POS_TERMINAL | TRANSFER
   folioId       String? // set when posted to a guest room folio
   tableRef      String?
@@ -878,6 +878,9 @@ model PosOrder {
   businessDate  String
   shiftId       String?
   voidReason    String?
+  // Set while a void is waiting on a supervisor. A pending order can be
+  // neither settled nor voided again, so a waiter cannot race the approver.
+  voidRequestId String?
   openedById    String?
   settledAt     DateTime?
   createdAt     DateTime  @default(now())
