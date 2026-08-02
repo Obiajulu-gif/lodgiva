@@ -4583,6 +4583,534 @@
           }
         }
       }
+    },
+    "/auth/mfa": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "MFA status for the current user",
+        "description": "Whether the second factor is on, when it was activated, whether tenant policy requires it, and how many recovery codes remain.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/auth/mfa/setup": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Begin MFA enrolment",
+        "description": "Returns a base32 secret and an otpauth:// URI to scan. Nothing is enabled yet - an abandoned setup must not lock anyone out, so the secret is stored inactive and password sign-in keeps working until the code is confirmed.",
+        "responses": {
+          "201": {
+            "description": "Secret and enrolment URI"
+          },
+          "401": {
+            "description": "MFA_ALREADY_ENABLED"
+          }
+        }
+      }
+    },
+    "/auth/mfa/activate": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Confirm a code and switch MFA on",
+        "description": "The user proves they can read a code from the secret before it becomes required. Returns ten recovery codes ONCE, in clear; only Argon2 hashes are stored, because a database dump must not be a set of working keys.",
+        "responses": {
+          "201": {
+            "description": "Enabled, with recovery codes"
+          },
+          "401": {
+            "description": "INVALID_MFA_CODE or MFA_NOT_STARTED"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/mfa/verify": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Exchange an MFA challenge for a session",
+        "description": "Accepts either a 6-digit TOTP (RFC 6238, one 30-second step of drift either side) or an unused recovery code. Recovery codes are single use: an unconsumed one is a permanent password that bypasses the second factor. The mfaToken is single-purpose and expires in 5 minutes - it cannot authorise anything else.",
+        "responses": {
+          "201": {
+            "description": "Session issued"
+          },
+          "401": {
+            "description": "INVALID_MFA_CODE or MFA_CHALLENGE_EXPIRED"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mfaToken",
+                  "code"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "mfaToken": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/mfa/disable": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Turn MFA off",
+        "description": "Re-proves the password, so a hijacked session cannot remove the factor. Refused with MFA_REQUIRED_BY_POLICY when the role is covered by the tenant policy.",
+        "responses": {
+          "201": {
+            "description": "Disabled"
+          },
+          "401": {
+            "description": "INVALID_CREDENTIALS or MFA_REQUIRED_BY_POLICY"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "password"
+                ],
+                "properties": {
+                  "password": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/mfa/enrol/setup": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Begin enrolment from a login challenge",
+        "description": "For a user whose role newly requires MFA. Login returns MFA_ENROLMENT_REQUIRED with a setupToken instead of MFA_REQUIRED, because this user has nothing to type yet and needs to be sent somewhere.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "setupToken"
+                ],
+                "properties": {
+                  "setupToken": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/mfa/enrol/activate": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Finish enrolment and sign in",
+        "description": "Activates the factor and returns a session in the same response, completing the sign-in that was interrupted rather than bouncing the user back to a login screen seconds after they proved themselves.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "setupToken",
+                  "code"
+                ],
+                "properties": {
+                  "setupToken": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/security-policy": {
+      "get": {
+        "tags": [
+          "Security"
+        ],
+        "summary": "Tenant security policy",
+        "description": "Which roles must use MFA, plus enrolment coverage across the tenant.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Security"
+        ],
+        "summary": "Set which roles require MFA",
+        "description": "Requires user.manage. Returns how many users will be prompted at their next sign-in - the difference between a policy change and an outage. Nobody is locked out: covered users are sent to enrolment instead.",
+        "responses": {
+          "200": {
+            "description": "Policy applied"
+          },
+          "400": {
+            "description": "Unknown role"
+          },
+          "403": {
+            "description": "PERMISSION_DENIED"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mfaRequiredRoles"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "mfaRequiredRoles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/feature-flags": {
+      "get": {
+        "tags": [
+          "Feature flags"
+        ],
+        "summary": "Flags as this tenant sees them",
+        "description": "Evaluated with tenant overrides applied. An unknown flag is absent and reads as OFF: a typo in a flag name must never switch a feature on for everyone.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/admin/feature-flags": {
+      "get": {
+        "tags": [
+          "Feature flags"
+        ],
+        "summary": "List all flags with their overrides",
+        "description": "Account owner only.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Feature flags"
+        ],
+        "summary": "Create a flag",
+        "description": "Keys are lower-case kebab-case, so a flag cannot be created twice under two spellings and then read as two different flags.",
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "400": {
+            "description": "FLAG_EXISTS"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "key",
+                  "description"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]*$"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/feature-flags/{key}": {
+      "put": {
+        "tags": [
+          "Feature flags"
+        ],
+        "summary": "Toggle a flag or set tenant overrides",
+        "description": "Rollout state lives in the database, not in environment variables: during an incident a redeploy is the slowest possible mitigation. An override wins over the default in BOTH directions - enable for one pilot tenant, or disable for one tenant having a bad day. Send null to remove an override. Changes are audited, because what changed just before it broke is the first question of every incident.",
+        "responses": {
+          "200": {
+            "description": "Updated"
+          },
+          "404": {
+            "description": "FLAG_NOT_FOUND"
+          }
+        },
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "overrides": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "boolean",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Prometheus metrics",
+        "description": "Text exposition format. PUBLIC by design - a scraper has no session - so it must be blocked at the edge in production; see the WAF rules in docs/operations.md. Route labels are templated (/reservations/:id), never raw ids: one time series per record produces no usable percentile and melts a metrics backend.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/observability/service-level": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Service level indicators",
+        "description": "Availability and latency SLIs over a window, with the slowest routes. An empty window reports null rather than 100 percent: no traffic is not the same as no failures, and a dashboard showing green for a dead service is worse than one showing nothing.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "windowMinutes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/observability/status": {
+      "get": {
+        "tags": [
+          "Observability"
+        ],
+        "summary": "Which exporters are actually live",
+        "description": "States plainly whether OTLP tracing and Sentry error reporting are configured, and why not when they are not - so nobody assumes traces are being collected when nothing is listening.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/support/lookup": {
+      "get": {
+        "tags": [
+          "Support"
+        ],
+        "summary": "Find a booking from whatever the caller remembers",
+        "description": "One search across confirmation code, email, phone, surname and invoice number. Requires support.lookup (owner, GM, finance). Results are REDACTED: enough to confirm you have the right person, never enough to become a source of guest contact details. Every lookup is written to the audit trail - a tool that reaches guest data without leaving a trace is the tool an insider uses. Read only.",
+        "responses": {
+          "200": {
+            "description": "Reservations, guests and invoices"
+          },
+          "400": {
+            "description": "QUERY_TOO_SHORT"
+          },
+          "403": {
+            "description": "PERMISSION_DENIED"
+          }
+        },
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/support/reservations/{id}": {
+      "get": {
+        "tags": [
+          "Support"
+        ],
+        "summary": "Full reservation timeline",
+        "description": "What was booked, what it cost, what has been paid and everything that has happened to it - assembled server-side so support is not clicking through five screens while a guest waits. Folio entries carry their reversalOfId, which is what lets support explain a charge the guest says was removed.",
+        "responses": {
+          "200": {
+            "description": "Timeline"
+          },
+          "404": {
+            "description": "RESERVATION_NOT_FOUND"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/support/diagnostics": {
+      "get": {
+        "tags": [
+          "Support"
+        ],
+        "summary": "Data consistency checks for one property",
+        "description": "Future-dated charges, negative receipts, undecided POS voids, unreclaimed expired holds and failed exports. Findings carry a severity so they can be triaged rather than read as one undifferentiated list.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "info": {

@@ -29,16 +29,35 @@ async function call(path, { method = "GET", body, token } = {}) {
   return { status: res.status, data };
 }
 
-console.log("1. Authentication");
-const bad = await call("/auth/login", {
-  method: "POST",
-  body: { email: "frontdesk@grandpalm.demo", password: "wrong" },
-});
-assert(bad.status === 401, "wrong password rejected");
+/**
+ * The last section of this suite deliberately exhausts the per-IP login budget
+ * to prove credential stuffing is refused. That leaves the budget spent for the
+ * rest of the minute, so a back-to-back re-run would otherwise fail on its very
+ * first request - for the wrong reason. Waiting the window out here keeps the
+ * suite re-runnable without weakening the assertion at the end.
+ */
+async function loginWhenAllowed(body) {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const res = await call("/auth/login", { method: "POST", body });
+    if (res.status !== 429) return res;
+    if (attempt === 0) {
+      console.log("   (login rate limit cooling down from a previous run - waiting)");
+    }
+    await new Promise((r) => setTimeout(r, 10_000));
+  }
+  throw new Error("login stayed rate limited for 80s - is another client hammering the API?");
+}
 
-const login = await call("/auth/login", {
-  method: "POST",
-  body: { email: "frontdesk@grandpalm.demo", password: "Password123!" },
+console.log("1. Authentication");
+const bad = await loginWhenAllowed({
+  email: "frontdesk@grandpalm.demo",
+  password: "wrong",
+});
+assert(bad.status === 401, "wrong password rejected", `got ${bad.status}`);
+
+const login = await loginWhenAllowed({
+  email: "frontdesk@grandpalm.demo",
+  password: "Password123!",
 });
 assert(login.status === 201 || login.status === 200, "login succeeds");
 const token = login.data.accessToken;
@@ -948,6 +967,146 @@ const actions = audit.data.map((a) => a.action);
 assert(actions.includes("frontdesk.check_in"), "check-in audit event recorded");
 assert(actions.includes("payment.confirmed"), "payment audit event recorded");
 assert(actions.includes("night_audit.run"), "night audit event recorded");
+
+console.log("10. Hardening (\u00a712)");
+
+// MFA: a password alone stops being enough once the second factor is on.
+const mfaSetup = await call("/auth/mfa/setup", { method: "POST", token: mgrToken });
+assert(mfaSetup.status === 201 && !!mfaSetup.data.secret, "MFA setup returns a secret to scan");
+assert(mfaSetup.data.otpauthUri.startsWith("otpauth://totp/"),
+  "the enrolment URI is scannable by a real authenticator app");
+
+const { createHmac } = await import("node:crypto");
+const B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+function totpCode(secret) {
+  let bits = 0, value = 0; const bytes = [];
+  for (const ch of secret.toUpperCase().replace(/[\s=-]/g, "")) {
+    value = (value << 5) | B32.indexOf(ch); bits += 5;
+    if (bits >= 8) { bytes.push((value >>> (bits - 8)) & 255); bits -= 8; }
+  }
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000)));
+  const d = createHmac("sha1", Buffer.from(bytes)).update(buf).digest();
+  const o = d[d.length - 1] & 0x0f;
+  const n = ((d[o] & 0x7f) << 24) | ((d[o+1] & 0xff) << 16) | ((d[o+2] & 0xff) << 8) | (d[o+3] & 0xff);
+  return String(n % 1000000).padStart(6, "0");
+}
+
+const mfaOn = await call("/auth/mfa/activate", {
+  method: "POST", token: mgrToken, body: { code: totpCode(mfaSetup.data.secret) },
+});
+assert(mfaOn.status === 201 && mfaOn.data.enabled === true, "a valid code activates MFA",
+  JSON.stringify(mfaOn.data));
+assert(mfaOn.data.recoveryCodes.length === 10, "recovery codes are issued once, in clear");
+
+const gated = await call("/auth/login", {
+  method: "POST", body: { email: "manager@grandpalm.demo", password: "Password123!" },
+});
+assert(gated.data.status === "MFA_REQUIRED" && !gated.data.accessToken,
+  "the correct password alone no longer yields a session", JSON.stringify(gated.data));
+
+// The challenge token is signed with the same secret; only its purpose stops
+// it authorising anything. Accepting it would mean a request with no tenant,
+// and every tenantId filter in the codebase silently becoming unfiltered.
+const challengeMisuse = await call("/reservations", { token: gated.data.mfaToken });
+assert(challengeMisuse.status === 401,
+  "an MFA challenge token cannot be used as an access token",
+  JSON.stringify(challengeMisuse.data).slice(0, 120));
+
+const exchanged = await call("/auth/mfa/verify", {
+  method: "POST",
+  body: { mfaToken: gated.data.mfaToken, code: totpCode(mfaSetup.data.secret) },
+});
+assert(exchanged.status === 201 && !!exchanged.data.accessToken,
+  "the code exchanges the challenge for a real session", JSON.stringify(exchanged.data));
+
+const mfaOff = await call("/auth/mfa/disable", {
+  method: "POST", token: exchanged.data.accessToken, body: { password: "Password123!" },
+});
+assert(mfaOff.data.enabled === false, "MFA can be removed by re-proving the password");
+
+// Observability
+const traced = await fetch(`${BASE}/auth/me`, {
+  headers: {
+    Authorization: `Bearer ${token}`,
+    traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+  },
+});
+assert(traced.headers.get("x-trace-id") === "4bf92f3577b34da6a3ce929d0e0e4736",
+  "an inbound W3C trace is continued across the hop");
+
+const metrics = await fetch(`${BASE}/metrics`);
+const metricsBody = await metrics.text();
+assert(metrics.status === 200 && metricsBody.includes("lodgiva_http_requests_total"),
+  "Prometheus metrics are scrapeable");
+assert(!/route="[^"]*[0-9a-f]{8}-[0-9a-f]{4}-/.test(metricsBody),
+  "route labels are templated, not one time series per record");
+
+const sl = await call("/observability/service-level?windowMinutes=60", { token: mgrToken });
+assert(sl.status === 200 && typeof sl.data.sloLatencyMs === "number",
+  "the service-level report exposes the SLI");
+
+// Support tooling
+const supportHit = await call(
+  `/support/lookup?q=${encodeURIComponent(res.data.confirmationCode)}`,
+  { token: mgrToken }
+);
+assert(supportHit.status === 200 &&
+  supportHit.data.reservations.some((r) => r.confirmationCode === res.data.confirmationCode),
+  "support lookup finds a booking by confirmation code",
+  JSON.stringify(supportHit.data).slice(0, 150));
+
+const supportDenied = await call("/support/lookup?q=test", { token });
+assert(supportDenied.status === 403, "front desk cannot use support lookup");
+
+// Feature flags
+const flagKey = `e2e-${Date.now().toString(36)}`;
+const flagCreated = await call("/admin/feature-flags", {
+  method: "POST", token: ownerToken,
+  body: { key: flagKey, description: "Created by the e2e suite.", enabled: false },
+});
+assert(flagCreated.status === 201, "a feature flag can be created", JSON.stringify(flagCreated.data));
+const flagsSeen = await call("/feature-flags", { token: ownerToken });
+assert(flagsSeen.data[flagKey] === false, "a new flag starts off, so a typo cannot enable a feature");
+
+// Rate limiting. Deliberately the LAST thing in this file: it exhausts the
+// per-IP login budget, and anything after it that tried to sign in would fail
+// for the wrong reason.
+// The budget is read from the route itself rather than hard-coded, so this
+// exercises the real limit whether the API is running the production default
+// (30/min) or a raised value for a test run.
+const limitProbe = await fetch(`${BASE}/auth/login`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email: "nobody@grandpalm.demo", password: "wrong-password" }),
+});
+const authBudget = Number(limitProbe.headers.get("x-ratelimit-limit"));
+const remaining = Number(limitProbe.headers.get("x-ratelimit-remaining"));
+const generalProbe = await fetch(`${BASE}/health/live`);
+assert(authBudget < Number(generalProbe.headers.get("x-ratelimit-limit")),
+  "login carries a tighter budget than the general API", `auth=${authBudget}`);
+
+// Sent as ONE burst of deliberately malformed bodies. The limiter is an
+// onRequest hook, so these count exactly like real attempts — but they skip
+// the argon2 verification, and that matters: a well-formed guess costs the
+// server ~200ms by design, so sending hundreds sequentially takes longer than
+// the minute the window resets in, and the budget is never actually reached.
+let sawRateLimit = false;
+const seenStatuses = new Set();
+const burst = await Promise.all(
+  Array.from({ length: remaining + 5 }, () =>
+    call("/auth/login", { method: "POST", body: { email: "not-an-email" } })
+  )
+);
+for (const a of burst) {
+  seenStatuses.add(a.status);
+  if (a.status === 429 && a.data.error?.code === "RATE_LIMITED") sawRateLimit = true;
+}
+const lastStatus = [...seenStatuses].sort().join(",");
+
+assert(sawRateLimit,
+  "a burst against the login route is refused with 429 RATE_LIMITED, not 500",
+  `statuses seen: ${lastStatus}`);
 
 console.log(failures === 0 ? "\nALL E2E CHECKS PASSED ✅" : `\n${failures} CHECK(S) FAILED ❌`);
 process.exit(failures === 0 ? 0 : 1);

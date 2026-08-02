@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
+import { HttpException } from "@nestjs/common";
 import {
   FastifyAdapter,
   NestFastifyApplication,
@@ -73,22 +74,83 @@ async function bootstrap() {
     origin: process.env.CORS_ORIGINS?.split(",") ?? true,
     credentials: true,
   });
+  const rateLimitKey = (req: { headers: Record<string, string | undefined>; ip: string }) =>
+    req.headers.authorization ? `t:${req.headers.authorization.slice(-32)}` : `ip:${req.ip}`;
+  /**
+   * An HttpException, not a plain object.
+   *
+   * @fastify/rate-limit throws whatever this builder returns, and Nest owns the
+   * error handler here — anything that is not an HttpException becomes a 500.
+   * A rate limit that reports itself as a server fault teaches every client to
+   * retry harder, which is precisely the opposite of what it exists to do. The
+   * e2e suite asserts the 429 by actually exhausting the budget, because the
+   * plain-object version passed every header check while still answering 500.
+   */
+  const rateLimitBody = (message: string) => ({
+    error: { code: "RATE_LIMITED", message, retryable: true },
+  });
+  const rateLimitError = (_req: unknown, ctx: { after: string }) =>
+    new HttpException(rateLimitBody(`Too many requests. Retry after ${ctx.after}.`), 429);
+
+  /**
+   * §12.1 — the global allowance is sized for a busy front desk, which makes
+   * it useless against credential stuffing: 600 password guesses a minute is a
+   * working attack. Unauthenticated auth routes get their own much tighter
+   * budget, keyed by IP because there is no session yet to key on.
+   *
+   * Registered BEFORE the plugin: @fastify/rate-limit installs its own
+   * onRoute hook that reads `config.rateLimit` when the route is added, and
+   * Fastify runs hooks in registration order. Adding ours afterwards set the
+   * config a moment too late and every auth route quietly kept the global
+   * 600/minute budget - which the integration test caught by comparing the
+   * advertised x-ratelimit-limit values.
+   *
+   * This is defence in depth, not the whole defence: per-account progressive
+   * lockout lives in AuthService, and the edge WAF rules in docs/operations.md
+   * are what stop a distributed attempt that spreads itself across addresses.
+   */
+  // 30/minute per IP. Tight enough that credential stuffing is throttled to
+  // uselessness, loose enough that a hotel behind one NAT'd address can put a
+  // whole shift through the login screen at 07:00 without locking itself out
+  // of its own front desk. The real defence against guessing ONE account is
+  // the per-account progressive lockout in AuthService; this limit exists to
+  // cap volume, and the edge WAF rules in docs/operations.md handle an attempt
+  // spread across many addresses.
+  const authLimit = Number(process.env.RATE_LIMIT_AUTH_MAX ?? 30);
+  const strictRoutes = new Set([
+    "/api/v1/auth/login",
+    "/api/v1/auth/refresh",
+    "/api/v1/auth/mfa/verify",
+    "/api/v1/auth/mfa/enrol/activate",
+    "/api/v1/onboarding/invitations/accept",
+  ]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adapter.getInstance().addHook("onRoute", (route: any) => {
+    if (!strictRoutes.has(route.path)) return;
+    route.config = {
+      ...(route.config ?? {}),
+      rateLimit: {
+        max: authLimit,
+        timeWindow: "1 minute",
+        keyGenerator: (req: { ip: string }) => `auth:${req.ip}`,
+        errorResponseBuilder: (_req: unknown, ctx: { after: string }) =>
+          new HttpException(
+            rateLimitBody(`Too many sign-in attempts. Retry after ${ctx.after}.`),
+            429
+          ),
+      },
+    };
+  });
   await app.register(require("@fastify/rate-limit"), {
     global: true,
     max: Number(process.env.RATE_LIMIT_MAX ?? 600),
     timeWindow: "1 minute",
     // Per authenticated user where possible, otherwise per IP, so one busy
     // property cannot exhaust another tenant's allowance.
-    keyGenerator: (req: { headers: Record<string, string | undefined>; ip: string }) =>
-      req.headers.authorization ? `t:${req.headers.authorization.slice(-32)}` : `ip:${req.ip}`,
-    errorResponseBuilder: (_req: unknown, ctx: { after: string }) => ({
-      error: {
-        code: "RATE_LIMITED",
-        message: `Too many requests. Retry after ${ctx.after}.`,
-        retryable: true,
-      },
-    }),
+    keyGenerator: rateLimitKey,
+    errorResponseBuilder: rateLimitError,
   });
+
   // OpenAPI: served at /api/v1/docs and written to disk for client generation.
   const document = buildOpenApiDocument(app);
   mountSwagger(app, document);

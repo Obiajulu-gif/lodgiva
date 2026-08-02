@@ -54,18 +54,28 @@ export class ReportsService {
       _sum: { amountMinor: true },
       _count: true,
     });
-    // Outstanding = sum of balances on open folios.
+    // Outstanding = sum of the positive balances on open folios.
+    //
+    // Grouped in one query rather than aggregated per folio. This was a loop
+    // issuing one aggregate per open folio, which made the flash report the
+    // slowest route in the load test (p95 2.1s at 20 concurrent clients) — and
+    // it is the route every dashboard polls, so the cost was paid constantly.
+    // Credit balances are excluded rather than netted: a guest in credit does
+    // not reduce what other guests owe.
     const openFolios = await this.prisma.folio.findMany({
       where: { tenantId: auth.tenantId, propertyId, status: "OPEN" },
       select: { id: true },
     });
+    const balances = openFolios.length
+      ? await this.prisma.folioEntry.groupBy({
+          by: ["folioId"],
+          where: { folioId: { in: openFolios.map((f) => f.id) } },
+          _sum: { amountMinor: true },
+        })
+      : [];
     let outstandingMinor = 0n;
-    for (const f of openFolios) {
-      const agg = await this.prisma.folioEntry.aggregate({
-        where: { folioId: f.id },
-        _sum: { amountMinor: true },
-      });
-      const bal = agg._sum.amountMinor ?? 0n;
+    for (const b of balances) {
+      const bal = b._sum.amountMinor ?? 0n;
       if (bal > 0n) outstandingMinor += bal;
     }
 

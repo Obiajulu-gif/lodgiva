@@ -17,6 +17,13 @@ import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth, Public } from "../common/auth";
 import { permissionsForRole } from "../common/permissions";
+import {
+  generateRecoveryCodes,
+  generateSecret,
+  normaliseRecoveryCode,
+  otpauthUri,
+  verifyTotp,
+} from "../common/totp";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -24,6 +31,17 @@ const loginSchema = z.object({
 });
 
 const refreshSchema = z.object({ refreshToken: z.string().min(20) });
+
+const mfaVerifySchema = z
+  .object({
+    mfaToken: z.string().min(20),
+    // Either a 6-digit authenticator code or a recovery code.
+    code: z.string().min(6).max(20),
+  })
+  .strict();
+
+const mfaActivateSchema = z.object({ code: z.string().min(6).max(10) }).strict();
+const mfaDisableSchema = z.object({ password: z.string().min(1) }).strict();
 
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 
@@ -126,7 +144,271 @@ export class AuthService {
       where: { id: user.id },
       data: { lastLoginAt: new Date(), failedLoginCount: 0, lockedUntil: null },
     });
+
+    // 6.3 second factor. The password is correct at this point, so the
+    // response says what is missing rather than pretending the credentials
+    // were wrong - an honest challenge is not a leak, because whoever is
+    // holding this password already has it.
+    const gate = await this.mfaGate(user.id);
+    if (gate) return gate;
+
     return this.issueTokens(user.id);
+  }
+
+  /**
+   * Decides whether a user who has proved their password may hold a session.
+   *
+   * Two distinct outcomes, because they need two different things from the
+   * person in front of the screen: an enrolled user must produce a code; a
+   * user whose role now requires MFA but has never enrolled must set it up
+   * first. Collapsing them into one error leaves the second group stuck with
+   * no stated way forward.
+   */
+  private async mfaGate(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      include: { memberships: { where: { status: "ACTIVE" }, include: { tenant: true } } },
+    });
+    const membership = user.memberships[0];
+
+    if (user.mfaEnabled && user.mfaSecret) {
+      // Short-lived and single-purpose: this token can do nothing except be
+      // exchanged for a session alongside a valid code.
+      const mfaToken = await this.jwt.signAsync(
+        { sub: user.id, purpose: "mfa" },
+        { secret: process.env.JWT_SECRET, expiresIn: "5m" }
+      );
+      return {
+        status: "MFA_REQUIRED" as const,
+        mfaToken,
+        message: "Enter the 6-digit code from your authenticator app.",
+      };
+    }
+
+    if (membership) {
+      const required = this.requiredRoles(membership.tenant.mfaRequiredRoles);
+      if (required.includes(membership.role)) {
+        const setupToken = await this.jwt.signAsync(
+          { sub: user.id, purpose: "mfa_enrol" },
+          { secret: process.env.JWT_SECRET, expiresIn: "15m" }
+        );
+        return {
+          status: "MFA_ENROLMENT_REQUIRED" as const,
+          setupToken,
+          role: membership.role,
+          message: `Your role (${membership.role}) requires two-factor authentication. Set it up to continue.`,
+        };
+      }
+    }
+    return null;
+  }
+
+  private requiredRoles(raw: string): string[] {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((r) => typeof r === "string") : [];
+    } catch {
+      // A malformed policy must not silently read as "MFA off", but it also
+      // must not lock every owner out of their own hotel. Empty is the
+      // recoverable failure; the config endpoint validates on write so this
+      // path means someone edited the database by hand.
+      return [];
+    }
+  }
+
+  /** Exchanges the challenge token plus a code for a real session. */
+  async mfaVerify(body: unknown) {
+    const dto = mfaVerifySchema.parse(body);
+    const invalid = new UnauthorizedException({
+      error: {
+        code: "INVALID_MFA_CODE",
+        message: "That code is not valid. Check the clock on your phone and try again.",
+      },
+    });
+
+    let payload: { sub: string; purpose: string };
+    try {
+      payload = await this.jwt.verifyAsync(dto.mfaToken, { secret: process.env.JWT_SECRET });
+    } catch {
+      throw new UnauthorizedException({
+        error: {
+          code: "MFA_CHALLENGE_EXPIRED",
+          message: "This sign-in attempt expired. Start again.",
+        },
+      });
+    }
+    if (payload.purpose !== "mfa") throw invalid;
+
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user || !user.mfaSecret || user.status !== "ACTIVE") throw invalid;
+
+    if (verifyTotp(user.mfaSecret, dto.code)) {
+      return this.issueTokens(user.id);
+    }
+
+    // Recovery codes are single use: an unconsumed one is a permanent
+    // password that bypasses the second factor entirely.
+    const stored: string[] = JSON.parse(user.mfaRecoveryCodes);
+    const submitted = normaliseRecoveryCode(dto.code);
+    for (const hash of stored) {
+      if (await argon2.verify(hash, submitted).catch(() => false)) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { mfaRecoveryCodes: JSON.stringify(stored.filter((h) => h !== hash)) },
+        });
+        const tokens = await this.issueTokens(user.id);
+        return {
+          ...tokens,
+          usedRecoveryCode: true,
+          recoveryCodesRemaining: stored.length - 1,
+          message:
+            "Signed in with a recovery code. That code is now used up - generate new ones if you are running low.",
+        };
+      }
+    }
+    throw invalid;
+  }
+
+  /**
+   * Step one of enrolment: hand back a secret and the URI to scan. Nothing is
+   * enabled yet, so an abandoned setup cannot lock anyone out.
+   */
+  async mfaSetup(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (user.mfaEnabled) {
+      throw new UnauthorizedException({
+        error: {
+          code: "MFA_ALREADY_ENABLED",
+          message: "Two-factor authentication is already on for this account.",
+        },
+      });
+    }
+    const secret = generateSecret();
+    await this.prisma.user.update({ where: { id: userId }, data: { mfaSecret: secret } });
+    return {
+      secret,
+      otpauthUri: otpauthUri({ secret, accountName: user.email }),
+      message: "Scan this in your authenticator app, then confirm with the code it shows.",
+    };
+  }
+
+  /**
+   * Step two: the user proves they can read a code from the secret before it
+   * becomes required. Recovery codes are returned once, in clear, and kept
+   * only as hashes - a database dump must not be a set of working keys.
+   */
+  async mfaActivate(userId: string, body: unknown) {
+    const dto = mfaActivateSchema.parse(body);
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!user.mfaSecret) {
+      throw new UnauthorizedException({
+        error: { code: "MFA_NOT_STARTED", message: "Start setup before confirming a code." },
+      });
+    }
+    if (!verifyTotp(user.mfaSecret, dto.code)) {
+      throw new UnauthorizedException({
+        error: {
+          code: "INVALID_MFA_CODE",
+          message:
+            "That code is not valid. If your phone clock is more than a minute out, fix it and try again.",
+        },
+      });
+    }
+    const codes = generateRecoveryCodes();
+    const hashes = await Promise.all(
+      codes.map((c) => argon2.hash(normaliseRecoveryCode(c), { type: argon2.argon2id }))
+    );
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        mfaEnabled: true,
+        mfaActivatedAt: new Date(),
+        mfaRecoveryCodes: JSON.stringify(hashes),
+      },
+    });
+    return {
+      enabled: true,
+      recoveryCodes: codes,
+      message:
+        "Two-factor authentication is on. Store these recovery codes somewhere safe - they are shown once.",
+    };
+  }
+
+  /** Turning MFA off re-proves the password: a hijacked session must not. */
+  async mfaDisable(auth: AuthContext, body: unknown) {
+    const dto = mfaDisableSchema.parse(body);
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: auth.userId } });
+    if (!(await argon2.verify(user.passwordHash, dto.password).catch(() => false))) {
+      throw new UnauthorizedException({
+        error: { code: "INVALID_CREDENTIALS", message: "Password is incorrect." },
+      });
+    }
+    const membership = await this.prisma.membership.findFirst({
+      where: { userId: auth.userId, status: "ACTIVE" },
+      include: { tenant: true },
+    });
+    if (
+      membership &&
+      this.requiredRoles(membership.tenant.mfaRequiredRoles).includes(membership.role)
+    ) {
+      throw new UnauthorizedException({
+        error: {
+          code: "MFA_REQUIRED_BY_POLICY",
+          message: `Two-factor authentication is mandatory for ${membership.role}. Ask an owner to change the policy first.`,
+        },
+      });
+    }
+    await this.prisma.user.update({
+      where: { id: auth.userId },
+      data: { mfaEnabled: false, mfaSecret: null, mfaActivatedAt: null, mfaRecoveryCodes: "[]" },
+    });
+    return { enabled: false };
+  }
+
+  async mfaStatus(auth: AuthContext) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: auth.userId } });
+    const membership = await this.prisma.membership.findFirst({
+      where: { userId: auth.userId, status: "ACTIVE" },
+      include: { tenant: true },
+    });
+    const required = membership
+      ? this.requiredRoles(membership.tenant.mfaRequiredRoles).includes(membership.role)
+      : false;
+    return {
+      enabled: user.mfaEnabled,
+      activatedAt: user.mfaActivatedAt,
+      requiredByPolicy: required,
+      recoveryCodesRemaining: (JSON.parse(user.mfaRecoveryCodes) as string[]).length,
+    };
+  }
+
+  private async subjectFromEnrolToken(setupToken: string): Promise<string> {
+    const payload = await this.jwt
+      .verifyAsync(setupToken, { secret: process.env.JWT_SECRET })
+      .catch(() => null);
+    if (!payload || payload.purpose !== "mfa_enrol") {
+      throw new UnauthorizedException({
+        error: {
+          code: "MFA_CHALLENGE_EXPIRED",
+          message: "This enrolment attempt expired. Sign in again.",
+        },
+      });
+    }
+    return payload.sub as string;
+  }
+
+  /** Enrolment driven from a setup token, for a user gated at login. */
+  async mfaSetupWithToken(setupToken: string) {
+    return this.mfaSetup(await this.subjectFromEnrolToken(setupToken));
+  }
+
+  async mfaActivateWithToken(setupToken: string, body: unknown) {
+    const userId = await this.subjectFromEnrolToken(setupToken);
+    const result = await this.mfaActivate(userId, body);
+    // Enrolment completes the sign-in it interrupted, so nobody is asked for a
+    // code seconds after proving they can produce one.
+    const tokens = await this.issueTokens(userId);
+    return { ...result, ...tokens };
   }
 
   /** §6.3 device/session management. */
@@ -244,6 +526,51 @@ export class AuthController {
   logout(@Body() body: unknown) {
     const dto = refreshSchema.parse(body);
     return this.service.logout(dto.refreshToken);
+  }
+
+  // ── §6.3 Multi-factor authentication ───────────────────────────────────
+  // The verify and enrol routes are public because the caller has not got a
+  // session yet — that is the entire point of the challenge. Each one carries
+  // its own single-purpose, short-lived token instead.
+
+  @Public()
+  @Post("mfa/verify")
+  mfaVerify(@Body() body: unknown) {
+    return this.service.mfaVerify(body);
+  }
+
+  @Public()
+  @Post("mfa/enrol/setup")
+  mfaEnrolSetup(@Body() body: { setupToken?: string }) {
+    return this.service.mfaSetupWithToken(String(body?.setupToken ?? ""));
+  }
+
+  @Public()
+  @Post("mfa/enrol/activate")
+  mfaEnrolActivate(@Body() body: { setupToken?: string; code?: string }) {
+    return this.service.mfaActivateWithToken(String(body?.setupToken ?? ""), {
+      code: String(body?.code ?? ""),
+    });
+  }
+
+  @Get("mfa")
+  mfaStatus(@CurrentAuth() auth: AuthContext) {
+    return this.service.mfaStatus(auth);
+  }
+
+  @Post("mfa/setup")
+  mfaSetup(@CurrentAuth() auth: AuthContext) {
+    return this.service.mfaSetup(auth.userId);
+  }
+
+  @Post("mfa/activate")
+  mfaActivate(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
+    return this.service.mfaActivate(auth.userId, body);
+  }
+
+  @Post("mfa/disable")
+  mfaDisable(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
+    return this.service.mfaDisable(auth, body);
   }
 
   @Get("me")

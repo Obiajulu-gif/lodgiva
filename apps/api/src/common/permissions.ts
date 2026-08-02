@@ -52,6 +52,10 @@ export const PERMISSIONS = [
   "settings.tax.manage",
   "approval.decide",
   "user.manage",
+  // Support staff need to find a booking from whatever a caller can
+  // remember. Separate from guest.read because it reaches across every
+  // property in the tenant at once.
+  "support.lookup",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -105,6 +109,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "approval.decide",
     "user.manage",
     "inventory.manage",
+    "support.lookup",
   ],
   GENERAL_MANAGER: [
     ...READ_ONLY,
@@ -136,6 +141,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "settings.rate.manage",
     "approval.decide",
     "user.manage",
+    "support.lookup",
   ],
   // No tax or role configuration, per §6.4.
   FRONT_DESK: [
@@ -198,6 +204,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "cashier.approve_variance",
     "approval.decide",
     "settings.tax.manage",
+    "support.lookup",
   ],
   // Read-only by definition (§6.4).
   AUDITOR: [...READ_ONLY],

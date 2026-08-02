@@ -55,15 +55,46 @@ export class AuthGuard implements CanActivate {
         error: { code: "UNAUTHENTICATED", message: "Missing access token." },
       });
     }
+    let claims: Partial<AuthContext> & { purpose?: string };
     try {
-      req.auth = await this.jwt.verifyAsync<AuthContext>(header.slice(7), {
+      claims = await this.jwt.verifyAsync(header.slice(7), {
         secret: process.env.JWT_SECRET,
       });
-      return true;
     } catch {
       throw new UnauthorizedException({
         error: { code: "TOKEN_INVALID", message: "Access token expired or invalid." },
       });
     }
+
+    /**
+     * A valid signature is not the same as a valid access token.
+     *
+     * The MFA challenge and enrolment tokens are signed with this same secret,
+     * and they deliberately carry no tenant or role. Accepting one here would
+     * set `auth.tenantId` to undefined — and every `where: { tenantId }` in the
+     * codebase then silently becomes an unfiltered query across every tenant.
+     * So the claim set is checked, not just the signature, and any token
+     * carrying a `purpose` is refused outright: those exist to be exchanged at
+     * one specific endpoint, never to authorise a request.
+     */
+    if (claims.purpose) {
+      throw new UnauthorizedException({
+        error: {
+          code: "TOKEN_NOT_AN_ACCESS_TOKEN",
+          message: `This is a ${claims.purpose} token. Exchange it for a session first.`,
+        },
+      });
+    }
+    if (!claims.userId || !claims.tenantId || !claims.role) {
+      throw new UnauthorizedException({
+        error: {
+          code: "TOKEN_INCOMPLETE",
+          message: "Access token is missing required claims.",
+        },
+      });
+    }
+
+    req.auth = claims as AuthContext;
+    return true;
   }
 }

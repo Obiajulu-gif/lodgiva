@@ -12,3 +12,7 @@ build/
 *.tsbuildinfo
 dev.db*
 .storage/
+
+# Local database backups produced by scripts/backup.mjs
+backups/
+restored.db

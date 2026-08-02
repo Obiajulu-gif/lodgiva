@@ -277,13 +277,21 @@ export class AnalyticsService {
       },
     });
 
+    // One grouped query rather than one aggregate per folio: the same N+1 the
+    // load test caught in the daily flash, and this report reads every folio
+    // the property has ever opened, not just the open ones.
+    const sums = folios.length
+      ? await this.prisma.folioEntry.groupBy({
+          by: ["folioId"],
+          where: { folioId: { in: folios.map((f) => f.id) } },
+          _sum: { amountMinor: true },
+        })
+      : [];
+    const balanceByFolio = new Map(sums.map((s) => [s.folioId, Number(s._sum.amountMinor ?? 0n)]));
+
     const rows = [];
     for (const f of folios) {
-      const agg = await this.prisma.folioEntry.aggregate({
-        where: { folioId: f.id },
-        _sum: { amountMinor: true },
-      });
-      const balance = Number(agg._sum.amountMinor ?? 0n);
+      const balance = balanceByFolio.get(f.id) ?? 0;
       if (balance <= 0) continue;
 
       const since = f.reservation?.departureDate ?? property.businessDate;

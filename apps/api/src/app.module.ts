@@ -7,7 +7,7 @@ import {
   Global,
   Module,
 } from "@nestjs/common";
-import { APP_FILTER, APP_GUARD } from "@nestjs/core";
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { Logger } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { JwtModule } from "@nestjs/jwt";
@@ -36,6 +36,12 @@ import { PaymentsModule } from "./modules/payments.module";
 import { HousekeepingModule } from "./modules/housekeeping.module";
 import { NightAuditModule } from "./modules/night-audit.module";
 import { ReportsModule } from "./modules/reports.module";
+import { PlatformModule } from "./modules/platform.module";
+import { SupportModule } from "./modules/support.module";
+import {
+  ObservabilityModule,
+  TelemetryInterceptor,
+} from "./modules/observability.module";
 import { PosModule } from "./modules/pos.module";
 import { CashieringModule } from "./modules/cashiering.module";
 import { MaintenanceModule } from "./modules/maintenance.module";
@@ -164,6 +170,9 @@ class CoreModule {}
     ApprovalsModule,
     NightAuditModule,
     ReportsModule,
+    PlatformModule,
+    ObservabilityModule,
+    SupportModule,
   ],
   controllers: [HealthController],
   providers: [
@@ -173,6 +182,9 @@ class CoreModule {}
     // Registered first so it is the outermost filter; Zod stays more specific.
     { provide: APP_FILTER, useClass: TransientDbExceptionFilter },
     { provide: APP_FILTER, useClass: ZodExceptionFilter },
+    // Outermost interceptor, so it observes the status every other layer
+    // finally settled on - including the ones the filters above rewrite.
+    { provide: APP_INTERCEPTOR, useClass: TelemetryInterceptor },
   ],
 })
 export class AppModule {}

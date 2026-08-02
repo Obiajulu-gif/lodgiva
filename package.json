@@ -18,7 +18,12 @@
     "generate:client": "node packages/database/src/generate-client.mjs",
     "test:unit": "pnpm --filter @lodgiva/api test:unit",
     "test:integration": "pnpm --filter @lodgiva/api test:integration",
-    "test:e2e": "pnpm --filter @lodgiva/api test:e2e"
+    "test:e2e": "pnpm --filter @lodgiva/api test:e2e",
+    "backup": "node scripts/backup.mjs --verify",
+    "restore:drill": "node scripts/restore.mjs --drill",
+    "check:migrations": "node scripts/check-migrations.mjs --strict",
+    "load-test": "node scripts/load-test.mjs",
+    "seed:demo": "node packages/database/src/seed-demo.js --reset"
   },
   "devDependencies": {
     "turbo": "^2.5.4"

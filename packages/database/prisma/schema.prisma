@@ -23,6 +23,9 @@ model Tenant {
   slug            String   @unique
   status          String   @default("ACTIVE") // ACTIVE | SUSPENDED | TRIAL
   defaultCurrency String   @default("NGN")
+  // Roles that must complete MFA enrolment before they can hold a session.
+  // JSON array of role names; empty means MFA is optional for everyone.
+  mfaRequiredRoles String  @default("[]")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -76,7 +79,15 @@ model User {
   passwordHash String
   fullName     String
   status       String    @default("ACTIVE")
+  // §6.3 MFA. The secret is stored only after the user proves they can read a
+  // code from it — an unverified secret enrolled by accident would lock the
+  // account out of its own hotel.
   mfaEnabled   Boolean   @default(false)
+  mfaSecret        String?
+  mfaActivatedAt   DateTime?
+  // Argon2 hashes, one per unused code. Stored hashed for the same reason
+  // passwords are: a database dump must not be a set of working keys.
+  mfaRecoveryCodes String   @default("[]")
   lastLoginAt  DateTime?
   // §6.3 — progressive delay rather than permanent lock, so a staff member
   // is never locked out of the front desk during a rush.
@@ -1219,4 +1230,40 @@ model ExportJob {
   createdAt     DateTime  @default(now())
 
   @@index([tenantId, propertyId, status])
+}
+
+/// §12.3 Feature flags. Rollout state lives in the database rather than in
+/// environment variables so a flag can be turned off without a redeploy —
+/// during an incident, a redeploy is the slowest possible mitigation.
+model FeatureFlag {
+  key         String   @id
+  description String
+  /// Default for every tenant that has no explicit override.
+  enabled     Boolean  @default(false)
+  /// JSON object of tenantId -> boolean. An override always wins over the
+  /// default, in both directions: a flag can be enabled for one pilot tenant
+  /// or disabled for one tenant that is having a bad day.
+  overrides   String   @default("{}")
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// §12.2 Service level monitoring. One row per completed request bucket,
+/// written by the metrics recorder so latency percentiles survive a restart
+/// and can be compared against the published SLO.
+model RequestMetric {
+  id           String   @id @default(uuid())
+  minuteBucket String   // YYYY-MM-DDTHH:mm — the resolution the SLO is stated at
+  route        String
+  method       String
+  statusClass  String   // 2xx | 3xx | 4xx | 5xx
+  count        Int      @default(0)
+  totalMs      Int      @default(0)
+  maxMs        Int      @default(0)
+  /// Requests slower than the SLO threshold; the numerator of the latency SLI.
+  breachCount  Int      @default(0)
+
+  @@unique([minuteBucket, route, method, statusClass])
+  @@index([minuteBucket])
 }
