@@ -7,8 +7,11 @@ import {
 } from "@nestjs/platform-fastify";
 import { AppModule } from "./app.module";
 import { buildOpenApiDocument, mountSwagger } from "./openapi";
+import { assertSafeProductionEnvironment } from "./common/runtime-config";
 
-// SQLite database lives next to the Prisma schema (see ADR-LOCAL-001).
+// Development remains zero-config. Production must never inherit these
+// documented defaults; validate before assigning either one.
+assertSafeProductionEnvironment();
 process.env.DATABASE_URL ??= "file:./dev.db";
 process.env.JWT_SECRET ??= "lodgiva-dev-secret-change-in-production";
 
@@ -71,7 +74,7 @@ async function bootstrap() {
     hsts: { maxAge: 31536000, includeSubDomains: true },
   });
   await app.register(require("@fastify/cors"), {
-    origin: process.env.CORS_ORIGINS?.split(",") ?? true,
+    origin: process.env.CORS_ORIGINS?.split(",").map((origin) => origin.trim()) ?? true,
     credentials: true,
   });
   const rateLimitKey = (req: { headers: Record<string, string | undefined>; ip: string }) =>

@@ -95,6 +95,41 @@ export class LodgivaClient {
     return this.request<T>("POST", `/api/v1/auth/logout`, { body });
   }
 
+  /** POST /api/v1/auth/mfa/verify (Auth) */
+  authcontrollerMfaverify<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/auth/mfa/verify`, { body });
+  }
+
+  /** POST /api/v1/auth/mfa/enrol/setup (Auth) */
+  authcontrollerMfaenrolsetup<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/auth/mfa/enrol/setup`, { body });
+  }
+
+  /** POST /api/v1/auth/mfa/enrol/activate (Auth) */
+  authcontrollerMfaenrolactivate<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/auth/mfa/enrol/activate`, { body });
+  }
+
+  /** GET /api/v1/auth/mfa (Auth) */
+  authcontrollerMfastatus<T = unknown>(): Promise<T> {
+    return this.request<T>("GET", `/api/v1/auth/mfa`);
+  }
+
+  /** POST /api/v1/auth/mfa/setup (Auth) */
+  authcontrollerMfasetup<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/auth/mfa/setup`, { body });
+  }
+
+  /** POST /api/v1/auth/mfa/activate (Auth) */
+  authcontrollerMfaactivate<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/auth/mfa/activate`, { body });
+  }
+
+  /** POST /api/v1/auth/mfa/disable (Auth) */
+  authcontrollerMfadisable<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/auth/mfa/disable`, { body });
+  }
+
   /** GET /api/v1/auth/me (Auth) */
   authcontrollerMe<T = unknown>(): Promise<T> {
     return this.request<T>("GET", `/api/v1/auth/me`);
@@ -300,9 +335,319 @@ export class LodgivaClient {
     return this.request<T>("POST", `/api/v1/folios/${id}/charges`, { body });
   }
 
+  /** POST /api/v1/folios/split (Folios) */
+  folioscontrollerSplit<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/folios/split`, { body });
+  }
+
+  /** GET /api/v1/folios/by-reservation/{reservationId} (Folios) */
+  folioscontrollerListforreservation<T = unknown>(reservationId: string): Promise<T> {
+    return this.request<T>("GET", `/api/v1/folios/by-reservation/${reservationId}`);
+  }
+
+  /** POST /api/v1/folios/{id}/transfer (Folios) */
+  folioscontrollerTransfer<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/folios/${id}/transfer`, { body });
+  }
+
   /** POST /api/v1/folios/{id}/entries/{entryId}/reverse (Folios) */
   folioscontrollerReverse<T = unknown>(id: string, entryId: string, body?: unknown): Promise<T> {
     return this.request<T>("POST", `/api/v1/folios/${id}/entries/${entryId}/reverse`, { body });
+  }
+
+  /** GET /api/v1/front-desk/summary (FrontDesk) */
+  frontdeskcontrollerSummary<T = unknown>(query?: { propertyId?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/front-desk/summary`, { query });
+  }
+
+  /** GET /api/v1/front-desk/arrivals (FrontDesk) */
+  frontdeskcontrollerArrivals<T = unknown>(query?: { propertyId?: string | number | boolean; date?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/front-desk/arrivals`, { query });
+  }
+
+  /** GET /api/v1/front-desk/departures (FrontDesk) */
+  frontdeskcontrollerDepartures<T = unknown>(query?: { propertyId?: string | number | boolean; date?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/front-desk/departures`, { query });
+  }
+
+  /** GET /api/v1/front-desk/in-house (FrontDesk) */
+  frontdeskcontrollerInhouse<T = unknown>(query?: { propertyId?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/front-desk/in-house`, { query });
+  }
+
+  /** GET /api/v1/invoices (Invoices) */
+  invoicescontrollerList<T = unknown>(query?: { propertyId?: string | number | boolean; folioId?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/invoices`, { query });
+  }
+
+  /** POST /api/v1/invoices (Invoices) */
+  invoicescontrollerIssue<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/invoices`, { body });
+  }
+
+  /** GET /api/v1/invoices/{id} (Invoices) */
+  invoicescontrollerGet<T = unknown>(id: string): Promise<T> {
+    return this.request<T>("GET", `/api/v1/invoices/${id}`);
+  }
+
+  /** GET /api/v1/invoices/{id}/render (Invoices) */
+  invoicescontrollerRender<T = unknown>(id: string): Promise<T> {
+    return this.request<T>("GET", `/api/v1/invoices/${id}/render`);
+  }
+
+  /** POST /api/v1/invoices/{id}/void (Invoices) */
+  invoicescontrollerVoidinvoice<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/invoices/${id}/void`, { body });
+  }
+
+  /** GET /api/v1/payments/providers (Gateway) */
+  gatewaycontrollerProviders<T = unknown>(): Promise<T> {
+    return this.request<T>("GET", `/api/v1/payments/providers`);
+  }
+
+  /** POST /api/v1/payments/intents (Gateway) */
+  gatewaycontrollerCreateintent<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/payments/intents`, { body });
+  }
+
+  /** POST /api/v1/payments/intents/{id}/verify (Gateway) */
+  gatewaycontrollerVerifyintent<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/payments/intents/${id}/verify`, { body });
+  }
+
+  /** POST /api/v1/webhooks/{provider} (Gateway) */
+  gatewaycontrollerWebhook<T = unknown>(provider: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/webhooks/${provider}`, { body });
+  }
+
+  /** POST /api/v1/refunds (Gateway) */
+  gatewaycontrollerRequestrefund<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/refunds`, { body });
+  }
+
+  /** GET /api/v1/refunds (Gateway) */
+  gatewaycontrollerListrefunds<T = unknown>(query?: { propertyId?: string | number | boolean; status?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/refunds`, { query });
+  }
+
+  /** POST /api/v1/refunds/{id}/approve (Gateway) */
+  gatewaycontrollerApproverefund<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/refunds/${id}/approve`, { body });
+  }
+
+  /** POST /api/v1/refunds/{id}/reject (Gateway) */
+  gatewaycontrollerRejectrefund<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/refunds/${id}/reject`, { body });
+  }
+
+  /** POST /api/v1/settlements/import (Gateway) */
+  gatewaycontrollerImportsettlement<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/settlements/import`, { body });
+  }
+
+  /** POST /api/v1/settlements/import-csv (Gateway) */
+  gatewaycontrollerImportsettlementcsv<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/settlements/import-csv`, { body });
+  }
+
+  /** GET /api/v1/settlements (Gateway) */
+  gatewaycontrollerListsettlements<T = unknown>(query?: { propertyId?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/settlements`, { query });
+  }
+
+  /** GET /api/v1/reconciliation/exceptions (Gateway) */
+  gatewaycontrollerExceptions<T = unknown>(query?: { propertyId?: string | number | boolean; status?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/reconciliation/exceptions`, { query });
+  }
+
+  /** POST /api/v1/reconciliation/exceptions/{id}/resolve (Gateway) */
+  gatewaycontrollerResolveexception<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/reconciliation/exceptions/${id}/resolve`, { body });
+  }
+
+  /** GET /api/v1/files/storage-status (Files) */
+  filescontrollerStatus<T = unknown>(): Promise<T> {
+    return this.request<T>("GET", `/api/v1/files/storage-status`);
+  }
+
+  /** POST /api/v1/files/intents (Files) */
+  filescontrollerCreateintent<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/files/intents`, { body });
+  }
+
+  /** POST /api/v1/files/upload (Files) */
+  filescontrollerUpload<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/files/upload`, { body });
+  }
+
+  /** POST /api/v1/files/{id}/complete (Files) */
+  filescontrollerComplete<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/files/${id}/complete`, { body });
+  }
+
+  /** GET /api/v1/files/{id}/download-url (Files) */
+  filescontrollerDownloadurl<T = unknown>(id: string): Promise<T> {
+    return this.request<T>("GET", `/api/v1/files/${id}/download-url`);
+  }
+
+  /** GET /api/v1/files/download (Files) */
+  filescontrollerDownload<T = unknown>(): Promise<T> {
+    return this.request<T>("GET", `/api/v1/files/download`);
+  }
+
+  /** GET /api/v1/files (Files) */
+  filescontrollerList<T = unknown>(query?: { entityType?: string | number | boolean; entityId?: string | number | boolean; status?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/files`, { query });
+  }
+
+  /** POST /api/v1/files/{id}/quarantine (Files) */
+  filescontrollerQuarantine<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/files/${id}/quarantine`, { body });
+  }
+
+  /** POST /api/v1/files/{id}/delete (Files) */
+  filescontrollerSoftdelete<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/files/${id}/delete`, { body });
+  }
+
+  /** POST /api/v1/files/lifecycle/run (Files) */
+  filescontrollerLifecycle<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/files/lifecycle/run`, { body });
+  }
+
+  /** GET /api/v1/events/stream (Events) */
+  eventscontrollerStream<T = unknown>(query?: { token?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/events/stream`, { query });
+  }
+
+  /** GET /api/v1/push/status (Push) */
+  pushcontrollerStatus<T = unknown>(): Promise<T> {
+    return this.request<T>("GET", `/api/v1/push/status`);
+  }
+
+  /** GET /api/v1/push/subscriptions (Push) */
+  pushcontrollerListmine<T = unknown>(): Promise<T> {
+    return this.request<T>("GET", `/api/v1/push/subscriptions`);
+  }
+
+  /** POST /api/v1/push/subscribe (Push) */
+  pushcontrollerSubscribe<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/push/subscribe`, { body });
+  }
+
+  /** POST /api/v1/push/unsubscribe (Push) */
+  pushcontrollerUnsubscribe<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/push/unsubscribe`, { body });
+  }
+
+  /** POST /api/v1/push/test (Push) */
+  pushcontrollerTest<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/push/test`, { body });
+  }
+
+  /** GET /api/v1/inventory/items (Inventory) */
+  inventorycontrollerListitems<T = unknown>(query?: { propertyId?: string | number | boolean; category?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/inventory/items`, { query });
+  }
+
+  /** POST /api/v1/inventory/items (Inventory) */
+  inventorycontrollerCreateitem<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/inventory/items`, { body });
+  }
+
+  /** GET /api/v1/inventory/locations (Inventory) */
+  inventorycontrollerListlocations<T = unknown>(query?: { propertyId?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/inventory/locations`, { query });
+  }
+
+  /** POST /api/v1/inventory/locations (Inventory) */
+  inventorycontrollerCreatelocation<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/inventory/locations`, { body });
+  }
+
+  /** POST /api/v1/inventory/movements (Inventory) */
+  inventorycontrollerRecordmovement<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/inventory/movements`, { body });
+  }
+
+  /** GET /api/v1/inventory/stock-on-hand (Inventory) */
+  inventorycontrollerStockonhand<T = unknown>(query?: { propertyId?: string | number | boolean; lowOnly?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/inventory/stock-on-hand`, { query });
+  }
+
+  /** GET /api/v1/inventory/movement-summary (Inventory) */
+  inventorycontrollerMovementsummary<T = unknown>(query?: { propertyId?: string | number | boolean; from?: string | number | boolean; to?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/inventory/movement-summary`, { query });
+  }
+
+  /** GET /api/v1/inventory/ledger (Inventory) */
+  inventorycontrollerLedger<T = unknown>(query?: { propertyId?: string | number | boolean; itemId?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/inventory/ledger`, { query });
+  }
+
+  /** GET /api/v1/analytics/occupancy (Analytics) */
+  analyticscontrollerOccupancy<T = unknown>(query?: { propertyId?: string | number | boolean; from?: string | number | boolean; to?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/analytics/occupancy`, { query });
+  }
+
+  /** GET /api/v1/analytics/revenue (Analytics) */
+  analyticscontrollerRevenue<T = unknown>(query?: { propertyId?: string | number | boolean; from?: string | number | boolean; to?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/analytics/revenue`, { query });
+  }
+
+  /** GET /api/v1/analytics/cashier (Analytics) */
+  analyticscontrollerCashier<T = unknown>(query?: { propertyId?: string | number | boolean; from?: string | number | boolean; to?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/analytics/cashier`, { query });
+  }
+
+  /** GET /api/v1/analytics/receivables (Analytics) */
+  analyticscontrollerReceivables<T = unknown>(query?: { propertyId?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/analytics/receivables`, { query });
+  }
+
+  /** GET /api/v1/analytics/owner-dashboard (Analytics) */
+  analyticscontrollerOwnerdashboard<T = unknown>(query?: { propertyId?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/analytics/owner-dashboard`, { query });
+  }
+
+  /** POST /api/v1/analytics/exports (Analytics) */
+  analyticscontrollerRequestexport<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/analytics/exports`, { body });
+  }
+
+  /** GET /api/v1/analytics/exports (Analytics) */
+  analyticscontrollerListjobs<T = unknown>(query?: { propertyId?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/analytics/exports`, { query });
+  }
+
+  /** GET /api/v1/analytics/exports/{id} (Analytics) */
+  analyticscontrollerGetjob<T = unknown>(id: string): Promise<T> {
+    return this.request<T>("GET", `/api/v1/analytics/exports/${id}`);
+  }
+
+  /** GET /api/v1/reports/daily-flash (Reports) */
+  reportscontrollerDailyflash<T = unknown>(query?: { propertyId?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/reports/daily-flash`, { query });
+  }
+
+  /** GET /api/v1/reports/audit-trail (Reports) */
+  reportscontrollerAudittrail<T = unknown>(query?: { propertyId?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/reports/audit-trail`, { query });
+  }
+
+  /** GET /api/v1/reports/tax-summary (Reports) */
+  reportscontrollerTaxsummary<T = unknown>(query?: { propertyId?: string | number | boolean; from?: string | number | boolean; to?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/reports/tax-summary`, { query });
+  }
+
+  /** GET /api/v1/reports/guest-ledger (Reports) */
+  reportscontrollerGuestledger<T = unknown>(query?: { propertyId?: string | number | boolean; from?: string | number | boolean; to?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/reports/guest-ledger`, { query });
+  }
+
+  /** GET /api/v1/reports/export (Reports) */
+  reportscontrollerExportcsv<T = unknown>(query?: { propertyId?: string | number | boolean; type?: string | number | boolean; from?: string | number | boolean; to?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/reports/export`, { query });
   }
 
   /** GET /api/v1/guests (Guests) */
@@ -360,6 +705,11 @@ export class LodgivaClient {
     return this.request<T>("GET", `/api/v1/reservations/${id}`);
   }
 
+  /** PATCH /api/v1/reservations/{id} (Reservations) */
+  reservationscontrollerModify<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("PATCH", `/api/v1/reservations/${id}`, { body });
+  }
+
   /** POST /api/v1/reservations/{id}/check-in (Reservations) */
   reservationscontrollerCheckin<T = unknown>(id: string, body?: unknown): Promise<T> {
     return this.request<T>("POST", `/api/v1/reservations/${id}/check-in`, { body });
@@ -378,6 +728,11 @@ export class LodgivaClient {
   /** POST /api/v1/reservations/{id}/extend (Reservations) */
   reservationscontrollerExtend<T = unknown>(id: string, body?: unknown): Promise<T> {
     return this.request<T>("POST", `/api/v1/reservations/${id}/extend`, { body });
+  }
+
+  /** POST /api/v1/reservations/{id}/assign-room (Reservations) */
+  reservationscontrollerAssignroom<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/reservations/${id}/assign-room`, { body });
   }
 
   /** POST /api/v1/reservations/{id}/cancel (Reservations) */
@@ -408,6 +763,11 @@ export class LodgivaClient {
   /** POST /api/v1/housekeeping/tasks (Housekeeping) */
   housekeepingcontrollerCreate<T = unknown>(body?: unknown): Promise<T> {
     return this.request<T>("POST", `/api/v1/housekeeping/tasks`, { body });
+  }
+
+  /** POST /api/v1/housekeeping/tasks/{id}/assign (Housekeeping) */
+  housekeepingcontrollerAssign<T = unknown>(id: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/housekeeping/tasks/${id}/assign`, { body });
   }
 
   /** POST /api/v1/housekeeping/tasks/{id}/advance (Housekeeping) */
@@ -560,34 +920,74 @@ export class LodgivaClient {
     return this.request<T>("POST", `/api/v1/night-audit/run`, { body });
   }
 
+  /** GET /api/v1/night-audit/preflight (NightAudit) */
+  nightauditcontrollerPreflight<T = unknown>(query?: { propertyId?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/night-audit/preflight`, { query });
+  }
+
   /** GET /api/v1/night-audit/history (NightAudit) */
   nightauditcontrollerHistory<T = unknown>(query?: { propertyId?: string | number | boolean }): Promise<T> {
     return this.request<T>("GET", `/api/v1/night-audit/history`, { query });
   }
 
-  /** GET /api/v1/reports/daily-flash (Reports) */
-  reportscontrollerDailyflash<T = unknown>(query?: { propertyId?: string | number | boolean }): Promise<T> {
-    return this.request<T>("GET", `/api/v1/reports/daily-flash`, { query });
+  /** GET /api/v1/security-policy (Platform) */
+  platformcontrollerGetpolicy<T = unknown>(): Promise<T> {
+    return this.request<T>("GET", `/api/v1/security-policy`);
   }
 
-  /** GET /api/v1/reports/audit-trail (Reports) */
-  reportscontrollerAudittrail<T = unknown>(query?: { propertyId?: string | number | boolean }): Promise<T> {
-    return this.request<T>("GET", `/api/v1/reports/audit-trail`, { query });
+  /** PUT /api/v1/security-policy (Platform) */
+  platformcontrollerSetpolicy<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("PUT", `/api/v1/security-policy`, { body });
   }
 
-  /** GET /api/v1/reports/tax-summary (Reports) */
-  reportscontrollerTaxsummary<T = unknown>(query?: { propertyId?: string | number | boolean; from?: string | number | boolean; to?: string | number | boolean }): Promise<T> {
-    return this.request<T>("GET", `/api/v1/reports/tax-summary`, { query });
+  /** GET /api/v1/feature-flags (Platform) */
+  platformcontrollerMyflags<T = unknown>(): Promise<T> {
+    return this.request<T>("GET", `/api/v1/feature-flags`);
   }
 
-  /** GET /api/v1/reports/guest-ledger (Reports) */
-  reportscontrollerGuestledger<T = unknown>(query?: { propertyId?: string | number | boolean; from?: string | number | boolean; to?: string | number | boolean }): Promise<T> {
-    return this.request<T>("GET", `/api/v1/reports/guest-ledger`, { query });
+  /** GET /api/v1/admin/feature-flags (Platform) */
+  platformcontrollerList<T = unknown>(): Promise<T> {
+    return this.request<T>("GET", `/api/v1/admin/feature-flags`);
   }
 
-  /** GET /api/v1/reports/export (Reports) */
-  reportscontrollerExportcsv<T = unknown>(query?: { propertyId?: string | number | boolean; type?: string | number | boolean; from?: string | number | boolean; to?: string | number | boolean }): Promise<T> {
-    return this.request<T>("GET", `/api/v1/reports/export`, { query });
+  /** POST /api/v1/admin/feature-flags (Platform) */
+  platformcontrollerCreate<T = unknown>(body?: unknown): Promise<T> {
+    return this.request<T>("POST", `/api/v1/admin/feature-flags`, { body });
+  }
+
+  /** PUT /api/v1/admin/feature-flags/{key} (Platform) */
+  platformcontrollerUpdate<T = unknown>(key: string, body?: unknown): Promise<T> {
+    return this.request<T>("PUT", `/api/v1/admin/feature-flags/${key}`, { body });
+  }
+
+  /** GET /api/v1/metrics (Observability) */
+  observabilitycontrollerPrometheus<T = unknown>(): Promise<T> {
+    return this.request<T>("GET", `/api/v1/metrics`);
+  }
+
+  /** GET /api/v1/observability/service-level (Observability) */
+  observabilitycontrollerServicelevel<T = unknown>(query?: { windowMinutes?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/observability/service-level`, { query });
+  }
+
+  /** GET /api/v1/observability/status (Observability) */
+  observabilitycontrollerStatus<T = unknown>(): Promise<T> {
+    return this.request<T>("GET", `/api/v1/observability/status`);
+  }
+
+  /** GET /api/v1/support/lookup (Support) */
+  supportcontrollerLookup<T = unknown>(query?: { q?: string | number | boolean; propertyId?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/support/lookup`, { query });
+  }
+
+  /** GET /api/v1/support/reservations/{id} (Support) */
+  supportcontrollerTimeline<T = unknown>(id: string): Promise<T> {
+    return this.request<T>("GET", `/api/v1/support/reservations/${id}`);
+  }
+
+  /** GET /api/v1/support/diagnostics (Support) */
+  supportcontrollerDiagnostics<T = unknown>(query?: { propertyId?: string | number | boolean }): Promise<T> {
+    return this.request<T>("GET", `/api/v1/support/diagnostics`, { query });
   }
 }
 

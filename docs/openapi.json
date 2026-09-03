@@ -71,6 +71,104 @@
         ]
       }
     },
+    "/api/v1/auth/mfa/verify": {
+      "post": {
+        "operationId": "AuthController_mfaVerify",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/enrol/setup": {
+      "post": {
+        "operationId": "AuthController_mfaEnrolSetup",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/enrol/activate": {
+      "post": {
+        "operationId": "AuthController_mfaEnrolActivate",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa": {
+      "get": {
+        "operationId": "AuthController_mfaStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/setup": {
+      "post": {
+        "operationId": "AuthController_mfaSetup",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/activate": {
+      "post": {
+        "operationId": "AuthController_mfaActivate",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/disable": {
+      "post": {
+        "operationId": "AuthController_mfaDisable",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/api/v1/auth/me": {
       "get": {
         "operationId": "AuthController_me",
@@ -916,6 +1014,66 @@
         ]
       }
     },
+    "/api/v1/folios/split": {
+      "post": {
+        "operationId": "FoliosController_split",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Folios"
+        ]
+      }
+    },
+    "/api/v1/folios/by-reservation/{reservationId}": {
+      "get": {
+        "operationId": "FoliosController_listForReservation",
+        "parameters": [
+          {
+            "name": "reservationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Folios"
+        ]
+      }
+    },
+    "/api/v1/folios/{id}/transfer": {
+      "post": {
+        "operationId": "FoliosController_transfer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Folios"
+        ]
+      }
+    },
     "/api/v1/folios/{id}/entries/{entryId}/reverse": {
       "post": {
         "operationId": "FoliosController_reverse",
@@ -944,6 +1102,1373 @@
         },
         "tags": [
           "Folios"
+        ]
+      }
+    },
+    "/api/v1/front-desk/summary": {
+      "get": {
+        "operationId": "FrontDeskController_summary",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "FrontDesk"
+        ]
+      }
+    },
+    "/api/v1/front-desk/arrivals": {
+      "get": {
+        "operationId": "FrontDeskController_arrivals",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "FrontDesk"
+        ]
+      }
+    },
+    "/api/v1/front-desk/departures": {
+      "get": {
+        "operationId": "FrontDeskController_departures",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "FrontDesk"
+        ]
+      }
+    },
+    "/api/v1/front-desk/in-house": {
+      "get": {
+        "operationId": "FrontDeskController_inHouse",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "FrontDesk"
+        ]
+      }
+    },
+    "/api/v1/invoices": {
+      "get": {
+        "operationId": "InvoicesController_list",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "folioId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Invoices"
+        ]
+      },
+      "post": {
+        "operationId": "InvoicesController_issue",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Invoices"
+        ]
+      }
+    },
+    "/api/v1/invoices/{id}": {
+      "get": {
+        "operationId": "InvoicesController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Invoices"
+        ]
+      }
+    },
+    "/api/v1/invoices/{id}/render": {
+      "get": {
+        "operationId": "InvoicesController_render",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Invoices"
+        ]
+      }
+    },
+    "/api/v1/invoices/{id}/void": {
+      "post": {
+        "operationId": "InvoicesController_voidInvoice",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Invoices"
+        ]
+      }
+    },
+    "/api/v1/payments/providers": {
+      "get": {
+        "operationId": "GatewayController_providers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/api/v1/payments/intents": {
+      "post": {
+        "operationId": "GatewayController_createIntent",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/api/v1/payments/intents/{id}/verify": {
+      "post": {
+        "operationId": "GatewayController_verifyIntent",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/api/v1/webhooks/{provider}": {
+      "post": {
+        "operationId": "GatewayController_webhook",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/api/v1/refunds": {
+      "post": {
+        "operationId": "GatewayController_requestRefund",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Gateway"
+        ]
+      },
+      "get": {
+        "operationId": "GatewayController_listRefunds",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/api/v1/refunds/{id}/approve": {
+      "post": {
+        "operationId": "GatewayController_approveRefund",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/api/v1/refunds/{id}/reject": {
+      "post": {
+        "operationId": "GatewayController_rejectRefund",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/api/v1/settlements/import": {
+      "post": {
+        "operationId": "GatewayController_importSettlement",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/api/v1/settlements/import-csv": {
+      "post": {
+        "operationId": "GatewayController_importSettlementCsv",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/api/v1/settlements": {
+      "get": {
+        "operationId": "GatewayController_listSettlements",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/api/v1/reconciliation/exceptions": {
+      "get": {
+        "operationId": "GatewayController_exceptions",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/api/v1/reconciliation/exceptions/{id}/resolve": {
+      "post": {
+        "operationId": "GatewayController_resolveException",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Gateway"
+        ]
+      }
+    },
+    "/api/v1/files/storage-status": {
+      "get": {
+        "operationId": "FilesController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/files/intents": {
+      "post": {
+        "operationId": "FilesController_createIntent",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/files/upload": {
+      "post": {
+        "operationId": "FilesController_upload",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/files/{id}/complete": {
+      "post": {
+        "operationId": "FilesController_complete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/files/{id}/download-url": {
+      "get": {
+        "operationId": "FilesController_downloadUrl",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/files/download": {
+      "get": {
+        "operationId": "FilesController_download",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/files": {
+      "get": {
+        "operationId": "FilesController_list",
+        "parameters": [
+          {
+            "name": "entityType",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entityId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/files/{id}/quarantine": {
+      "post": {
+        "operationId": "FilesController_quarantine",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/files/{id}/delete": {
+      "post": {
+        "operationId": "FilesController_softDelete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/files/lifecycle/run": {
+      "post": {
+        "operationId": "FilesController_lifecycle",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Files"
+        ]
+      }
+    },
+    "/api/v1/events/stream": {
+      "get": {
+        "operationId": "EventsController_stream",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Events"
+        ]
+      }
+    },
+    "/api/v1/push/status": {
+      "get": {
+        "operationId": "PushController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Push"
+        ]
+      }
+    },
+    "/api/v1/push/subscriptions": {
+      "get": {
+        "operationId": "PushController_listMine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Push"
+        ]
+      }
+    },
+    "/api/v1/push/subscribe": {
+      "post": {
+        "operationId": "PushController_subscribe",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Push"
+        ]
+      }
+    },
+    "/api/v1/push/unsubscribe": {
+      "post": {
+        "operationId": "PushController_unsubscribe",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Push"
+        ]
+      }
+    },
+    "/api/v1/push/test": {
+      "post": {
+        "operationId": "PushController_test",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Push"
+        ]
+      }
+    },
+    "/api/v1/inventory/items": {
+      "get": {
+        "operationId": "InventoryController_listItems",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      },
+      "post": {
+        "operationId": "InventoryController_createItem",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/locations": {
+      "get": {
+        "operationId": "InventoryController_listLocations",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      },
+      "post": {
+        "operationId": "InventoryController_createLocation",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/movements": {
+      "post": {
+        "operationId": "InventoryController_recordMovement",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/stock-on-hand": {
+      "get": {
+        "operationId": "InventoryController_stockOnHand",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lowOnly",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/movement-summary": {
+      "get": {
+        "operationId": "InventoryController_movementSummary",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/ledger": {
+      "get": {
+        "operationId": "InventoryController_ledger",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/analytics/occupancy": {
+      "get": {
+        "operationId": "AnalyticsController_occupancy",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/revenue": {
+      "get": {
+        "operationId": "AnalyticsController_revenue",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/cashier": {
+      "get": {
+        "operationId": "AnalyticsController_cashier",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/receivables": {
+      "get": {
+        "operationId": "AnalyticsController_receivables",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/owner-dashboard": {
+      "get": {
+        "operationId": "AnalyticsController_ownerDashboard",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/exports": {
+      "post": {
+        "operationId": "AnalyticsController_requestExport",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Analytics"
+        ]
+      },
+      "get": {
+        "operationId": "AnalyticsController_listJobs",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/exports/{id}": {
+      "get": {
+        "operationId": "AnalyticsController_getJob",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/api/v1/reports/daily-flash": {
+      "get": {
+        "operationId": "ReportsController_dailyFlash",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/audit-trail": {
+      "get": {
+        "operationId": "ReportsController_auditTrail",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/tax-summary": {
+      "get": {
+        "operationId": "ReportsController_taxSummary",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/guest-ledger": {
+      "get": {
+        "operationId": "ReportsController_guestLedger",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/export": {
+      "get": {
+        "operationId": "ReportsController_exportCsv",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
         ]
       }
     },
@@ -1189,6 +2714,27 @@
         "tags": [
           "Reservations"
         ]
+      },
+      "patch": {
+        "operationId": "ReservationsController_modify",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reservations"
+        ]
       }
     },
     "/api/v1/reservations/{id}/check-in": {
@@ -1263,6 +2809,29 @@
     "/api/v1/reservations/{id}/extend": {
       "post": {
         "operationId": "ReservationsController_extend",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reservations"
+        ]
+      }
+    },
+    "/api/v1/reservations/{id}/assign-room": {
+      "post": {
+        "operationId": "ReservationsController_assignRoom",
         "parameters": [
           {
             "name": "id",
@@ -1389,6 +2958,29 @@
       "post": {
         "operationId": "HousekeepingController_create",
         "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Housekeeping"
+        ]
+      }
+    },
+    "/api/v1/housekeeping/tasks/{id}/assign": {
+      "post": {
+        "operationId": "HousekeepingController_assign",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -2049,6 +3641,29 @@
         ]
       }
     },
+    "/api/v1/night-audit/preflight": {
+      "get": {
+        "operationId": "NightAuditController_preflight",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "NightAudit"
+        ]
+      }
+    },
     "/api/v1/night-audit/history": {
       "get": {
         "operationId": "NightAuditController_history",
@@ -2072,3043 +3687,220 @@
         ]
       }
     },
-    "/api/v1/reports/daily-flash": {
+    "/api/v1/security-policy": {
       "get": {
-        "operationId": "ReportsController_dailyFlash",
-        "parameters": [
-          {
-            "name": "propertyId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "operationId": "PlatformController_getPolicy",
+        "parameters": [],
         "responses": {
           "200": {
             "description": ""
           }
         },
         "tags": [
-          "Reports"
+          "Platform"
         ]
-      }
-    },
-    "/api/v1/reports/audit-trail": {
-      "get": {
-        "operationId": "ReportsController_auditTrail",
-        "parameters": [
-          {
-            "name": "propertyId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Reports"
-        ]
-      }
-    },
-    "/api/v1/reports/tax-summary": {
-      "get": {
-        "operationId": "ReportsController_taxSummary",
-        "parameters": [
-          {
-            "name": "propertyId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "to",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Reports"
-        ]
-      }
-    },
-    "/api/v1/reports/guest-ledger": {
-      "get": {
-        "operationId": "ReportsController_guestLedger",
-        "parameters": [
-          {
-            "name": "propertyId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "to",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Reports"
-        ]
-      }
-    },
-    "/api/v1/reports/export": {
-      "get": {
-        "operationId": "ReportsController_exportCsv",
-        "parameters": [
-          {
-            "name": "propertyId",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "type",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "to",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Reports"
-        ]
-      }
-    },
-    "/reservations/{id}": {
-      "patch": {
-        "tags": [
-          "Reservations"
-        ],
-        "summary": "Modify an un-arrived reservation",
-        "description": "Changes dates, room type, occupancy or notes. Inventory is re-allocated in the same transaction: the new dates are claimed before the old ones are released, so a modification that cannot be satisfied returns 409 SOLD_OUT and leaves the original booking intact. A pre-assigned room that no longer fits is dropped. Not permitted once the guest is in house — use room-move or extend instead.",
-        "responses": {
-          "200": {
-            "description": "Modified; body includes a `changes` set"
-          },
-          "400": {
-            "description": "NO_CHANGES or INVALID_DATE_RANGE"
-          },
-          "409": {
-            "description": "NOT_MODIFIABLE, SOLD_OUT or OCCUPANCY_EXCEEDED"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "arrivalDate": {
-                    "type": "string",
-                    "format": "date"
-                  },
-                  "departureDate": {
-                    "type": "string",
-                    "format": "date"
-                  },
-                  "roomTypeId": {
-                    "type": "string"
-                  },
-                  "adults": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 10
-                  },
-                  "children": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 10
-                  },
-                  "notes": {
-                    "type": "string"
-                  },
-                  "reason": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/reservations/{id}/assign-room": {
-      "post": {
-        "tags": [
-          "Reservations"
-        ],
-        "summary": "Assign a physical room",
-        "description": "Assigns a specific room, or picks one automatically when `roomId` is omitted. Auto-assignment prefers the lowest floor and skips rooms that are blocked, out of order, or already assigned to an overlapping stay.",
-        "responses": {
-          "201": {
-            "description": "Assigned; returns roomId and roomNumber"
-          },
-          "404": {
-            "description": "ROOM_NOT_FOUND — unknown room, or not of this reservation's type"
-          },
-          "409": {
-            "description": "ROOM_NOT_AVAILABLE, NO_ROOM_AVAILABLE or ALREADY_IN_HOUSE"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "roomId": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/front-desk/arrivals": {
-      "get": {
-        "tags": [
-          "Front desk"
-        ],
-        "summary": "Arrivals worklist",
-        "description": "Confirmed stays arriving on the business date, each with the blockers stopping check-in.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/front-desk/departures": {
-      "get": {
-        "tags": [
-          "Front desk"
-        ],
-        "summary": "Departures worklist",
-        "description": "In-house stays departing on the business date, with per-folio balances and whether checkout is clear.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/front-desk/in-house": {
-      "get": {
-        "tags": [
-          "Front desk"
-        ],
-        "summary": "In House worklist",
-        "description": "Every currently in-house stay.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "date",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/front-desk/summary": {
-      "get": {
-        "tags": [
-          "Front desk"
-        ],
-        "summary": "Desk summary",
-        "description": "Counts for arrivals, departures and in-house, plus total outstanding on departing folios.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/folios/split": {
-      "post": {
-        "tags": [
-          "Folios"
-        ],
-        "summary": "Open an additional folio on a stay",
-        "description": "Splits billing, e.g. room and tax to a company account and extras to the guest. Max six per stay.",
-        "responses": {
-          "201": {
-            "description": "Folio created"
-          },
-          "409": {
-            "description": "STAY_CLOSED or TOO_MANY_FOLIOS"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "reservationId",
-                  "label"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "reservationId": {
-                    "type": "string"
-                  },
-                  "label": {
-                    "type": "string",
-                    "maxLength": 40
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/folios/{id}/transfer": {
-      "post": {
-        "tags": [
-          "Folios"
-        ],
-        "summary": "Transfer charges to another folio",
-        "description": "Moves postings between folios of the SAME stay. The ledger is append-only, so nothing is re-parented: each entry is reversed on the source and re-posted on the target, both halves sharing a transferGroupId. The pair is exactly zero-sum. An entry can only be transferred once.",
-        "responses": {
-          "201": {
-            "description": "Transferred; returns both resulting balances"
-          },
-          "409": {
-            "description": "DIFFERENT_STAY, FOLIO_CLOSED or ENTRY_NOT_TRANSFERABLE"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "targetFolioId",
-                  "entryIds",
-                  "reason"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "targetFolioId": {
-                    "type": "string"
-                  },
-                  "entryIds": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "maxItems": 100
-                  },
-                  "reason": {
-                    "type": "string",
-                    "minLength": 3
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/folios/by-reservation/{reservationId}": {
-      "get": {
-        "tags": [
-          "Folios"
-        ],
-        "summary": "List a stay's folios",
-        "description": "Every folio on a stay with its balance — the checkout screen's data.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "reservationId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/invoices": {
-      "get": {
-        "tags": [
-          "Invoices"
-        ],
-        "summary": "List invoices",
-        "description": "Issued documents for a property, newest first.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "folioId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Invoices"
-        ],
-        "summary": "Issue an invoice or receipt",
-        "description": "Freezes an immutable snapshot of the folio's current lines, taxes and guest details and assigns the next gapless number in the property's yearly series. Later postings to the folio never alter an issued document.",
-        "responses": {
-          "201": {
-            "description": "Issued"
-          },
-          "400": {
-            "description": "NOTHING_TO_INVOICE"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "folioId"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "folioId": {
-                    "type": "string"
-                  },
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "INVOICE",
-                      "RECEIPT"
-                    ]
-                  },
-                  "billTo": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/invoices/{id}": {
-      "get": {
-        "tags": [
-          "Invoices"
-        ],
-        "summary": "Get an invoice",
-        "description": "Returns the frozen snapshot.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/invoices/{id}/render": {
-      "get": {
-        "tags": [
-          "Invoices"
-        ],
-        "summary": "Render as printable text",
-        "description": "Plain-text rendering sized for the thermal printers front desks actually own.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/invoices/{id}/void": {
-      "post": {
-        "tags": [
-          "Invoices"
-        ],
-        "summary": "Void an invoice",
-        "description": "Issues an offsetting credit note and marks the original VOID. The original keeps its number — a gapless sequence must never lose an entry. Finance, manager or owner only.",
-        "responses": {
-          "201": {
-            "description": "Voided; returns the credit note"
-          },
-          "409": {
-            "description": "ALREADY_VOID or FORBIDDEN_ROLE"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "reason"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "reason": {
-                    "type": "string",
-                    "minLength": 3
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/payments/providers": {
-      "get": {
-        "tags": [
-          "Payments"
-        ],
-        "summary": "Provider status",
-        "description": "Reports whether each adapter is LIVE or SANDBOX and what that means. Live mode requires PAYMENTS_MODE=live plus credentials — it is never inferred from the shape of a key.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        }
-      }
-    },
-    "/payments/intents": {
-      "post": {
-        "tags": [
-          "Payments"
-        ],
-        "summary": "Create a payment intent",
-        "description": "Creates a local record and a provider checkout URL. Nothing touches the folio: money is only posted from a verified webhook or an explicit verify call, because a browser redirect proves nothing.",
-        "responses": {
-          "201": {
-            "description": "Intent created; returns checkoutUrl and a sandbox flag"
-          },
-          "409": {
-            "description": "FOLIO_CLOSED"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "folioId",
-                  "provider",
-                  "amountMinor",
-                  "email"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "folioId": {
-                    "type": "string"
-                  },
-                  "provider": {
-                    "type": "string",
-                    "enum": [
-                      "PAYSTACK",
-                      "FLUTTERWAVE"
-                    ]
-                  },
-                  "amountMinor": {
-                    "type": "integer",
-                    "minimum": 1
-                  },
-                  "email": {
-                    "type": "string",
-                    "format": "email"
-                  },
-                  "callbackUrl": {
-                    "type": "string",
-                    "format": "uri"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/payments/intents/{id}/verify": {
-      "post": {
-        "tags": [
-          "Payments"
-        ],
-        "summary": "Verify an intent server-side",
-        "description": "Asks the provider directly whether the transaction succeeded. Used when a webhook is delayed or lost. Idempotent: confirming twice creates one payment.",
-        "responses": {
-          "201": {
-            "description": "Verification result"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/webhooks/{provider}": {
-      "post": {
-        "tags": [
-          "Payments"
-        ],
-        "summary": "Provider webhook (public)",
-        "description": "Signature-verified provider callback. Paystack: HMAC-SHA512 of the RAW body in x-paystack-signature. Flutterwave: shared secret echoed in verif-hash.\n\nVerification runs over the exact received bytes — a re-serialised body will not validate. Every delivery is stored before being acted on, deduplicated by provider event id, and replays are no-ops. Returns 2xx for business-level problems (unknown reference, duplicate) because a non-2xx makes providers retry forever; only a bad signature returns 4xx.",
-        "responses": {
-          "201": {
-            "description": "Accepted (may be duplicate, ignored or unmatched)"
-          },
-          "400": {
-            "description": "INVALID_SIGNATURE or EMPTY_BODY"
-          },
-          "404": {
-            "description": "UNKNOWN_PROVIDER"
-          }
-        },
-        "parameters": [
-          {
-            "name": "provider",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "paystack",
-                "flutterwave"
-              ]
-            }
-          }
-        ],
-        "security": []
-      }
-    },
-    "/refunds": {
-      "get": {
-        "tags": [
-          "Payments"
-        ],
-        "summary": "List refunds",
-        "description": "Refund requests, newest first.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Payments"
-        ],
-        "summary": "Request a refund",
-        "description": "Raises a refund for approval. Nothing is posted to the ledger until a different, authorised user approves it. Cannot exceed what remains unrefunded on the payment.",
-        "responses": {
-          "201": {
-            "description": "PENDING_APPROVAL"
-          },
-          "409": {
-            "description": "REFUND_EXCEEDS_PAYMENT or PAYMENT_NOT_REFUNDABLE"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "paymentId",
-                  "amountMinor",
-                  "reason"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "paymentId": {
-                    "type": "string"
-                  },
-                  "amountMinor": {
-                    "type": "integer",
-                    "minimum": 1
-                  },
-                  "reason": {
-                    "type": "string",
-                    "minLength": 5
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/refunds/{id}/approve": {
-      "post": {
-        "tags": [
-          "Payments"
-        ],
-        "summary": "Approve a refund",
-        "description": "Finance, manager or owner only. The requester can never approve their own request. Approval posts a REFUND entry to the folio and, for card payments, calls the provider.",
-        "responses": {
-          "201": {
-            "description": "Decided"
-          },
-          "409": {
-            "description": "ALREADY_DECIDED, SELF_APPROVAL or FORBIDDEN_ROLE"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "note": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/refunds/{id}/reject": {
-      "post": {
-        "tags": [
-          "Payments"
-        ],
-        "summary": "Reject a refund",
-        "description": "Finance, manager or owner only. The requester can never approve their own request. Approval posts a REFUND entry to the folio and, for card payments, calls the provider.",
-        "responses": {
-          "201": {
-            "description": "Decided"
-          },
-          "409": {
-            "description": "ALREADY_DECIDED, SELF_APPROVAL or FORBIDDEN_ROLE"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "note": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/settlements/import": {
-      "post": {
-        "tags": [
-          "Payments"
-        ],
-        "summary": "Import a provider settlement",
-        "description": "Imports a payout and reconciles it against recorded payments. Idempotent on the payout reference. Anything that does not reconcile becomes an exception rather than a silent adjustment.",
-        "responses": {
-          "201": {
-            "description": "Imported; returns matched count and exceptions"
-          },
-          "409": {
-            "description": "SETTLEMENT_ALREADY_IMPORTED or FORBIDDEN_ROLE"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "propertyId",
-                  "provider",
-                  "reference",
-                  "settledOn",
-                  "lines"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "propertyId": {
-                    "type": "string"
-                  },
-                  "provider": {
-                    "type": "string",
-                    "enum": [
-                      "PAYSTACK",
-                      "FLUTTERWAVE"
-                    ]
-                  },
-                  "reference": {
-                    "type": "string"
-                  },
-                  "settledOn": {
-                    "type": "string",
-                    "format": "date"
-                  },
-                  "lines": {
-                    "type": "array",
-                    "maxItems": 5000,
-                    "items": {
-                      "type": "object",
-                      "required": [
-                        "providerRef",
-                        "amountMinor"
-                      ],
-                      "properties": {
-                        "providerRef": {
-                          "type": "string"
-                        },
-                        "amountMinor": {
-                          "type": "integer"
-                        },
-                        "feeMinor": {
-                          "type": "integer",
-                          "minimum": 0
-                        },
-                        "paidOn": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/settlements": {
-      "get": {
-        "tags": [
-          "Payments"
-        ],
-        "summary": "List settlements",
-        "description": "Payouts with gross, fees, net and exception counts.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/reconciliation/exceptions": {
-      "get": {
-        "tags": [
-          "Payments"
-        ],
-        "summary": "List reconciliation exceptions",
-        "description": "MISSING_IN_SETTLEMENT (we recorded it, the provider did not pay it), UNKNOWN_IN_SETTLEMENT (they paid something we never recorded), AMOUNT_MISMATCH, DUPLICATE_REFERENCE.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/reconciliation/exceptions/{id}/resolve": {
-      "post": {
-        "tags": [
-          "Payments"
-        ],
-        "summary": "Resolve an exception",
-        "description": "Finance, manager or owner only. Requires a note; exceptions are worked, never auto-cleared.",
-        "responses": {
-          "201": {
-            "description": "Resolved"
-          },
-          "409": {
-            "description": "ALREADY_RESOLVED or FORBIDDEN_ROLE"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "resolution",
-                  "note"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "resolution": {
-                    "type": "string",
-                    "enum": [
-                      "RESOLVED",
-                      "WRITTEN_OFF"
-                    ]
-                  },
-                  "note": {
-                    "type": "string",
-                    "minLength": 3
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/settlements/import-csv": {
-      "post": {
-        "tags": [
-          "Payments"
-        ],
-        "summary": "Import a settlement from a provider CSV",
-        "description": "Parses a Paystack or Flutterwave settlement export and reconciles it through the same path as the JSON import.\n\nAmounts in these exports are in MAJOR units (naira) even where the provider's API uses minor units, so they are converted explicitly. Column lookup is case- and punctuation-insensitive with known aliases. Unreadable rows are reported with their row numbers rather than dropped; `strict` refuses the whole import if any row failed.",
-        "responses": {
-          "201": {
-            "description": "Imported; returns matched count, exceptions and parse report"
-          },
-          "400": {
-            "description": "NO_USABLE_ROWS or CSV_HAS_UNREADABLE_ROWS"
-          },
-          "409": {
-            "description": "SETTLEMENT_ALREADY_IMPORTED or FORBIDDEN_ROLE"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "propertyId",
-                  "provider",
-                  "reference",
-                  "settledOn",
-                  "csv"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "propertyId": {
-                    "type": "string"
-                  },
-                  "provider": {
-                    "type": "string",
-                    "enum": [
-                      "PAYSTACK",
-                      "FLUTTERWAVE"
-                    ]
-                  },
-                  "reference": {
-                    "type": "string"
-                  },
-                  "settledOn": {
-                    "type": "string",
-                    "format": "date"
-                  },
-                  "csv": {
-                    "type": "string",
-                    "maxLength": 5000000
-                  },
-                  "amountsAreMajor": {
-                    "type": "boolean",
-                    "default": true
-                  },
-                  "strict": {
-                    "type": "boolean",
-                    "default": false
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/night-audit/preflight": {
-      "get": {
-        "tags": [
-          "Night audit"
-        ],
-        "summary": "Night audit pre-flight",
-        "description": "Reports whether the day can close. Blockers stop the run (open cashier shifts, open POS orders, already run); warnings must be acknowledged but do not stop it (unapproved variances, due-outs still in house, unarrived bookings).",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/files/storage-status": {
-      "get": {
-        "tags": [
-          "Files"
-        ],
-        "summary": "Storage status",
-        "description": "Reports the active adapter, whether it is a real object store, bucket policy, size limits and allowed content types.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        }
-      }
-    },
-    "/files/intents": {
-      "post": {
-        "tags": [
-          "Files"
-        ],
-        "summary": "Create an upload intent",
-        "description": "Validates purpose, content type and size, reserves a metadata row and returns a presigned PUT. The row exists before the bytes do, so an abandoned upload is visible and sweepable rather than an orphan. Object keys are generated — the uploaded filename is never used as a path component.",
-        "responses": {
-          "201": {
-            "description": "Intent created with a presigned upload"
-          },
-          "400": {
-            "description": "CONTENT_TYPE_NOT_ALLOWED or FILE_TOO_LARGE"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "purpose",
-                  "originalName",
-                  "contentType",
-                  "sizeBytes"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "purpose": {
-                    "type": "string",
-                    "enum": [
-                      "GUEST_ID",
-                      "ROOM_IMAGE",
-                      "INVOICE",
-                      "EXPORT",
-                      "GENERAL"
-                    ]
-                  },
-                  "originalName": {
-                    "type": "string",
-                    "maxLength": 255
-                  },
-                  "contentType": {
-                    "type": "string"
-                  },
-                  "sizeBytes": {
-                    "type": "integer",
-                    "minimum": 1
-                  },
-                  "propertyId": {
-                    "type": "string"
-                  },
-                  "entityType": {
-                    "type": "string"
-                  },
-                  "entityId": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/files/upload": {
-      "post": {
-        "tags": [
-          "Files"
-        ],
-        "summary": "Presigned upload target (public)",
-        "description": "Accepts raw bytes for a presigned URL. Public because the signature and expiry ARE the authorisation. Rejects tampered or expired URLs and refuses a second upload to the same key.",
-        "responses": {
-          "201": {
-            "description": "Bytes stored"
-          },
-          "400": {
-            "description": "INVALID_UPLOAD_URL, MALFORMED_UPLOAD_URL or EMPTY_UPLOAD"
-          },
-          "409": {
-            "description": "ALREADY_UPLOADED"
-          }
-        },
-        "security": []
-      }
-    },
-    "/files/{id}/complete": {
-      "post": {
-        "tags": [
-          "Files"
-        ],
-        "summary": "Complete and validate an upload",
-        "description": "Verifies size and checksum, then sniffs the stored bytes. A declared content type is only a hint: a mismatch quarantines the file, which is what stops an HTML payload being stored as an image and served back. Idempotent once CLEAN.",
-        "responses": {
-          "201": {
-            "description": "CLEAN"
-          },
-          "409": {
-            "description": "FILE_QUARANTINED or NOT_UPLOADED"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "checksumSha256": {
-                    "type": "string",
-                    "pattern": "^[a-f0-9]{64}$"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/files/{id}/download-url": {
-      "get": {
-        "tags": [
-          "Files"
-        ],
-        "summary": "Signed download URL",
-        "description": "Short-lived signed URL for private objects; public-bucket objects are returned unsigned. Quarantined, deleted or incomplete files are never served.",
-        "responses": {
-          "200": {
-            "description": "URL"
-          },
-          "409": {
-            "description": "FILE_QUARANTINED or FILE_NOT_READY"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/files/download": {
-      "get": {
-        "tags": [
-          "Files"
-        ],
-        "summary": "Serve a signed object (public)",
-        "description": "Verifies the signature and expiry, then re-checks the metadata row: a valid signature alone is not enough, because the row is the authority on whether bytes may still be served. Always sent as an attachment with nosniff.",
-        "responses": {
-          "200": {
-            "description": "Bytes"
-          },
-          "404": {
-            "description": "FILE_NOT_AVAILABLE"
-          }
-        },
-        "security": []
-      }
-    },
-    "/files": {
-      "get": {
-        "tags": [
-          "Files"
-        ],
-        "summary": "List files",
-        "description": "Filter by attached entity or status.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "entityType",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "entityId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/files/{id}/quarantine": {
-      "post": {
-        "tags": [
-          "Files"
-        ],
-        "summary": "Quarantine a file",
-        "description": "Manual quarantine. Requires the file.manage permission.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "reason"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "reason": {
-                    "type": "string",
-                    "minLength": 3
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/files/{id}/delete": {
-      "post": {
-        "tags": [
-          "Files"
-        ],
-        "summary": "Soft delete a file",
-        "description": "Marks the file deleted. Previously issued download URLs stop working immediately; the bytes are purged by the lifecycle sweep while the metadata row is kept for audit.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/files/lifecycle/run": {
-      "post": {
-        "tags": [
-          "Files"
-        ],
-        "summary": "Run the lifecycle sweep",
-        "description": "Expires abandoned intents, purges soft-deleted objects and enforces retention (identity documents are kept far more briefly than room images). Metadata rows survive so a deletion can still be explained.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        }
-      }
-    },
-    "/events/stream": {
-      "get": {
-        "tags": [
-          "Live updates"
-        ],
-        "summary": "Server-Sent Events change stream",
-        "description": "Emits change notifications, never payloads: a client is told what changed and re-reads through the normal permission-checked endpoints, so authorisation lives in exactly one place.\n\nEventSource cannot set an Authorization header, so the access token is passed as a query parameter and verified with the same secret; the connection is scoped to the tenant in that verified token. Frames: `ready` on connect, `change` per event, and comment heartbeats every 20s so intermediaries do not close an idle connection. `retry: 5000` tells the browser how long to wait before reconnecting.",
-        "security": [],
-        "parameters": [
-          {
-            "name": "token",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "A valid access token."
-          },
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "text/event-stream"
-          },
-          "401": {
-            "description": "Invalid stream token"
-          }
-        }
-      }
-    },
-    "/push/status": {
-      "get": {
-        "tags": [
-          "Push"
-        ],
-        "summary": "Push configuration status",
-        "description": "Reports whether VAPID keys are configured and returns the public key. When push is off it says so plainly rather than accepting subscriptions that can never deliver.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        }
-      }
-    },
-    "/push/subscribe": {
-      "post": {
-        "tags": [
-          "Push"
-        ],
-        "summary": "Register a device",
-        "description": "Upserts on the endpoint, so re-subscribing the same browser updates the row instead of accumulating duplicates that would double-notify.",
-        "responses": {
-          "201": {
-            "description": "Subscribed"
-          },
-          "400": {
-            "description": "PUSH_DISABLED"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "endpoint",
-                  "keys"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "endpoint": {
-                    "type": "string",
-                    "format": "uri"
-                  },
-                  "keys": {
-                    "type": "object",
-                    "required": [
-                      "p256dh",
-                      "auth"
-                    ],
-                    "properties": {
-                      "p256dh": {
-                        "type": "string"
-                      },
-                      "auth": {
-                        "type": "string"
-                      }
-                    }
-                  },
-                  "deviceLabel": {
-                    "type": "string",
-                    "maxLength": 60
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/push/unsubscribe": {
-      "post": {
-        "tags": [
-          "Push"
-        ],
-        "summary": "Remove a device",
-        "description": "Removes the subscription for this user.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "endpoint"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "endpoint": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/push/subscriptions": {
-      "get": {
-        "tags": [
-          "Push"
-        ],
-        "summary": "List my devices",
-        "description": "Devices this user has registered.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        }
-      }
-    },
-    "/push/test": {
-      "post": {
-        "tags": [
-          "Push"
-        ],
-        "summary": "Send a test notification",
-        "description": "Lets a user prove push works on this device before relying on it. Returns per-device outcomes: sent, failed and pruned.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        }
-      }
-    },
-    "/housekeeping/tasks/{id}/assign": {
-      "post": {
-        "tags": [
-          "Housekeeping"
-        ],
-        "summary": "Assign a task and notify",
-        "description": "Assigns the task and queues a push notification in the SAME transaction, so nobody is told to clean a room for an assignment that rolled back. Bumps the version so offline devices see the reassignment. The assignee must be an active member of the tenant.",
-        "responses": {
-          "201": {
-            "description": "Assigned"
-          },
-          "404": {
-            "description": "ASSIGNEE_NOT_FOUND"
-          },
-          "400": {
-            "description": "TASK_FINISHED"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "assignedUserId"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "assignedUserId": {
-                    "type": "string"
-                  },
-                  "assignedTo": {
-                    "type": "string",
-                    "maxLength": 80
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventory/items": {
-      "get": {
-        "tags": [
-          "Inventory"
-        ],
-        "summary": "List items",
-        "description": "Active catalogue for a property.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "category",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Inventory"
-        ],
-        "summary": "Create an item",
-        "description": "Quantities are held as integers in thousandths so 0.1 + 0.2 is exactly 0.3 - a float ledger drifts, and a drifting stock ledger cannot distinguish rounding from theft.",
-        "responses": {
-          "201": {
-            "description": "Created"
-          },
-          "409": {
-            "description": "SKU_EXISTS"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "propertyId",
-                  "sku",
-                  "name"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "propertyId": {
-                    "type": "string"
-                  },
-                  "sku": {
-                    "type": "string",
-                    "maxLength": 40
-                  },
-                  "name": {
-                    "type": "string"
-                  },
-                  "category": {
-                    "type": "string",
-                    "enum": [
-                      "HOUSEKEEPING",
-                      "FB",
-                      "MAINTENANCE",
-                      "GENERAL"
-                    ]
-                  },
-                  "unit": {
-                    "type": "string",
-                    "enum": [
-                      "EACH",
-                      "KG",
-                      "LITRE",
-                      "PACK",
-                      "BOTTLE"
-                    ]
-                  },
-                  "reorderLevel": {
-                    "type": "number"
-                  },
-                  "unitCostMinor": {
-                    "type": "integer"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventory/locations": {
-      "get": {
-        "tags": [
-          "Inventory"
-        ],
-        "summary": "List stock locations",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Inventory"
-        ],
-        "summary": "Create a stock location",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "propertyId",
-                  "code",
-                  "name"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "propertyId": {
-                    "type": "string"
-                  },
-                  "code": {
-                    "type": "string"
-                  },
-                  "name": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventory/movements": {
-      "post": {
-        "tags": [
-          "Inventory"
-        ],
-        "summary": "Record a stock movement",
-        "description": "Append-only: a mistake is corrected with an opposing ADJUSTMENT, never an edit, so shrinkage cannot be quietly erased. Send a POSITIVE quantity - the type decides the sign. Stock cannot be driven negative, because a location holding -3 bottles hides either an unrecorded delivery or a theft.",
-        "responses": {
-          "201": {
-            "description": "Recorded"
-          },
-          "400": {
-            "description": "ZERO_QUANTITY or NEGATIVE_QUANTITY"
-          },
-          "409": {
-            "description": "INSUFFICIENT_STOCK"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "propertyId",
-                  "itemId",
-                  "locationId",
-                  "type",
-                  "quantity"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "propertyId": {
-                    "type": "string"
-                  },
-                  "itemId": {
-                    "type": "string"
-                  },
-                  "locationId": {
-                    "type": "string"
-                  },
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "RECEIPT",
-                      "ISSUE",
-                      "CONSUMPTION",
-                      "ADJUSTMENT",
-                      "TRANSFER_IN",
-                      "TRANSFER_OUT",
-                      "WASTAGE"
-                    ]
-                  },
-                  "quantity": {
-                    "type": "number"
-                  },
-                  "unitCostMinor": {
-                    "type": "integer"
-                  },
-                  "reference": {
-                    "type": "string"
-                  },
-                  "note": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventory/stock-on-hand": {
-      "get": {
-        "tags": [
-          "Inventory"
-        ],
-        "summary": "Stock on hand",
-        "description": "Current levels with valuation and reorder flags.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "lowOnly",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/inventory/movement-summary": {
-      "get": {
-        "tags": [
-          "Inventory"
-        ],
-        "summary": "Movement summary",
-        "description": "Consumption and wastage over a period. Wastage is reported in its own column rather than folded into consumption.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/inventory/ledger": {
-      "get": {
-        "tags": [
-          "Inventory"
-        ],
-        "summary": "Item ledger",
-        "description": "Every movement for one item with a running balance.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "itemId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/analytics/occupancy": {
-      "get": {
-        "tags": [
-          "Analytics"
-        ],
-        "summary": "Occupancy, ADR and RevPAR",
-        "description": "ADR divides room revenue by rooms SOLD; RevPAR divides the same revenue by rooms AVAILABLE. Confusing the two flatters a half-empty hotel, so both denominators are returned alongside the rates. Blocked rooms reduce availability.",
-        "responses": {
-          "200": {
-            "description": "Per-day figures and totals"
-          },
-          "400": {
-            "description": "INVALID_DATE_RANGE or RANGE_TOO_LONG"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/analytics/revenue": {
-      "get": {
-        "tags": [
-          "Analytics"
-        ],
-        "summary": "Revenue by category",
-        "description": "Payments and refunds are excluded: they settle revenue, they are not revenue. Tax and discounts are reported separately from gross.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/analytics/cashier": {
-      "get": {
-        "tags": [
-          "Analytics"
-        ],
-        "summary": "Cashier report",
-        "description": "Shifts with expected vs counted. Shortages and overages are totalled SEPARATELY - netting them hides two different problems behind one number.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/analytics/receivables": {
-      "get": {
-        "tags": [
-          "Analytics"
-        ],
-        "summary": "Aged receivables",
-        "description": "Open balances bucketed by age. Folios that are CLOSED but still owing are counted separately: that is a debt that walked out of the building.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/analytics/owner-dashboard": {
-      "get": {
-        "tags": [
-          "Analytics"
-        ],
-        "summary": "Owner dashboard",
-        "description": "Month-to-date occupancy/ADR/RevPAR, receivables ageing, and a needs-attention block covering pending approvals, unapproved cash variances and open reconciliation exceptions.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/analytics/exports": {
-      "get": {
-        "tags": [
-          "Analytics"
-        ],
-        "summary": "List export jobs",
-        "description": "",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Analytics"
-        ],
-        "summary": "Request an asynchronous export",
-        "description": "A year of guest ledger will not return inside an HTTP request, so the job is recorded, run out of band, and the result stored as a file downloaded through a signed URL. Poll the job for status. Every type in the enum has a builder behind it; a type without one fails the job with a reason rather than returning an empty file that reads like a quiet trading period. PDF output is A4 landscape, fixed pitch, paginated and numbered; the naira sign is written NGN because it has no WinAnsi code point. CSV and PDF of the same report always carry the same columns.",
-        "responses": {
-          "201": {
-            "description": "Job queued"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "propertyId",
-                  "type",
-                  "from",
-                  "to"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "propertyId": {
-                    "type": "string"
-                  },
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "DAILY_FLASH",
-                      "REVENUE",
-                      "OCCUPANCY",
-                      "CASHIER",
-                      "TAX",
-                      "RECEIVABLES",
-                      "GUEST_LEDGER",
-                      "AUDIT"
-                    ]
-                  },
-                  "format": {
-                    "type": "string",
-                    "enum": [
-                      "CSV",
-                      "PDF"
-                    ],
-                    "default": "CSV"
-                  },
-                  "from": {
-                    "type": "string",
-                    "format": "date"
-                  },
-                  "to": {
-                    "type": "string",
-                    "format": "date"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/analytics/exports/{id}": {
-      "get": {
-        "tags": [
-          "Analytics"
-        ],
-        "summary": "Export job status",
-        "description": "Returns status, row count and - once COMPLETE - a signed download URL.",
-        "responses": {
-          "200": {
-            "description": "Job"
-          },
-          "404": {
-            "description": "JOB_NOT_FOUND"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/pos/orders/{id}/void": {
-      "post": {
-        "tags": [
-          "POS"
-        ],
-        "summary": "Void an order (approval above the correction window)",
-        "description": "A void is the one POS action that makes revenue disappear, which makes it the obvious way to take cash from a till: ring the order, collect, void the ticket, keep the difference. Small voids (at or under NGN5,000) caught within 15 minutes of the order opening are treated as keying corrections and apply immediately. Anything larger or older parks the order in VOID_PENDING and raises a POS_VOID approval request; the order can then be neither settled nor voided again until a different user with approval.decide decides it. Approval voids the order; rejection returns it to OPEN and clears the reason, so a live ticket never looks cancelled. Holders of approval.decide void directly - their name is on the audit entry, which is where the control actually rests. A SETTLED order is never voidable: reverse the folio entry or refund.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "reason"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "reason": {
-                    "type": "string",
-                    "minLength": 3
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "VOIDED, or PENDING_APPROVAL with the raised request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "VOIDED",
-                        "PENDING_APPROVAL"
-                      ]
-                    },
-                    "message": {
-                      "type": "string",
-                      "nullable": true
-                    },
-                    "request": {
-                      "type": "object",
-                      "nullable": true
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "ORDER_NOT_FOUND"
-          },
-          "409": {
-            "description": "ORDER_SETTLED, ALREADY_VOIDED or VOID_PENDING"
-          }
-        }
-      }
-    },
-    "/auth/mfa": {
-      "get": {
-        "tags": [
-          "Auth"
-        ],
-        "summary": "MFA status for the current user",
-        "description": "Whether the second factor is on, when it was activated, whether tenant policy requires it, and how many recovery codes remain.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        }
-      }
-    },
-    "/auth/mfa/setup": {
-      "post": {
-        "tags": [
-          "Auth"
-        ],
-        "summary": "Begin MFA enrolment",
-        "description": "Returns a base32 secret and an otpauth:// URI to scan. Nothing is enabled yet - an abandoned setup must not lock anyone out, so the secret is stored inactive and password sign-in keeps working until the code is confirmed.",
-        "responses": {
-          "201": {
-            "description": "Secret and enrolment URI"
-          },
-          "401": {
-            "description": "MFA_ALREADY_ENABLED"
-          }
-        }
-      }
-    },
-    "/auth/mfa/activate": {
-      "post": {
-        "tags": [
-          "Auth"
-        ],
-        "summary": "Confirm a code and switch MFA on",
-        "description": "The user proves they can read a code from the secret before it becomes required. Returns ten recovery codes ONCE, in clear; only Argon2 hashes are stored, because a database dump must not be a set of working keys.",
-        "responses": {
-          "201": {
-            "description": "Enabled, with recovery codes"
-          },
-          "401": {
-            "description": "INVALID_MFA_CODE or MFA_NOT_STARTED"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "code"
-                ],
-                "properties": {
-                  "code": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/mfa/verify": {
-      "post": {
-        "tags": [
-          "Auth"
-        ],
-        "summary": "Exchange an MFA challenge for a session",
-        "description": "Accepts either a 6-digit TOTP (RFC 6238, one 30-second step of drift either side) or an unused recovery code. Recovery codes are single use: an unconsumed one is a permanent password that bypasses the second factor. The mfaToken is single-purpose and expires in 5 minutes - it cannot authorise anything else.",
-        "responses": {
-          "201": {
-            "description": "Session issued"
-          },
-          "401": {
-            "description": "INVALID_MFA_CODE or MFA_CHALLENGE_EXPIRED"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "mfaToken",
-                  "code"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "mfaToken": {
-                    "type": "string"
-                  },
-                  "code": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/mfa/disable": {
-      "post": {
-        "tags": [
-          "Auth"
-        ],
-        "summary": "Turn MFA off",
-        "description": "Re-proves the password, so a hijacked session cannot remove the factor. Refused with MFA_REQUIRED_BY_POLICY when the role is covered by the tenant policy.",
-        "responses": {
-          "201": {
-            "description": "Disabled"
-          },
-          "401": {
-            "description": "INVALID_CREDENTIALS or MFA_REQUIRED_BY_POLICY"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "password"
-                ],
-                "properties": {
-                  "password": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/mfa/enrol/setup": {
-      "post": {
-        "tags": [
-          "Auth"
-        ],
-        "summary": "Begin enrolment from a login challenge",
-        "description": "For a user whose role newly requires MFA. Login returns MFA_ENROLMENT_REQUIRED with a setupToken instead of MFA_REQUIRED, because this user has nothing to type yet and needs to be sent somewhere.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "setupToken"
-                ],
-                "properties": {
-                  "setupToken": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/mfa/enrol/activate": {
-      "post": {
-        "tags": [
-          "Auth"
-        ],
-        "summary": "Finish enrolment and sign in",
-        "description": "Activates the factor and returns a session in the same response, completing the sign-in that was interrupted rather than bouncing the user back to a login screen seconds after they proved themselves.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "setupToken",
-                  "code"
-                ],
-                "properties": {
-                  "setupToken": {
-                    "type": "string"
-                  },
-                  "code": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/security-policy": {
-      "get": {
-        "tags": [
-          "Security"
-        ],
-        "summary": "Tenant security policy",
-        "description": "Which roles must use MFA, plus enrolment coverage across the tenant.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        }
       },
       "put": {
-        "tags": [
-          "Security"
-        ],
-        "summary": "Set which roles require MFA",
-        "description": "Requires user.manage. Returns how many users will be prompted at their next sign-in - the difference between a policy change and an outage. Nobody is locked out: covered users are sent to enrolment instead.",
+        "operationId": "PlatformController_setPolicy",
+        "parameters": [],
         "responses": {
           "200": {
-            "description": "Policy applied"
-          },
-          "400": {
-            "description": "Unknown role"
-          },
-          "403": {
-            "description": "PERMISSION_DENIED"
+            "description": ""
           }
         },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "mfaRequiredRoles"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "mfaRequiredRoles": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+        "tags": [
+          "Platform"
+        ]
       }
     },
-    "/feature-flags": {
+    "/api/v1/feature-flags": {
       "get": {
-        "tags": [
-          "Feature flags"
-        ],
-        "summary": "Flags as this tenant sees them",
-        "description": "Evaluated with tenant overrides applied. An unknown flag is absent and reads as OFF: a typo in a flag name must never switch a feature on for everyone.",
+        "operationId": "PlatformController_myFlags",
+        "parameters": [],
         "responses": {
           "200": {
-            "description": "Success"
+            "description": ""
           }
-        }
+        },
+        "tags": [
+          "Platform"
+        ]
       }
     },
-    "/admin/feature-flags": {
+    "/api/v1/admin/feature-flags": {
       "get": {
-        "tags": [
-          "Feature flags"
-        ],
-        "summary": "List all flags with their overrides",
-        "description": "Account owner only.",
+        "operationId": "PlatformController_list",
+        "parameters": [],
         "responses": {
           "200": {
-            "description": "Success"
+            "description": ""
           }
-        }
+        },
+        "tags": [
+          "Platform"
+        ]
       },
       "post": {
-        "tags": [
-          "Feature flags"
-        ],
-        "summary": "Create a flag",
-        "description": "Keys are lower-case kebab-case, so a flag cannot be created twice under two spellings and then read as two different flags.",
+        "operationId": "PlatformController_create",
+        "parameters": [],
         "responses": {
           "201": {
-            "description": "Created"
-          },
-          "400": {
-            "description": "FLAG_EXISTS"
+            "description": ""
           }
         },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "key",
-                  "description"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "key": {
-                    "type": "string",
-                    "pattern": "^[a-z][a-z0-9-]*$"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "enabled": {
-                    "type": "boolean",
-                    "default": false
-                  }
-                }
-              }
-            }
-          }
-        }
+        "tags": [
+          "Platform"
+        ]
       }
     },
-    "/admin/feature-flags/{key}": {
+    "/api/v1/admin/feature-flags/{key}": {
       "put": {
-        "tags": [
-          "Feature flags"
-        ],
-        "summary": "Toggle a flag or set tenant overrides",
-        "description": "Rollout state lives in the database, not in environment variables: during an incident a redeploy is the slowest possible mitigation. An override wins over the default in BOTH directions - enable for one pilot tenant, or disable for one tenant having a bad day. Send null to remove an override. Changes are audited, because what changed just before it broke is the first question of every incident.",
-        "responses": {
-          "200": {
-            "description": "Updated"
-          },
-          "404": {
-            "description": "FLAG_NOT_FOUND"
-          }
-        },
+        "operationId": "PlatformController_update",
         "parameters": [
           {
             "name": "key",
-            "in": "path",
             "required": true,
+            "in": "path",
             "schema": {
               "type": "string"
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "enabled": {
-                    "type": "boolean"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "overrides": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "boolean",
-                      "nullable": true
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/metrics": {
-      "get": {
-        "tags": [
-          "Observability"
-        ],
-        "summary": "Prometheus metrics",
-        "description": "Text exposition format. PUBLIC by design - a scraper has no session - so it must be blocked at the edge in production; see the WAF rules in docs/operations.md. Route labels are templated (/reservations/:id), never raw ids: one time series per record produces no usable percentile and melts a metrics backend.",
         "responses": {
           "200": {
-            "description": "Success"
-          }
-        }
-      }
-    },
-    "/observability/service-level": {
-      "get": {
-        "tags": [
-          "Observability"
-        ],
-        "summary": "Service level indicators",
-        "description": "Availability and latency SLIs over a window, with the slowest routes. An empty window reports null rather than 100 percent: no traffic is not the same as no failures, and a dashboard showing green for a dead service is worse than one showing nothing.",
-        "responses": {
-          "200": {
-            "description": "Success"
+            "description": ""
           }
         },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/metrics": {
+      "get": {
+        "operationId": "ObservabilityController_prometheus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Observability"
+        ]
+      }
+    },
+    "/api/v1/observability/service-level": {
+      "get": {
+        "operationId": "ObservabilityController_serviceLevel",
         "parameters": [
           {
             "name": "windowMinutes",
+            "required": true,
             "in": "query",
-            "required": false,
             "schema": {
               "type": "string"
             }
           }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Observability"
         ]
       }
     },
-    "/observability/status": {
+    "/api/v1/observability/status": {
       "get": {
-        "tags": [
-          "Observability"
-        ],
-        "summary": "Which exporters are actually live",
-        "description": "States plainly whether OTLP tracing and Sentry error reporting are configured, and why not when they are not - so nobody assumes traces are being collected when nothing is listening.",
+        "operationId": "ObservabilityController_status",
+        "parameters": [],
         "responses": {
           "200": {
-            "description": "Success"
-          }
-        }
-      }
-    },
-    "/support/lookup": {
-      "get": {
-        "tags": [
-          "Support"
-        ],
-        "summary": "Find a booking from whatever the caller remembers",
-        "description": "One search across confirmation code, email, phone, surname and invoice number. Requires support.lookup (owner, GM, finance). Results are REDACTED: enough to confirm you have the right person, never enough to become a source of guest contact details. Every lookup is written to the audit trail - a tool that reaches guest data without leaving a trace is the tool an insider uses. Read only.",
-        "responses": {
-          "200": {
-            "description": "Reservations, guests and invoices"
-          },
-          "400": {
-            "description": "QUERY_TOO_SHORT"
-          },
-          "403": {
-            "description": "PERMISSION_DENIED"
+            "description": ""
           }
         },
+        "tags": [
+          "Observability"
+        ]
+      }
+    },
+    "/api/v1/support/lookup": {
+      "get": {
+        "operationId": "SupportController_lookup",
         "parameters": [
           {
             "name": "q",
-            "in": "query",
             "required": true,
+            "in": "query",
             "schema": {
               "type": "string"
             }
           },
           {
             "name": "propertyId",
+            "required": true,
             "in": "query",
-            "required": false,
             "schema": {
               "type": "string"
             }
           }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Support"
         ]
       }
     },
-    "/support/reservations/{id}": {
+    "/api/v1/support/reservations/{id}": {
       "get": {
-        "tags": [
-          "Support"
-        ],
-        "summary": "Full reservation timeline",
-        "description": "What was booked, what it cost, what has been paid and everything that has happened to it - assembled server-side so support is not clicking through five screens while a guest waits. Folio entries carry their reversalOfId, which is what lets support explain a charge the guest says was removed.",
-        "responses": {
-          "200": {
-            "description": "Timeline"
-          },
-          "404": {
-            "description": "RESERVATION_NOT_FOUND"
-          }
-        },
+        "operationId": "SupportController_timeline",
         "parameters": [
           {
             "name": "id",
-            "in": "path",
             "required": true,
+            "in": "path",
             "schema": {
               "type": "string"
             }
           }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Support"
         ]
       }
     },
-    "/support/diagnostics": {
+    "/api/v1/support/diagnostics": {
       "get": {
-        "tags": [
-          "Support"
-        ],
-        "summary": "Data consistency checks for one property",
-        "description": "Future-dated charges, negative receipts, undecided POS voids, unreclaimed expired holds and failed exports. Findings carry a severity so they can be triaged rather than read as one undifferentiated list.",
-        "responses": {
-          "200": {
-            "description": "Success"
-          }
-        },
+        "operationId": "SupportController_diagnostics",
         "parameters": [
           {
             "name": "propertyId",
-            "in": "query",
             "required": true,
+            "in": "query",
             "schema": {
               "type": "string"
             }
           }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Support"
         ]
       }
     }
