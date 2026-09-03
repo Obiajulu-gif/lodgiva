@@ -27,5 +27,18 @@
   },
   "devDependencies": {
     "turbo": "^2.5.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "@nestjs/platform-fastify>fastify": "5.12.1",
+      "fast-json-stringify>fast-uri": "4.1.4",
+      "@fastify/ajv-compiler>fast-uri": "3.1.6",
+      "ajv>fast-uri": "3.1.7",
+      "@prisma/config>deepmerge-ts": "8.0.0",
+      "@nestjs/swagger>js-yaml": "5.2.2",
+      "next>postcss": "8.5.27",
+      "postcss>nanoid": "3.3.18",
+      "minimatch>brace-expansion": "5.0.9"
+    }
   }
 }

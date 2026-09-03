@@ -12,13 +12,16 @@ import { assertSafeProductionEnvironment } from "./common/runtime-config";
 // Development remains zero-config. Production must never inherit these
 // documented defaults; validate before assigning either one.
 assertSafeProductionEnvironment();
-process.env.DATABASE_URL ??= "file:./dev.db";
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is required. Use a local PostgreSQL or Neon connection string.");
+}
 process.env.JWT_SECRET ??= "lodgiva-dev-secret-change-in-production";
 
-// Money is BigInt minor units (§7.3); serialize as number for JSON responses.
+// Money is BigInt minor units (§7.3); serialize as decimal strings so values
+// beyond Number.MAX_SAFE_INTEGER cannot silently lose kobo.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (BigInt.prototype as any).toJSON = function () {
-  return Number(this);
+  return this.toString();
 };
 
 async function bootstrap() {
@@ -66,6 +69,8 @@ async function bootstrap() {
     bodyParser: false, // our parser above is the only JSON parser
   });
   app.setGlobalPrefix("api/v1");
+
+  await app.register(require("@fastify/cookie"));
 
   // §12.1 security baseline.
   await app.register(require("@fastify/helmet"), {

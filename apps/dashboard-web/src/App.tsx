@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, getSession, setSession } from "./api";
+import { api, getSession, refreshSession, setSession } from "./api";
 import { lastSyncAt, readQueue, startAutoSync, flush, type SyncResult } from "./offline";
 import { getSession as sessionForStream } from "./api";
 import LoginPage from "./pages/Login";
@@ -211,8 +211,7 @@ function Shell() {
   const property = me?.properties[0];
 
   const logout = async () => {
-    const s = getSession();
-    if (s) await api("/auth/logout", { method: "POST", body: { refreshToken: s.refreshToken } }).catch(() => {});
+    if (getSession()) await api("/auth/logout", { method: "POST" }).catch(() => {});
     setSession(null);
     navigate("/login");
   };
@@ -269,8 +268,15 @@ function Shell() {
 }
 
 function RequireAuth() {
-  // Evaluated on every navigation — this component is the routed element.
-  return getSession() ? <Shell /> : <Navigate to="/login" replace />;
+  const [state, setState] = useState<"loading" | "authenticated" | "anonymous">(
+    getSession() ? "authenticated" : "loading"
+  );
+  useEffect(() => {
+    if (getSession()) return;
+    refreshSession().then((session) => setState(session ? "authenticated" : "anonymous"));
+  }, []);
+  if (state === "loading") return <div className="login-page">Restoring session…</div>;
+  return state === "authenticated" ? <Shell /> : <Navigate to="/login" replace />;
 }
 
 export default function App() {

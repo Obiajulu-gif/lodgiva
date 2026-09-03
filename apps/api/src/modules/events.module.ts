@@ -110,7 +110,8 @@ export class EventsService {
 export class EventsController {
   constructor(
     private readonly events: EventsService,
-    private readonly jwt: JwtService
+    private readonly jwt: JwtService,
+    private readonly prisma: PrismaService
   ) {}
 
   /**
@@ -144,6 +145,35 @@ export class EventsController {
       reply.raw.write(
         JSON.stringify({ error: { code: "UNAUTHENTICATED", message: "Invalid stream token." } })
       );
+      reply.raw.end();
+      return;
+    }
+    const active = auth.sessionId && await this.prisma.session.findFirst({
+      where: {
+        id: auth.sessionId,
+        userId: auth.userId,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+        user: { status: "ACTIVE" },
+      },
+    });
+    const membership = await this.prisma.membership.findFirst({
+      where: {
+        userId: auth.userId,
+        tenantId: auth.tenantId,
+        role: auth.role,
+        status: "ACTIVE",
+        tenant: { status: { in: ["ACTIVE", "TRIAL"] } },
+      },
+      include: { properties: { select: { propertyId: true } } },
+    });
+    const mayAccessProperty = !propertyId || membership?.allProperties ||
+      membership?.properties.some((scope) => scope.propertyId === propertyId);
+    if (!active || !membership || !mayAccessProperty) {
+      reply.raw.writeHead(401, { "Content-Type": "application/json" });
+      reply.raw.write(JSON.stringify({
+        error: { code: "SESSION_REVOKED", message: "This stream session is no longer active." },
+      }));
       reply.raw.end();
       return;
     }

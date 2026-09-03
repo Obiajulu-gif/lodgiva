@@ -1,6 +1,14 @@
 import { createHash, createHmac, randomBytes } from "crypto";
 import { promises as fs } from "fs";
 import { dirname, join, resolve, sep } from "path";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 /**
  * §11 object storage abstraction.
@@ -218,6 +226,106 @@ export class LocalStorageAdapter implements StorageAdapter {
   }
 }
 
+/** Production S3-compatible adapter, tested against Cloudflare R2's API. */
+export class R2StorageAdapter implements StorageAdapter {
+  readonly name = "R2";
+  readonly remote = true;
+  private readonly client: S3Client;
+  private readonly buckets: Record<BucketName, string>;
+
+  constructor() {
+    const endpoint = process.env.R2_ENDPOINT;
+    const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+    const publicBucket = process.env.R2_PUBLIC_BUCKET;
+    const privateBucket = process.env.R2_PRIVATE_BUCKET;
+    if (!endpoint || !accessKeyId || !secretAccessKey || !publicBucket || !privateBucket) {
+      throw new Error("R2 storage selected but its endpoint, credentials, or buckets are missing.");
+    }
+    this.buckets = { PUBLIC: publicBucket, PRIVATE: privateBucket };
+    this.client = new S3Client({
+      endpoint,
+      region: "auto",
+      credentials: { accessKeyId, secretAccessKey },
+    });
+  }
+
+  async presignPut(input: {
+    bucket: BucketName; objectKey: string; contentType: string;
+    maxBytes: number; expiresInSeconds: number;
+  }): Promise<PresignedUpload> {
+    assertSafeKey(input.objectKey);
+    const command = new PutObjectCommand({
+      Bucket: this.buckets[input.bucket], Key: input.objectKey, ContentType: input.contentType,
+    });
+    return {
+      url: await getSignedUrl(this.client, command, { expiresIn: input.expiresInSeconds }),
+      method: "PUT",
+      headers: { "Content-Type": input.contentType, "x-lodgiva-max-bytes": String(input.maxBytes) },
+      expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000),
+    };
+  }
+
+  async presignGet(input: { bucket: BucketName; objectKey: string; expiresInSeconds: number }) {
+    assertSafeKey(input.objectKey);
+    const expiresAt = new Date(Date.now() + input.expiresInSeconds * 1000);
+    if (input.bucket === "PUBLIC" && process.env.R2_PUBLIC_BASE_URL) {
+      return {
+        url: `${process.env.R2_PUBLIC_BASE_URL.replace(/\/$/, "")}/${input.objectKey}`,
+        expiresAt,
+      };
+    }
+    const command = new GetObjectCommand({ Bucket: this.buckets[input.bucket], Key: input.objectKey });
+    return { url: await getSignedUrl(this.client, command, { expiresIn: input.expiresInSeconds }), expiresAt };
+  }
+
+  async put(bucket: BucketName, objectKey: string, body: Buffer): Promise<void> {
+    assertSafeKey(objectKey);
+    await this.client.send(new PutObjectCommand({
+      Bucket: this.buckets[bucket], Key: objectKey, Body: body,
+      Metadata: { sha256: createHash("sha256").update(body).digest("hex") },
+    }));
+  }
+
+  async get(bucket: BucketName, objectKey: string): Promise<Buffer | null> {
+    assertSafeKey(objectKey);
+    try {
+      const response = await this.client.send(new GetObjectCommand({
+        Bucket: this.buckets[bucket], Key: objectKey,
+      }));
+      if (!response.Body) return null;
+      return Buffer.from(await response.Body.transformToByteArray());
+    } catch (error) {
+      if ((error as { name?: string }).name === "NoSuchKey") return null;
+      throw error;
+    }
+  }
+
+  async stat(bucket: BucketName, objectKey: string) {
+    assertSafeKey(objectKey);
+    try {
+      const head = await this.client.send(new HeadObjectCommand({
+        Bucket: this.buckets[bucket], Key: objectKey,
+      }));
+      let sha256 = head.Metadata?.sha256;
+      if (!sha256) {
+        const body = await this.get(bucket, objectKey);
+        if (!body) return null;
+        sha256 = createHash("sha256").update(body).digest("hex");
+      }
+      return { size: Number(head.ContentLength ?? 0), sha256 };
+    } catch (error) {
+      if (["NotFound", "NoSuchKey"].includes((error as { name?: string }).name ?? "")) return null;
+      throw error;
+    }
+  }
+
+  async delete(bucket: BucketName, objectKey: string): Promise<void> {
+    assertSafeKey(objectKey);
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.buckets[bucket], Key: objectKey }));
+  }
+}
+
 let adapter: StorageAdapter | null = null;
 
 /**
@@ -226,7 +334,13 @@ let adapter: StorageAdapter | null = null;
  * used and says so through `remote: false`.
  */
 export function getStorage(): StorageAdapter {
-  if (!adapter) adapter = new LocalStorageAdapter();
+  if (!adapter) {
+    const kind = process.env.STORAGE_ADAPTER ?? (process.env.NODE_ENV === "production" ? "r2" : "local");
+    adapter = kind.toLowerCase() === "r2" ? new R2StorageAdapter() : new LocalStorageAdapter();
+    if (process.env.NODE_ENV === "production" && !adapter.remote) {
+      throw new Error("Production requires a remote storage adapter.");
+    }
+  }
   return adapter;
 }
 

@@ -17,18 +17,17 @@ export function stalenessFor(path: string): StaleInfo {
 
 export interface Session {
   accessToken: string;
-  refreshToken: string;
-  claims: { userId: string; email: string; tenantId: string; role: string };
+  claims: { userId: string; email: string; tenantId: string; role: string; sessionId: string };
 }
 
+let currentSession: Session | null = null;
+
 export function getSession(): Session | null {
-  const raw = localStorage.getItem("lodgiva.session");
-  return raw ? (JSON.parse(raw) as Session) : null;
+  return currentSession;
 }
 
 export function setSession(s: Session | null) {
-  if (s) localStorage.setItem("lodgiva.session", JSON.stringify(s));
-  else localStorage.removeItem("lodgiva.session");
+  currentSession = s;
 }
 
 export class ApiError extends Error {
@@ -42,13 +41,11 @@ export class ApiError extends Error {
   }
 }
 
-async function refresh(): Promise<Session | null> {
-  const session = getSession();
-  if (!session) return null;
+export async function refreshSession(): Promise<Session | null> {
   const res = await fetch(`${BASE}/auth/refresh`, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken: session.refreshToken }),
   });
   if (!res.ok) {
     setSession(null);
@@ -80,6 +77,7 @@ export async function api<T = unknown>(
   try {
     res = await fetch(`${BASE}${path}`, {
     method: options.method ?? "GET",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(session ? { Authorization: `Bearer ${session.accessToken}` } : {}),
@@ -99,7 +97,7 @@ export async function api<T = unknown>(
     throw err;
   }
   if (res.status === 401 && !retried) {
-    const next = await refresh();
+    const next = await refreshSession();
     if (next) return api<T>(path, options, true);
     window.location.href = "/login";
     throw new ApiError("UNAUTHENTICATED", "Session expired", 401);

@@ -7,6 +7,8 @@ import {
   NotFoundException,
   Param,
   Post,
+  Req,
+  Res,
   UnauthorizedException,
 } from "@nestjs/common";
 import { Injectable } from "@nestjs/common";
@@ -24,13 +26,18 @@ import {
   otpauthUri,
   verifyTotp,
 } from "../common/totp";
+import { decryptMfaSecret, encryptMfaSecret } from "../common/secret-encryption";
+
+type CookieRequest = { cookies?: Record<string, string | undefined> };
+type CookieReply = {
+  setCookie(name: string, value: string, options: Record<string, unknown>): void;
+  clearCookie(name: string, options: Record<string, unknown>): void;
+};
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
-
-const refreshSchema = z.object({ refreshToken: z.string().min(20) });
 
 const mfaVerifySchema = z
   .object({
@@ -68,6 +75,14 @@ export class AuthService {
         error: { code: "NO_MEMBERSHIP", message: "User has no active tenant membership." },
       });
     }
+    const refreshToken = randomBytes(48).toString("base64url");
+    const session = await this.prisma.session.create({
+      data: {
+        userId: user.id,
+        refreshTokenHash: sha256(refreshToken),
+        expiresAt: new Date(Date.now() + 30 * 86400_000),
+      },
+    });
     const claims: AuthContext = {
       userId: user.id,
       email: user.email,
@@ -75,19 +90,11 @@ export class AuthService {
       role: membership.role,
       allProperties: membership.allProperties,
       propertyIds: membership.properties.map((p) => p.propertyId),
+      sessionId: session.id,
     };
     const accessToken = await this.jwt.signAsync(claims, {
       secret: process.env.JWT_SECRET,
       expiresIn: "15m",
-    });
-    // Opaque rotating refresh token stored as a hash (§6.3).
-    const refreshToken = randomBytes(48).toString("base64url");
-    await this.prisma.session.create({
-      data: {
-        userId: user.id,
-        refreshTokenHash: sha256(refreshToken),
-        expiresAt: new Date(Date.now() + 30 * 86400_000),
-      },
     });
     return { accessToken, refreshToken, claims };
   }
@@ -242,7 +249,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user || !user.mfaSecret || user.status !== "ACTIVE") throw invalid;
 
-    if (verifyTotp(user.mfaSecret, dto.code)) {
+    if (verifyTotp(decryptMfaSecret(user.mfaSecret), dto.code)) {
       return this.issueTokens(user.id);
     }
 
@@ -284,7 +291,10 @@ export class AuthService {
       });
     }
     const secret = generateSecret();
-    await this.prisma.user.update({ where: { id: userId }, data: { mfaSecret: secret } });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { mfaSecret: encryptMfaSecret(secret) },
+    });
     return {
       secret,
       otpauthUri: otpauthUri({ secret, accountName: user.email }),
@@ -305,7 +315,7 @@ export class AuthService {
         error: { code: "MFA_NOT_STARTED", message: "Start setup before confirming a code." },
       });
     }
-    if (!verifyTotp(user.mfaSecret, dto.code)) {
+    if (!verifyTotp(decryptMfaSecret(user.mfaSecret), dto.code)) {
       throw new UnauthorizedException({
         error: {
           code: "INVALID_MFA_CODE",
@@ -460,10 +470,15 @@ export class AuthService {
       });
     }
     // Rotation: revoke the used session and issue a fresh pair.
-    await this.prisma.session.update({
-      where: { id: session.id },
-      data: { revokedAt: new Date() },
+    const claimed = await this.prisma.session.updateMany({
+      where: { id: session.id, revokedAt: null },
+      data: { revokedAt: new Date(), revokedReason: "ROTATED" },
     });
+    if (claimed.count !== 1) {
+      throw new UnauthorizedException({
+        error: { code: "SESSION_REUSED", message: "Refresh token was already used." },
+      });
+    }
     return this.issueTokens(session.userId);
   }
 
@@ -508,24 +523,54 @@ export class AuthService {
 export class AuthController {
   constructor(private readonly service: AuthService) {}
 
+  private sendSession(
+    reply: CookieReply,
+    result: { accessToken: string; refreshToken: string; claims: AuthContext } & Record<string, unknown>
+  ) {
+    const { refreshToken, ...publicResult } = result;
+    reply.setCookie("lodgiva_refresh", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/api/v1/auth",
+      maxAge: 30 * 24 * 60 * 60,
+    });
+    return publicResult;
+  }
+
   @Public()
   @Post("login")
-  login(@Body() body: unknown) {
+  async login(@Body() body: unknown, @Res({ passthrough: true }) reply: CookieReply) {
     const dto = loginSchema.parse(body);
-    return this.service.login(dto.email, dto.password);
+    const result = await this.service.login(dto.email, dto.password);
+    if (!("refreshToken" in result)) return result;
+    return this.sendSession(reply, result);
   }
 
   @Public()
   @Post("refresh")
-  refresh(@Body() body: unknown) {
-    const dto = refreshSchema.parse(body);
-    return this.service.refresh(dto.refreshToken);
+  async refresh(
+    @Req() request: CookieRequest,
+    @Res({ passthrough: true }) reply: CookieReply
+  ) {
+    const token = request.cookies?.lodgiva_refresh;
+    if (!token) {
+      throw new UnauthorizedException({
+        error: { code: "SESSION_INVALID", message: "Refresh cookie is missing." },
+      });
+    }
+    return this.sendSession(reply, await this.service.refresh(token));
   }
 
   @Post("logout")
-  logout(@Body() body: unknown) {
-    const dto = refreshSchema.parse(body);
-    return this.service.logout(dto.refreshToken);
+  async logout(
+    @Req() request: CookieRequest,
+    @Res({ passthrough: true }) reply: CookieReply
+  ) {
+    const token = request.cookies?.lodgiva_refresh;
+    if (token) await this.service.logout(token);
+    reply.clearCookie("lodgiva_refresh", { path: "/api/v1/auth" });
+    return { ok: true };
   }
 
   // ── §6.3 Multi-factor authentication ───────────────────────────────────
@@ -535,8 +580,8 @@ export class AuthController {
 
   @Public()
   @Post("mfa/verify")
-  mfaVerify(@Body() body: unknown) {
-    return this.service.mfaVerify(body);
+  async mfaVerify(@Body() body: unknown, @Res({ passthrough: true }) reply: CookieReply) {
+    return this.sendSession(reply, await this.service.mfaVerify(body));
   }
 
   @Public()
@@ -547,10 +592,14 @@ export class AuthController {
 
   @Public()
   @Post("mfa/enrol/activate")
-  mfaEnrolActivate(@Body() body: { setupToken?: string; code?: string }) {
-    return this.service.mfaActivateWithToken(String(body?.setupToken ?? ""), {
+  async mfaEnrolActivate(
+    @Body() body: { setupToken?: string; code?: string },
+    @Res({ passthrough: true }) reply: CookieReply
+  ) {
+    const result = await this.service.mfaActivateWithToken(String(body?.setupToken ?? ""), {
       code: String(body?.code ?? ""),
     });
+    return this.sendSession(reply, result);
   }
 
   @Get("mfa")

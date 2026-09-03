@@ -30,10 +30,11 @@ packages/
 pnpm install
 ```
 
-Set up the database (SQLite locally — see ADR-LOCAL-001 in the status doc):
+Set up a PostgreSQL database (Neon instructions are in
+[`docs/NEON_DEPLOYMENT.md`](docs/NEON_DEPLOYMENT.md)):
 
 ```bash
-pnpm --filter @lodgiva/database exec prisma db push && pnpm db:seed
+pnpm db:migrate && pnpm db:seed
 ```
 
 Then start the pieces you need, each in its own terminal:
@@ -90,7 +91,7 @@ approval) and tenant isolation.
 
 ## Configuration
 
-`apps/api/.env` holds `DATABASE_URL`, `JWT_SECRET` and `API_PORT`. Production
+`apps/api/.env` holds `DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET` and `API_PORT`. Production
 keys for Paystack, Flutterwave, Termii, Resend and Cloudflare R2 are documented
 in `.env.example`; none are needed to run locally — payment providers use
 manual and sandbox adapters.

@@ -1,19 +1,16 @@
 // Lodgiva core schema — spec §8.2 entity catalogue (working subset).
 //
-// ADR-LOCAL-001: SQLite is used for local development because Docker/PostgreSQL
-// is unavailable on this machine. The schema avoids SQLite-only features so that
-// switching to PostgreSQL is a provider + DATABASE_URL change. Money is stored
-// as BigInt minor units (kobo) per §7.3 — never floats. Status fields are
-// strings validated at the application layer (SQLite has no enums); the API is
-// the single writer and enforces the state machines.
+// PostgreSQL is the sole supported database. Money is stored as BigInt minor
+// units (kobo) per §7.3 — never floats.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Tenant {
@@ -1063,8 +1060,14 @@ model OutboxEvent {
   occurredAt    DateTime  @default(now())
   publishedAt   DateTime?
   attempts      Int       @default(0)
+  lockedAt      DateTime?
+  lockedBy      String?
+  nextAttemptAt DateTime   @default(now())
+  lastError     String?
+  deadLetteredAt DateTime?
 
   @@index([publishedAt, occurredAt])
+  @@index([deadLetteredAt, nextAttemptAt, lockedAt])
 }
 
 model NightAuditRun {

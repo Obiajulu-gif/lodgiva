@@ -9,6 +9,14 @@ const valid = {
   CORS_ORIGINS: "https://dashboard.example.invalid,https://admin.example.invalid",
   STORAGE_SIGNING_KEY: "s".repeat(64),
   STORAGE_BASE_URL: "https://api.example.invalid/api/v1/files",
+  MFA_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
+  STORAGE_ADAPTER: "r2",
+  R2_ENDPOINT: "https://example.r2.cloudflarestorage.com",
+  R2_ACCESS_KEY_ID: "access",
+  R2_SECRET_ACCESS_KEY: "secret",
+  R2_PUBLIC_BUCKET: "public",
+  R2_PRIVATE_BUCKET: "private",
+  R2_PUBLIC_BASE_URL: "https://assets.example.invalid",
 };
 
 test("development may use local defaults", () => {
@@ -28,6 +36,7 @@ test("production fails closed when required values are absent", () => {
       assert.match(error.message, /CORS_ORIGINS/);
       assert.match(error.message, /STORAGE_SIGNING_KEY/);
       assert.match(error.message, /STORAGE_BASE_URL/);
+      assert.match(error.message, /MFA_ENCRYPTION_KEY/);
       return true;
     }
   );
@@ -60,4 +69,3 @@ test("CORS accepts origins only, not paths or embedded credentials", () => {
     );
   }
 });
-

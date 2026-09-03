@@ -45,9 +45,22 @@ export function assertSafeProductionEnvironment(
   if (!/^https:\/\//i.test(env.STORAGE_BASE_URL ?? "")) {
     issues.push("STORAGE_BASE_URL must be an explicit HTTPS URL");
   }
+  if ((env.STORAGE_ADAPTER ?? "").toLowerCase() !== "r2") {
+    issues.push("STORAGE_ADAPTER must be r2 in production");
+  }
+  for (const name of [
+    "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
+    "R2_PUBLIC_BUCKET", "R2_PRIVATE_BUCKET", "R2_PUBLIC_BASE_URL",
+  ]) {
+    if (!env[name]) issues.push(`${name} is required for production storage`);
+  }
+
+  const mfaKey = Buffer.from(env.MFA_ENCRYPTION_KEY ?? "", "base64");
+  if (mfaKey.length !== 32) {
+    issues.push("MFA_ENCRYPTION_KEY must be 32 random bytes encoded as base64");
+  }
 
   if (issues.length > 0) {
     throw new Error(`Unsafe production configuration:\n- ${issues.join("\n- ")}`);
   }
 }
-

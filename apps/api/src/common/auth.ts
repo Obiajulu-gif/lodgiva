@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { Reflector } from "@nestjs/core";
+import { PrismaService } from "../prisma.service";
 
 /** Claims carried by the 15-minute access token (§6.3). */
 export interface AuthContext {
@@ -18,6 +19,8 @@ export interface AuthContext {
   allProperties: boolean;
   /** Property ids this membership may touch when allProperties is false. */
   propertyIds: string[];
+  /** Server-side session bound to this access token. */
+  sessionId: string;
 }
 
 export const IS_PUBLIC = "isPublic";
@@ -38,7 +41,8 @@ export const CurrentAuth = createParamDecorator(
 export class AuthGuard implements CanActivate {
   constructor(
     private readonly jwt: JwtService,
-    private readonly reflector: Reflector
+    private readonly reflector: Reflector,
+    private readonly prisma: PrismaService
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -85,7 +89,7 @@ export class AuthGuard implements CanActivate {
         },
       });
     }
-    if (!claims.userId || !claims.tenantId || !claims.role) {
+    if (!claims.userId || !claims.tenantId || !claims.role || !claims.sessionId) {
       throw new UnauthorizedException({
         error: {
           code: "TOKEN_INCOMPLETE",
@@ -93,6 +97,36 @@ export class AuthGuard implements CanActivate {
         },
       });
     }
+
+    // A signature proves who issued the token, not that the account is still
+    // allowed to act. Re-check mutable security state on every request so a
+    // logout, suspension, role change, or membership revocation takes effect
+    // immediately rather than waiting for the 15-minute JWT to expire.
+    const session = await this.prisma.session.findFirst({
+      where: {
+        id: claims.sessionId,
+        userId: claims.userId,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+        user: { status: "ACTIVE" },
+      },
+    });
+    const membership = await this.prisma.membership.findFirst({
+      where: {
+        userId: claims.userId,
+        tenantId: claims.tenantId,
+        status: "ACTIVE",
+        tenant: { status: { in: ["ACTIVE", "TRIAL"] } },
+      },
+      include: { properties: { select: { propertyId: true } } },
+    });
+    if (!session || !membership || membership.role !== claims.role) {
+      throw new UnauthorizedException({
+        error: { code: "SESSION_REVOKED", message: "This session is no longer active." },
+      });
+    }
+    claims.allProperties = membership.allProperties;
+    claims.propertyIds = membership.properties.map((property) => property.propertyId);
 
     req.auth = claims as AuthContext;
     return true;

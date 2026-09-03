@@ -47,6 +47,7 @@ import { CashieringModule } from "./modules/cashiering.module";
 import { MaintenanceModule } from "./modules/maintenance.module";
 import { RatesModule } from "./modules/rates.module";
 import { SyncModule } from "./modules/sync.module";
+import { TenantContextInterceptor } from "./common/tenant-context.interceptor";
 import { ApprovalsModule } from "./modules/approvals.module";
 
 /** §9.1 — stable error contract with field-level validation errors. */
@@ -179,6 +180,7 @@ class CoreModule {}
     // Order matters: authenticate, then authorise.
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
+    { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
     // Registered first so it is the outermost filter; Zod stays more specific.
     { provide: APP_FILTER, useClass: TransientDbExceptionFilter },
     { provide: APP_FILTER, useClass: ZodExceptionFilter },

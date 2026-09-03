@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "node src/main.js",
-    "start": "node src/main.js"
+    "start": "node src/main.js",
+    "check": "node --check src/main.js"
   },
   "dependencies": {
     "@lodgiva/database": "workspace:*",

@@ -1,5 +1,8 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
+import { AsyncLocalStorage } from "async_hooks";
+
+type TransactionClient = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 
 /** Errors that mean "try again", not "this request is wrong". */
 const TRANSIENT = new Set([
@@ -22,6 +25,8 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
+  private static readonly tenantTransaction = new AsyncLocalStorage<TransactionClient>();
+
   constructor() {
     super({
       // Interactive transactions that claim inventory do several reads and
@@ -31,6 +36,36 @@ export class PrismaService
         maxWait: Number(process.env.DB_TX_MAX_WAIT_MS ?? 15_000),
         timeout: Number(process.env.DB_TX_TIMEOUT_MS ?? 20_000),
       },
+    });
+    // Existing services use Prisma's generated model properties directly.
+    // Route those properties (and nested interactive transactions) to the
+    // request's tenant-scoped transaction without a risky whole-codebase
+    // repository rewrite.
+    return new Proxy(this, {
+      get: (target, property, receiver) => {
+        const tx = PrismaService.tenantTransaction.getStore() as Record<PropertyKey, unknown> | undefined;
+        if (tx && property === "$transaction") {
+          return async (operation: unknown) => {
+            if (typeof operation !== "function") {
+              throw new Error("Batch transactions are not supported inside a tenant request.");
+            }
+            return (operation as (client: TransactionClient) => unknown)(tx as TransactionClient);
+          };
+        }
+        if (tx && property in tx) {
+          const value = tx[property];
+          return typeof value === "function" ? value.bind(tx) : value;
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  }
+
+  async runWithTenant<T>(tenantId: string, operation: () => Promise<T>): Promise<T> {
+    return this.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+      return PrismaService.tenantTransaction.run(tx, operation);
     });
   }
 
@@ -54,6 +89,8 @@ export class PrismaService
     fn: (tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]) => Promise<T>,
     attempts = Number(process.env.DB_TX_RETRIES ?? 5)
   ): Promise<T> {
+    const active = PrismaService.tenantTransaction.getStore();
+    if (active) return fn(active);
     let lastError: unknown;
     for (let attempt = 0; attempt < attempts; attempt++) {
       try {
