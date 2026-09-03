@@ -10,6 +10,7 @@
     "migrate:dev": "prisma migrate dev",
     "push": "prisma db push",
     "seed": "node src/seed.js",
+    "bootstrap": "node src/bootstrap.js",
     "build": "prisma generate"
   },
   "dependencies": {

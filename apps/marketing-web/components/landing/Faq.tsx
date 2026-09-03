@@ -38,7 +38,7 @@ const faqs = [
   },
   {
     q: "Can I try it before paying?",
-    a: "Yes — every plan starts with a 30-day free trial with no card required, and you can explore the live demo dashboard right now without signing up.",
+    a: "Yes — contact our onboarding team to configure a trial workspace for your property. Trial access uses an isolated account with your own staff credentials.",
   },
 ];
 

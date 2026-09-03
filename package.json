@@ -10,6 +10,7 @@
     "test": "turbo run test",
     "db:migrate": "pnpm --filter @lodgiva/database migrate",
     "db:seed": "pnpm --filter @lodgiva/database seed",
+    "db:bootstrap": "pnpm --filter @lodgiva/database bootstrap",
     "api": "pnpm --filter @lodgiva/api dev",
     "worker": "pnpm --filter @lodgiva/worker dev",
     "dashboard": "pnpm --filter @lodgiva/dashboard-web dev",

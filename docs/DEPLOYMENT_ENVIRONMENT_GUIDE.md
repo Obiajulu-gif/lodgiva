@@ -1,19 +1,17 @@
 # Lodgiva deployment environment guide
 
-This guide describes what the current code actually consumes as of 2 August 2026. It does not turn unimplemented R2, Redis, email, SMS, or WhatsApp support into working integrations. See docs/audit/VERCEL_DEPLOYMENT_AUDIT.md before deployment.
+This guide describes what the current code consumes as of 3 September 2026. PostgreSQL, tenant RLS, hardened cookie sessions, and Cloudflare R2 are implemented. Redis-backed distributed rate limiting and outbound email/SMS/WhatsApp delivery remain future work.
 
 ## Environment separation
 
 Use distinct development, preview/staging, and production projects, databases, buckets, queues, provider accounts/webhook URLs, VAPID keys, telemetry destinations, and encryption keys. Never copy production secrets into Vercel preview builds or local .env files. Keep server-only values in the runtime's managed secret store. The current clients expose no VITE_ or NEXT_PUBLIC_ configuration; do not add server secrets under either prefix.
 
-## Current deployment blockers
+## Remaining deployment work
 
-- Prisma is generated for SQLite; a PostgreSQL DATABASE_URL will not make the current schema/migrations production-ready.
-- getStorage always chooses local filesystem storage; R2_* variables are not consumed.
-- REDIS_URL is not consumed; worker, rate limit, and realtime are process-local.
+- REDIS_URL is not consumed; rate limiting and realtime fan-out are process-local.
 - RESEND_API_KEY, TERMII_API_KEY, and WhatsApp credentials are not consumed.
 - The worker is a perpetual loop and requires a dedicated runtime, not Vercel Functions.
-- The audit-added startup validator now rejects known unsafe current-runtime values; extend it as remote adapters become required.
+- Provider sandbox certification and production deployment smoke/rollback evidence are still required.
 
 ## API and worker variables consumed today
 
@@ -22,8 +20,10 @@ Use distinct development, preview/staging, and production projects, databases, b
 | NODE_ENV | production | no | main.ts and runtime behavior. |
 | APP_RELEASE | immutable commit/release ID | no | observability release metadata. |
 | API_PORT | dedicated runtime listen port | no | main.ts; usually injected by platform. |
-| DATABASE_URL | database connection | yes | Prisma/API/worker/scripts. Current schema supports SQLite only; production must wait for PostgreSQL migration. |
+| DATABASE_URL | pooled restricted PostgreSQL connection | yes | Prisma/API/worker. Use the `lodgiva_app` role; never the database owner. |
+| DIRECT_URL | direct owner PostgreSQL connection | yes | Prisma migrations and administrative bootstrap only. Do not expose to serving processes. |
 | JWT_SECRET | at least 32 random bytes, preferably 64+ | yes | JWT signing/verification. Rotate with planned dual-key/key-ID support; current single key rotation logs users out. |
+| MFA_ENCRYPTION_KEY | exactly 32 random bytes, base64 encoded | yes | AES-256-GCM encryption for authenticator seeds. |
 | CORS_ORIGINS | comma-separated exact HTTPS dashboard origins | no | Fastify CORS. Never omit or use wildcard with credentials. |
 | DB_TX_MAX_WAIT_MS | transaction queue wait | no | Prisma transaction helper. Tune from load evidence. |
 | DB_TX_TIMEOUT_MS | transaction timeout | no | Prisma transaction helper. |
@@ -35,8 +35,12 @@ Use distinct development, preview/staging, and production projects, databases, b
 | PAYSTACK_SECRET_KEY | provider server key | yes | Paystack initialize/verify/refund and webhook HMAC. Paystack uses this key for webhook HMAC; PAYSTACK_WEBHOOK_SECRET is not consumed. |
 | FLUTTERWAVE_SECRET_KEY | provider server key | yes | Flutterwave API calls. |
 | FLUTTERWAVE_WEBHOOK_HASH | provider webhook hash | yes | verif-hash comparison. |
-| STORAGE_LOCAL_ROOT | local demo file root | sensitive path | LocalStorageAdapter only. Must not be used as production persistence. |
-| STORAGE_SIGNING_KEY | 32+ random bytes | yes | Local signed URL HMAC. Does not protect lost ephemeral files. |
+| STORAGE_ADAPTER | `r2` | no | Production refuses local filesystem storage. |
+| R2_ENDPOINT | Cloudflare account S3 endpoint | sensitive | R2StorageAdapter. |
+| R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY | least-privilege bucket credentials | yes | R2StorageAdapter. |
+| R2_PUBLIC_BUCKET / R2_PRIVATE_BUCKET | separate bucket names | no | Public room assets and private guest/financial files. |
+| R2_PUBLIC_BASE_URL | HTTPS custom/public asset origin | no | Public room asset URLs. |
+| STORAGE_SIGNING_KEY | 32+ random bytes | yes | Retained for local development signed URLs. |
 | STORAGE_BASE_URL | public API files base URL | no | Must be exact HTTPS API origin and path. |
 | UPLOAD_INTENT_TTL | signed upload seconds | no | File service. |
 | DOWNLOAD_URL_TTL | private download seconds | no | File service. |
@@ -54,11 +58,11 @@ API_BASE is used by test/load tooling rather than production browser code. PG_DU
 
 ## Variables required after remediation but not consumed today
 
-REDIS_URL, R2_ACCOUNT_ID, R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_PUBLIC_BUCKET, R2_PRIVATE_BUCKET, RESEND_API_KEY, TERMII_API_KEY, and any WhatsApp/provider variables are design placeholders until the corresponding adapters and startup validation land. Setting them today has no production effect and must not be treated as a completed integration.
+REDIS_URL, RESEND_API_KEY, TERMII_API_KEY, and WhatsApp/provider variables are not consumed yet. Setting them has no production effect until their adapters are implemented.
 
 ## Vercel frontends
 
-Marketing: project root apps/marketing-web. No secret environment variables. If static export is selected, configure and test it explicitly. Remove/isolate demo /dashboard and /login routes before a customer-facing launch.
+Marketing: project root apps/marketing-web. It exposes only the public landing page; the old local demo dashboard, login, and fake booking routes have been removed. Set `NEXT_PUBLIC_DASHBOARD_URL` and `NEXT_PUBLIC_SALES_URL`; neither value is secret.
 
 Dashboard: project root apps/dashboard-web. Serve the built dist as an SPA/PWA. Add a production rewrite from /api/* to the dedicated API origin so the browser stays same-origin. Rewrite app routes to /index.html but exclude assets, manifest, icons, sw.js, workbox files, and /api. Cache hashed assets immutably; serve index.html, manifest, and service worker with revalidation/no-store appropriate to safe updates. Set CSP connect-src for the API/stream/push endpoints.
 

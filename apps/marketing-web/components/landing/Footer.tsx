@@ -7,8 +7,8 @@ const columns = [
     links: [
       { label: "Features", href: "#features" },
       { label: "Pricing", href: "#pricing" },
-      { label: "Live demo", href: "/dashboard" },
-      { label: "Booking engine", href: "/book" },
+      { label: "Platform", href: "#features" },
+      { label: "Get started", href: "mailto:sales@lodgiva.com?subject=Lodgiva%20onboarding" },
     ],
   },
   {

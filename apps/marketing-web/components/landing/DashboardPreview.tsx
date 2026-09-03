@@ -29,7 +29,7 @@ export function DashboardPreview() {
           <span className="h-3 w-3 rounded-full bg-ink/10" />
           <span className="h-3 w-3 rounded-full bg-ink/10" />
           <span className="ml-4 hidden rounded-md bg-white px-3 py-1 text-xs text-ink/40 sm:block">
-            app.lodgiva.com — Grand Palm Hotel, Lagos
+            app.lodgiva.com — Your property workspace
           </span>
         </div>
 

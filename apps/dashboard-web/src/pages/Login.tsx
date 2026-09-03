@@ -4,8 +4,8 @@ import { ApiError, setSession, Session } from "../api";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("frontdesk@grandpalm.demo");
-  const [password, setPassword] = useState("Password123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -35,7 +35,7 @@ export default function LoginPage() {
     <div className="login-page">
       <form className="login-card" onSubmit={submit}>
         <h1>Lodgiva Dashboard</h1>
-        <p className="sub">Sign in to Grand Palm Hotel Lagos</p>
+        <p className="sub">Sign in to your property workspace</p>
         {error && <div className="error-box">{error}</div>}
         <div className="field">
           <label>EMAIL</label>
@@ -48,11 +48,7 @@ export default function LoginPage() {
         <button disabled={busy} style={{ width: "100%" }}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
-        <p className="hint">
-          Seeded logins (password <code>Password123!</code>):<br />
-          owner@grandpalm.demo · manager@grandpalm.demo<br />
-          frontdesk@grandpalm.demo · housekeeping@grandpalm.demo
-        </p>
+        <p className="hint">Use the work email provided by your property administrator.</p>
       </form>
     </div>
   );

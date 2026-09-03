@@ -1,5 +1,4 @@
-// Seed data for the Lodgiva demo dashboard.
-// In production this data comes from the Lodgiva API (NestJS + PostgreSQL).
+// Illustrative product-preview data used only on the public landing page.
 
 export type RoomStatus =
   | "VACANT_CLEAN"

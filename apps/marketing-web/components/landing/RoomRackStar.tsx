@@ -153,7 +153,7 @@ export function RoomRackStar() {
           <span className="h-2.5 w-2.5 rounded-full bg-ink/10" />
           <span className="h-2.5 w-2.5 rounded-full bg-ink/10" />
           <span className="t-meta ml-3 hidden rounded-chip bg-white px-2.5 py-1 text-[11px] sm:block">
-            app.lodgiva.com — Grand Palm Hotel, Lagos
+            app.lodgiva.com — Your property workspace
           </span>
           <span className="ml-auto flex items-center gap-1.5 rounded-chip bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-700">
             <span className="relative flex h-1.5 w-1.5">

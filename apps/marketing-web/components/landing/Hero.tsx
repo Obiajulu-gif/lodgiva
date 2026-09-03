@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { ShieldCheck, Headset, WifiOff, ArrowRight } from "lucide-react";
 import { RoomRackStar } from "./RoomRackStar";
+import { salesUrl } from "@/lib/urls";
 
 export function Hero() {
   return (
@@ -34,19 +34,19 @@ export function Hero() {
           </p>
 
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link
-              href="/dashboard"
+            <a
+              href={salesUrl}
               className="press lift group inline-flex items-center gap-2 rounded-control bg-brand-800 px-7 py-3.5 text-[15px] font-semibold text-white hover:bg-brand-700"
             >
               Start free trial
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-            </Link>
-            <Link
-              href="/dashboard"
+            </a>
+            <a
+              href="#features"
               className="press inline-flex items-center gap-2 rounded-control border border-ink/10 bg-white px-7 py-3.5 text-[15px] font-semibold text-ink hover:border-brand-300 hover:text-brand-700"
             >
-              Explore the live demo
-            </Link>
+              Explore the platform
+            </a>
           </div>
 
           <div className="t-secondary mt-9 flex flex-wrap items-center justify-center gap-x-7 gap-y-3 text-[13px]">

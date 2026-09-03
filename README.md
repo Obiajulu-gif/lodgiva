@@ -34,7 +34,7 @@ Set up a PostgreSQL database (Neon instructions are in
 [`docs/NEON_DEPLOYMENT.md`](docs/NEON_DEPLOYMENT.md)):
 
 ```bash
-pnpm db:migrate && pnpm db:seed
+pnpm db:migrate
 ```
 
 Then start the pieces you need, each in its own terminal:
@@ -55,19 +55,10 @@ pnpm worker
 - Dashboard: <http://localhost:5173> (proxies `/api` to the API)
 - Marketing site: `pnpm marketing` → <http://localhost:3000>
 
-### Seeded logins
-
-Password for all: `Password123!`
-
-| Email | Role |
-|---|---|
-| `owner@grandpalm.demo` | Tenant owner |
-| `manager@grandpalm.demo` | General manager (can approve cash variances) |
-| `frontdesk@grandpalm.demo` | Front desk |
-| `housekeeping@grandpalm.demo` | Housekeeping |
-
-The seed creates one tenant (Grand Palm Hotels), one property with 20 rooms
-across four room types, two POS outlets with menus, guests and reservations.
+For a new production database, configure the required `BOOTSTRAP_*` variables
+and run `pnpm db:bootstrap`. This creates only the real tenant, property and
+owner supplied through the environment. Test fixtures remain available through
+`pnpm db:seed`, but must never be run against production.
 
 ## Tests
 

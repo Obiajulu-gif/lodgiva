@@ -1,5 +1,11 @@
 # Implementation status vs the technical specification
 
+> Historical snapshot: this file predates the September 2026 PostgreSQL, RLS,
+> authentication, R2, and durable-worker hardening. Use
+> `docs/DEPLOYMENT_ENVIRONMENT_GUIDE.md` and `docs/NEON_DEPLOYMENT.md` for the
+> current production configuration. Test fixtures described below are not
+> loaded into production.
+
 This tracks what is **actually built and verified** against
 `docs/technical-specification.md`. Verified means covered by
 `apps/api/test/e2e.mjs` (85 assertions, run against a live API) and/or

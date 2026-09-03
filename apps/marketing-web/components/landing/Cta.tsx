@@ -32,7 +32,7 @@ export function Cta() {
               href="mailto:hello@lodgiva.com"
               className="inline-flex items-center gap-2 press rounded-control border border-white/20 px-8 py-4 text-base font-semibold text-white hover:border-gold-300 hover:text-gold-300"
             >
-              Schedule a demo
+              Talk to onboarding
             </a>
           </div>
           <p className="mt-8 text-sm text-white/40">
