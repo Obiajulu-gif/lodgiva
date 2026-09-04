@@ -1,30 +1,40 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { Plus, Search } from "lucide-react";
 import { useAuth } from "@/components/providers";
 import { api } from "@/lib/api/client";
+import {
+  CheckInDialog,
+  CreateReservationDialog,
+  FolioDialog,
+  type Reservation,
+} from "./reservation-workflows";
 
-interface Reservation {
-  id: string;
-  confirmationCode: string;
-  status: string;
-  source: string;
-  arrivalDate: string;
-  departureDate: string;
-  adults: number;
-  children: number;
-  guest: { firstName: string; lastName: string; vip: boolean };
-  rooms: { room: { roomNumber: string } | null }[];
-}
+const activeStatuses = ["CONFIRMED", "CHECKED_IN", "PENDING_PAYMENT", "HOLD"];
 
 export default function ReservationsPage() {
   const queryClient = useQueryClient();
   const { me, selectedPropertyId } = useAuth();
-  const propertyId = selectedPropertyId || me?.properties[0]?.id || "";
+  const property =
+    me?.properties.find((candidate) => candidate.id === selectedPropertyId) ??
+    me?.properties[0];
+  const propertyId = property?.id ?? "";
+  const canCreate = me?.permissions.includes("reservation.create") ?? false;
   const canCancel = me?.permissions.includes("reservation.cancel") ?? false;
+  const canCheckIn = me?.permissions.includes("frontdesk.check_in") ?? false;
   const canCheckOut = me?.permissions.includes("frontdesk.check_out") ?? false;
+  const canReadFolio = me?.permissions.includes("folio.read") ?? false;
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("ACTIVE");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [checkInFor, setCheckInFor] = useState<Reservation | null>(null);
+  const [folioFor, setFolioFor] = useState<Reservation | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const reservations = useQuery({
     queryKey: ["reservations", propertyId],
     queryFn: () =>
@@ -34,48 +44,87 @@ export default function ReservationsPage() {
     enabled: Boolean(propertyId),
     refetchInterval: 15_000,
   });
-  const action = useMutation({
+
+  async function refresh(message?: string) {
+    if (message) setNotice(message);
+    setError("");
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["reservations", propertyId] }),
+      queryClient.invalidateQueries({ queryKey: ["room-rack", propertyId] }),
+      queryClient.invalidateQueries({ queryKey: ["daily-flash", propertyId] }),
+      queryClient.invalidateQueries({ queryKey: ["payments", propertyId] }),
+    ]);
+  }
+  const lifecycle = useMutation({
     mutationFn: ({
       id,
       operation,
+      body,
     }: {
       id: string;
-      operation: "cancel" | "check-out";
-    }) =>
-      api(`/reservations/${id}/${operation}`, {
-        method: "POST",
-        body:
-          operation === "cancel" ? { reason: "Cancelled from dashboard" } : {},
-      }),
-    onSuccess: async () => {
-      setError("");
-      await queryClient.invalidateQueries({
-        queryKey: ["reservations", propertyId],
-      });
-    },
-    onError: (cause) =>
+      operation: "cancel" | "check-out" | "no-show";
+      body: unknown;
+    }) => api(`/reservations/${id}/${operation}`, { method: "POST", body }),
+    onSuccess: async (_, variables) =>
+      refresh(
+        `Reservation ${variables.operation.replace("-", " ")} completed.`,
+      ),
+    onError: (cause) => {
+      setNotice("");
       setError(
         cause instanceof Error
           ? cause.message
-          : "Reservation could not be updated.",
-      ),
+          : "The reservation could not be updated.",
+      );
+    },
   });
+  const filtered = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return (reservations.data ?? []).filter((reservation) => {
+      if (status === "ACTIVE" && !activeStatuses.includes(reservation.status))
+        return false;
+      if (
+        status !== "ALL" &&
+        status !== "ACTIVE" &&
+        reservation.status !== status
+      )
+        return false;
+      if (from && reservation.departureDate <= from) return false;
+      if (to && reservation.arrivalDate >= to) return false;
+      if (!needle) return true;
+      return [
+        reservation.confirmationCode,
+        reservation.guest.firstName,
+        reservation.guest.lastName,
+        ...reservation.rooms.map((room) => room.room?.roomNumber ?? ""),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle);
+    });
+  }, [from, reservations.data, search, status, to]);
+
   return (
     <div className="space-y-7">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl font-semibold">Reservations</h1>
           <p className="mt-1 text-sm text-ink/55">
-            Live stays, arrivals, departures, and lifecycle actions.
+            Create, find, arrive, settle, and complete real guest stays.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void reservations.refetch()}
-          className="rounded-full bg-brand-800 px-4 py-2 text-xs font-semibold text-white"
-        >
-          Refresh reservations
-        </button>
+        {canCreate ? (
+          <button
+            type="button"
+            onClick={() => {
+              setCreateOpen(true);
+              setError("");
+            }}
+            className="flex items-center gap-2 rounded-full bg-brand-800 px-4 py-2.5 text-sm font-semibold text-white"
+          >
+            <Plus className="h-4 w-4" /> New reservation
+          </button>
+        ) : null}
       </header>
       {error ? (
         <button
@@ -86,6 +135,61 @@ export default function ReservationsPage() {
           {error} — dismiss
         </button>
       ) : null}
+      {notice ? (
+        <button
+          type="button"
+          onClick={() => setNotice("")}
+          className="w-full rounded-xl bg-brand-50 p-3 text-left text-sm text-brand-700"
+        >
+          {notice} — dismiss
+        </button>
+      ) : null}
+      <section className="grid gap-3 rounded-2xl bg-white p-4 shadow-sm md:grid-cols-[minmax(220px,1fr)_180px_160px_160px]">
+        <label className="relative">
+          <span className="sr-only">Search reservations</span>
+          <Search className="absolute left-3 top-3 h-4 w-4 text-ink/35" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Code, guest, or room"
+            className="w-full rounded-xl border border-ink/10 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-brand-500"
+          />
+        </label>
+        <label>
+          <span className="sr-only">Status</span>
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+            className="w-full rounded-xl border border-ink/10 px-3 py-2.5 text-sm"
+          >
+            <option value="ACTIVE">Active stays</option>
+            <option value="ALL">All statuses</option>
+            <option value="CONFIRMED">Confirmed</option>
+            <option value="CHECKED_IN">Checked in</option>
+            <option value="CHECKED_OUT">Checked out</option>
+            <option value="CANCELLED">Cancelled</option>
+            <option value="NO_SHOW">No show</option>
+          </select>
+        </label>
+        <label className="text-[11px] font-semibold text-ink/45">
+          FROM
+          <input
+            type="date"
+            value={from}
+            onChange={(event) => setFrom(event.target.value)}
+            className="mt-1 w-full rounded-xl border border-ink/10 px-3 py-2 text-sm font-normal text-ink"
+          />
+        </label>
+        <label className="text-[11px] font-semibold text-ink/45">
+          TO
+          <input
+            type="date"
+            value={to}
+            onChange={(event) => setTo(event.target.value)}
+            className="mt-1 w-full rounded-xl border border-ink/10 px-3 py-2 text-sm font-normal text-ink"
+          />
+        </label>
+      </section>
       <section className="overflow-hidden rounded-2xl border border-ink/5 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -95,13 +199,12 @@ export default function ReservationsPage() {
                 <th className="px-4 py-3 font-medium">Guest</th>
                 <th className="px-4 py-3 font-medium">Room</th>
                 <th className="px-4 py-3 font-medium">Stay</th>
-                <th className="px-4 py-3 font-medium">Guests</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-6 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {(reservations.data ?? []).map((reservation) => (
+              {filtered.map((reservation) => (
                 <tr key={reservation.id} className="border-t border-ink/5">
                   <td className="px-6 py-4 font-mono text-xs text-brand-700">
                     {reservation.confirmationCode}
@@ -116,35 +219,47 @@ export default function ReservationsPage() {
                   </td>
                   <td className="px-4 py-4 text-ink/60">
                     {reservation.rooms
-                      .map((item) => item.room?.roomNumber)
+                      .map((room) => room.room?.roomNumber)
                       .filter(Boolean)
                       .join(", ") || "Unassigned"}
                   </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-ink/60">
+                  <td className="whitespace-nowrap px-4 py-4 text-ink/60">
                     {reservation.arrivalDate} → {reservation.departureDate}
-                  </td>
-                  <td className="px-4 py-4 text-ink/60">
-                    {reservation.adults} adult
-                    {reservation.adults === 1 ? "" : "s"}
-                    {reservation.children
-                      ? ` · ${reservation.children} children`
-                      : ""}
                   </td>
                   <td className="px-4 py-4">
                     <span className="rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-700">
                       {reservation.status.replaceAll("_", " ")}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-6 py-4">
                     <div className="flex justify-end gap-2">
+                      {reservation.status === "CONFIRMED" && canCheckIn ? (
+                        <button
+                          type="button"
+                          onClick={() => setCheckInFor(reservation)}
+                          className="rounded-lg bg-brand-800 px-3 py-1.5 text-xs font-semibold text-white"
+                        >
+                          Check in
+                        </button>
+                      ) : null}
+                      {reservation.status === "CHECKED_IN" && canReadFolio ? (
+                        <button
+                          type="button"
+                          onClick={() => setFolioFor(reservation)}
+                          className="rounded-lg border border-brand-200 px-3 py-1.5 text-xs font-semibold text-brand-700"
+                        >
+                          Folio
+                        </button>
+                      ) : null}
                       {reservation.status === "CHECKED_IN" && canCheckOut ? (
                         <button
                           type="button"
-                          disabled={action.isPending}
+                          disabled={lifecycle.isPending}
                           onClick={() =>
-                            action.mutate({
+                            lifecycle.mutate({
                               id: reservation.id,
                               operation: "check-out",
+                              body: {},
                             })
                           }
                           className="rounded-lg bg-brand-800 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
@@ -152,27 +267,61 @@ export default function ReservationsPage() {
                           Check out
                         </button>
                       ) : null}
-                      {canCancel &&
-                      ["CONFIRMED", "HOLD", "PENDING_PAYMENT"].includes(
-                        reservation.status,
-                      ) ? (
+                      {reservation.status === "CONFIRMED" &&
+                      canCancel &&
+                      reservation.arrivalDate <=
+                        (property?.businessDate ?? "") ? (
                         <button
                           type="button"
-                          disabled={action.isPending}
+                          disabled={lifecycle.isPending}
+                          onClick={() =>
+                            window.confirm(
+                              `Mark ${reservation.confirmationCode} as a no-show?`,
+                            ) &&
+                            lifecycle.mutate({
+                              id: reservation.id,
+                              operation: "no-show",
+                              body: {},
+                            })
+                          }
+                          className="rounded-lg border border-gold-300 px-3 py-1.5 text-xs font-semibold text-gold-600"
+                        >
+                          No show
+                        </button>
+                      ) : null}
+                      {["CONFIRMED", "HOLD", "PENDING_PAYMENT"].includes(
+                        reservation.status,
+                      ) && canCancel ? (
+                        <button
+                          type="button"
+                          disabled={lifecycle.isPending}
                           onClick={() => {
-                            if (
-                              window.confirm(
-                                `Cancel reservation ${reservation.confirmationCode}?`,
-                              )
-                            )
-                              action.mutate({
+                            const reason = window.prompt(
+                              `Reason for cancelling ${reservation.confirmationCode}:`,
+                            );
+                            if (reason?.trim())
+                              lifecycle.mutate({
                                 id: reservation.id,
                                 operation: "cancel",
+                                body: { reason: reason.trim() },
                               });
                           }}
-                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50"
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700"
                         >
                           Cancel
+                        </button>
+                      ) : null}
+                      {["CHECKED_OUT", "CANCELLED", "NO_SHOW"].includes(
+                        reservation.status,
+                      ) &&
+                      canReadFolio &&
+                      reservation.folios.length ? (
+                        <button
+                          type="button"
+                          onClick={() => setFolioFor(reservation)}
+                          className="rounded-lg border border-ink/10 px-3 py-1.5 text-xs font-semibold text-ink/60"
+                        >
+                          Folio
                         </button>
                       ) : null}
                     </div>
@@ -182,9 +331,11 @@ export default function ReservationsPage() {
             </tbody>
           </table>
         </div>
-        {!reservations.isPending && !reservations.data?.length ? (
+        {!reservations.isPending && !filtered.length ? (
           <p className="p-10 text-center text-sm text-ink/45">
-            No reservations have been recorded for this property.
+            {reservations.data?.length
+              ? "No reservations match these filters."
+              : "No reservations yet."}
           </p>
         ) : null}
       </section>
@@ -192,6 +343,39 @@ export default function ReservationsPage() {
         <p className="rounded-xl bg-red-50 p-4 text-sm text-red-700">
           {reservations.error.message}
         </p>
+      ) : null}
+      {createOpen && property ? (
+        <CreateReservationDialog
+          property={property}
+          permissions={me?.permissions ?? []}
+          onClose={() => setCreateOpen(false)}
+          onDone={async () => {
+            setCreateOpen(false);
+            await refresh("Reservation created and inventory reserved.");
+          }}
+        />
+      ) : null}
+      {checkInFor && property ? (
+        <CheckInDialog
+          propertyId={property.id}
+          reservation={checkInFor}
+          allowDirtyOverride={["TENANT_OWNER", "GENERAL_MANAGER"].includes(
+            me?.role ?? "",
+          )}
+          onClose={() => setCheckInFor(null)}
+          onDone={async () => {
+            setCheckInFor(null);
+            await refresh("Guest checked in and room state updated.");
+          }}
+        />
+      ) : null}
+      {folioFor ? (
+        <FolioDialog
+          reservation={folioFor}
+          permissions={me?.permissions ?? []}
+          onClose={() => setFolioFor(null)}
+          onChanged={() => refresh()}
+        />
       ) : null}
     </div>
   );
