@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
+import { RequirePermission } from "../common/permissions.guard";
 import { PropertiesModule, PropertiesService } from "./properties.module";
 
 /** §14.1 — daily flash report + audit trail reads. */
@@ -16,7 +17,7 @@ import { PropertiesModule, PropertiesService } from "./properties.module";
 export class ReportsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly properties: PropertiesService
+    private readonly properties: PropertiesService,
   ) {}
 
   async dailyFlash(auth: AuthContext, propertyId: string) {
@@ -34,10 +35,20 @@ export class ReportsService {
       },
     });
     const arrivals = await this.prisma.reservation.count({
-      where: { tenantId: auth.tenantId, propertyId, arrivalDate: businessDate, status: "CONFIRMED" },
+      where: {
+        tenantId: auth.tenantId,
+        propertyId,
+        arrivalDate: businessDate,
+        status: "CONFIRMED",
+      },
     });
     const departures = await this.prisma.reservation.count({
-      where: { tenantId: auth.tenantId, propertyId, departureDate: businessDate, status: "CHECKED_IN" },
+      where: {
+        tenantId: auth.tenantId,
+        propertyId,
+        departureDate: businessDate,
+        status: "CHECKED_IN",
+      },
     });
     const revenue = await this.prisma.folioEntry.aggregate({
       where: {
@@ -96,7 +107,8 @@ export class ReportsService {
     };
   }
 
-  auditTrail(auth: AuthContext, propertyId?: string) {
+  async auditTrail(auth: AuthContext, propertyId?: string) {
+    if (propertyId) await this.properties.assertProperty(auth, propertyId);
     return this.prisma.auditEvent.findMany({
       where: { tenantId: auth.tenantId, ...(propertyId ? { propertyId } : {}) },
       orderBy: { createdAt: "desc" },
@@ -105,7 +117,12 @@ export class ReportsService {
   }
 
   /** §13.3 — tax summary by business date and tax code. */
-  async taxSummary(auth: AuthContext, propertyId: string, from: string, to: string) {
+  async taxSummary(
+    auth: AuthContext,
+    propertyId: string,
+    from: string,
+    to: string,
+  ) {
     await this.properties.assertProperty(auth, propertyId);
     const entries = await this.prisma.folioEntry.findMany({
       where: {
@@ -121,7 +138,16 @@ export class ReportsService {
         amountMinor: true,
       },
     });
-    const grouped = new Map<string, { businessDate: string; taxCode: string; ruleVersion: number | null; totalMinor: bigint; lines: number }>();
+    const grouped = new Map<
+      string,
+      {
+        businessDate: string;
+        taxCode: string;
+        ruleVersion: number | null;
+        totalMinor: bigint;
+        lines: number;
+      }
+    >();
     for (const e of entries) {
       const key = `${e.businessDate}|${e.taxCode}|${e.taxRuleVersion}`;
       const row = grouped.get(key) ?? {
@@ -136,12 +162,19 @@ export class ReportsService {
       grouped.set(key, row);
     }
     return [...grouped.values()].sort(
-      (a, b) => a.businessDate.localeCompare(b.businessDate) || a.taxCode.localeCompare(b.taxCode)
+      (a, b) =>
+        a.businessDate.localeCompare(b.businessDate) ||
+        a.taxCode.localeCompare(b.taxCode),
     );
   }
 
   /** Guest ledger: every posted line for a date range, for finance export. */
-  async guestLedger(auth: AuthContext, propertyId: string, from: string, to: string) {
+  async guestLedger(
+    auth: AuthContext,
+    propertyId: string,
+    from: string,
+    to: string,
+  ) {
     await this.properties.assertProperty(auth, propertyId);
     const entries = await this.prisma.folioEntry.findMany({
       where: {
@@ -195,55 +228,72 @@ export class ReportsController {
   constructor(private readonly service: ReportsService) {}
 
   @Get("daily-flash")
-  dailyFlash(@CurrentAuth() auth: AuthContext, @Query("propertyId") propertyId: string) {
+  @RequirePermission("report.operational.read")
+  dailyFlash(
+    @CurrentAuth() auth: AuthContext,
+    @Query("propertyId") propertyId: string,
+  ) {
     return this.service.dailyFlash(auth, propertyId);
   }
 
   @Get("audit-trail")
-  auditTrail(@CurrentAuth() auth: AuthContext, @Query("propertyId") propertyId?: string) {
+  @RequirePermission("audit.read")
+  auditTrail(
+    @CurrentAuth() auth: AuthContext,
+    @Query("propertyId") propertyId?: string,
+  ) {
     return this.service.auditTrail(auth, propertyId);
   }
 
   @Get("tax-summary")
+  @RequirePermission("report.financial.read")
   taxSummary(
     @CurrentAuth() auth: AuthContext,
     @Query("propertyId") propertyId: string,
     @Query("from") from: string,
-    @Query("to") to: string
+    @Query("to") to: string,
   ) {
     return this.service.taxSummary(auth, propertyId, from, to);
   }
 
   @Get("guest-ledger")
+  @RequirePermission("report.financial.read")
   guestLedger(
     @CurrentAuth() auth: AuthContext,
     @Query("propertyId") propertyId: string,
     @Query("from") from: string,
-    @Query("to") to: string
+    @Query("to") to: string,
   ) {
     return this.service.guestLedger(auth, propertyId, from, to);
   }
 
   /** §14.1 CSV exports. Streams directly rather than staging a file. */
   @Get("export")
+  @RequirePermission("report.financial.read")
   async exportCsv(
     @CurrentAuth() auth: AuthContext,
     @Query("propertyId") propertyId: string,
     @Query("type") type: string,
     @Query("from") from: string,
     @Query("to") to: string,
-    @Res() reply: { header: (k: string, v: string) => void; send: (b: string) => void }
+    @Res()
+    reply: {
+      header: (k: string, v: string) => void;
+      send: (b: string) => void;
+    },
   ) {
     const rows =
       type === "tax-summary"
-        ? (await this.service.taxSummary(auth, propertyId, from, to)).map((r) => ({
-            businessDate: r.businessDate,
-            taxCode: r.taxCode,
-            ruleVersion: r.ruleVersion ?? "",
-            lines: r.lines,
-            totalMinor: Number(r.totalMinor),
-            totalNaira: (Number(r.totalMinor) / 100).toFixed(2),
-          }))
+        ? (await this.service.taxSummary(auth, propertyId, from, to)).map(
+            (r) => ({
+              businessDate: r.businessDate,
+              taxCode: r.taxCode,
+              ruleVersion: r.ruleVersion ?? "",
+              lines: r.lines,
+              totalMinor: Number(r.totalMinor),
+              totalNaira: (Number(r.totalMinor) / 100).toFixed(2),
+            }),
+          )
         : type === "guest-ledger"
           ? await this.service.guestLedger(auth, propertyId, from, to)
           : null;

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Injectable,
   Module,
@@ -19,6 +20,8 @@ import { toCsv, ReportsModule, ReportsService } from "./reports.module";
 import { renderTablePdf } from "../common/pdf";
 import { PropertiesModule, PropertiesService } from "./properties.module";
 import { FilesModule, FilesService } from "./files.module";
+import { roleHasPermission } from "../common/permissions";
+import { RequirePermission } from "../common/permissions.guard";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -36,10 +39,14 @@ const EXPORT_TITLES: Record<string, string> = {
 // Printed on the PDF so a figure cannot be read out of context once the file
 // has left the building.
 const EXPORT_NOTES: Record<string, string> = {
-  REVENUE: "Excludes payments and refunds: those settle revenue, they are not revenue.",
-  OCCUPANCY: "ADR is per room sold; RevPAR is per room available. Blocked rooms reduce availability.",
-  CASHIER: "Shortages and overages are listed separately; netting them hides two different problems.",
-  RECEIVABLES: "Ageing runs from the departure date, against the current business date.",
+  REVENUE:
+    "Excludes payments and refunds: those settle revenue, they are not revenue.",
+  OCCUPANCY:
+    "ADR is per room sold; RevPAR is per room available. Blocked rooms reduce availability.",
+  CASHIER:
+    "Shortages and overages are listed separately; netting them hides two different problems.",
+  RECEIVABLES:
+    "Ageing runs from the departure date, against the current business date.",
   TAX: "Rule version records which rate was in force when each line was posted.",
 };
 
@@ -77,18 +84,43 @@ export class AnalyticsService {
     private readonly audit: AuditService,
     private readonly properties: PropertiesService,
     private readonly files: FilesService,
-    private readonly reports: ReportsService
+    private readonly reports: ReportsService,
   ) {}
 
   private assertRange(from: string, to: string) {
     if (!from || !to || from > to) {
       throw new BadRequestException({
-        error: { code: "INVALID_DATE_RANGE", message: "`to` must be on or after `from`." },
+        error: {
+          code: "INVALID_DATE_RANGE",
+          message: "`to` must be on or after `from`.",
+        },
       });
     }
     if (nightsBetween(from, to).length > 400) {
       throw new BadRequestException({
-        error: { code: "RANGE_TOO_LONG", message: "Report ranges are limited to 400 days." },
+        error: {
+          code: "RANGE_TOO_LONG",
+          message: "Report ranges are limited to 400 days.",
+        },
+      });
+    }
+  }
+
+  private assertExportPermission(auth: AuthContext, type: string) {
+    const required =
+      type === "AUDIT"
+        ? "audit.read"
+        : ["DAILY_FLASH", "OCCUPANCY"].includes(type)
+          ? "report.operational.read"
+          : "report.financial.read";
+    if (!roleHasPermission(auth.role, required)) {
+      throw new ForbiddenException({
+        error: {
+          code: "PERMISSION_DENIED",
+          message: `Your role (${auth.role}) cannot access this report.`,
+          retryable: false,
+          details: { requiredPermission: required, role: auth.role },
+        },
       });
     }
   }
@@ -100,7 +132,12 @@ export class AnalyticsService {
    * rooms AVAILABLE. Confusing the two flatters a half-empty hotel, so both
    * denominators are computed explicitly and returned alongside the rates.
    */
-  async occupancy(auth: AuthContext, propertyId: string, from: string, to: string) {
+  async occupancy(
+    auth: AuthContext,
+    propertyId: string,
+    from: string,
+    to: string,
+  ) {
     await this.properties.assertProperty(auth, propertyId);
     this.assertRange(from, to);
 
@@ -164,16 +201,25 @@ export class AnalyticsService {
       totals: {
         roomNightsSold: totalSold,
         roomNightsAvailable: totalAvailable,
-        occupancyPct: totalAvailable ? Math.round((totalSold / totalAvailable) * 100) : 0,
+        occupancyPct: totalAvailable
+          ? Math.round((totalSold / totalAvailable) * 100)
+          : 0,
         roomRevenueMinor: totalRevenue,
         adrMinor: totalSold ? Math.round(totalRevenue / totalSold) : 0,
-        revparMinor: totalAvailable ? Math.round(totalRevenue / totalAvailable) : 0,
+        revparMinor: totalAvailable
+          ? Math.round(totalRevenue / totalAvailable)
+          : 0,
       },
     };
   }
 
   /** Revenue split by what produced it, net of discounts and reversals. */
-  async revenue(auth: AuthContext, propertyId: string, from: string, to: string) {
+  async revenue(
+    auth: AuthContext,
+    propertyId: string,
+    from: string,
+    to: string,
+  ) {
     await this.properties.assertProperty(auth, propertyId);
     this.assertRange(from, to);
 
@@ -183,7 +229,12 @@ export class AnalyticsService {
         businessDate: { gte: from, lte: to },
         folio: { propertyId },
       },
-      select: { type: true, amountMinor: true, businessDate: true, taxCode: true },
+      select: {
+        type: true,
+        amountMinor: true,
+        businessDate: true,
+        taxCode: true,
+      },
     });
 
     const buckets = new Map<string, number>();
@@ -221,7 +272,12 @@ export class AnalyticsService {
   }
 
   /** §14.1 cashier report — who took what, and did their drawer balance. */
-  async cashier(auth: AuthContext, propertyId: string, from: string, to: string) {
+  async cashier(
+    auth: AuthContext,
+    propertyId: string,
+    from: string,
+    to: string,
+  ) {
     await this.properties.assertProperty(auth, propertyId);
     this.assertRange(from, to);
 
@@ -229,7 +285,10 @@ export class AnalyticsService {
       where: {
         tenantId: auth.tenantId,
         propertyId,
-        openedAt: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T23:59:59Z`) },
+        openedAt: {
+          gte: new Date(`${from}T00:00:00Z`),
+          lte: new Date(`${to}T23:59:59Z`),
+        },
       },
       include: { movements: true, _count: { select: { posOrders: true } } },
       orderBy: { openedAt: "asc" },
@@ -259,9 +318,15 @@ export class AnalyticsService {
         shifts: rows.length,
         // Shortages and overages are reported separately: they net to nothing
         // in aggregate while hiding two different problems.
-        shortageMinor: rows.filter((r) => r.varianceMinor < 0).reduce((s, r) => s + r.varianceMinor, 0),
-        overageMinor: rows.filter((r) => r.varianceMinor > 0).reduce((s, r) => s + r.varianceMinor, 0),
-        unapprovedVariances: rows.filter((r) => r.varianceMinor !== 0 && !r.approved).length,
+        shortageMinor: rows
+          .filter((r) => r.varianceMinor < 0)
+          .reduce((s, r) => s + r.varianceMinor, 0),
+        overageMinor: rows
+          .filter((r) => r.varianceMinor > 0)
+          .reduce((s, r) => s + r.varianceMinor, 0),
+        unapprovedVariances: rows.filter(
+          (r) => r.varianceMinor !== 0 && !r.approved,
+        ).length,
       },
     };
   }
@@ -273,7 +338,9 @@ export class AnalyticsService {
       where: { tenantId: auth.tenantId, propertyId },
       include: {
         guest: { select: { firstName: true, lastName: true, phone: true } },
-        reservation: { select: { confirmationCode: true, departureDate: true, status: true } },
+        reservation: {
+          select: { confirmationCode: true, departureDate: true, status: true },
+        },
       },
     });
 
@@ -287,7 +354,9 @@ export class AnalyticsService {
           _sum: { amountMinor: true },
         })
       : [];
-    const balanceByFolio = new Map(sums.map((s) => [s.folioId, Number(s._sum.amountMinor ?? 0n)]));
+    const balanceByFolio = new Map(
+      sums.map((s) => [s.folioId, Number(s._sum.amountMinor ?? 0n)]),
+    );
 
     const rows = [];
     for (const f of folios) {
@@ -297,7 +366,9 @@ export class AnalyticsService {
       const since = f.reservation?.departureDate ?? property.businessDate;
       const ageDays = Math.max(
         0,
-        Math.round((Date.parse(property.businessDate) - Date.parse(since)) / 86_400_000)
+        Math.round(
+          (Date.parse(property.businessDate) - Date.parse(since)) / 86_400_000,
+        ),
       );
       rows.push({
         folioId: f.id,
@@ -310,13 +381,23 @@ export class AnalyticsService {
         balanceMinor: balance,
         ageDays,
         // Standard ageing buckets; anything past 90 days is usually written off.
-        bucket: ageDays <= 0 ? "CURRENT" : ageDays <= 30 ? "1-30" : ageDays <= 60 ? "31-60" : ageDays <= 90 ? "61-90" : "90+",
+        bucket:
+          ageDays <= 0
+            ? "CURRENT"
+            : ageDays <= 30
+              ? "1-30"
+              : ageDays <= 60
+                ? "31-60"
+                : ageDays <= 90
+                  ? "61-90"
+                  : "90+",
       });
     }
     rows.sort((a, b) => b.ageDays - a.ageDays);
 
     const buckets: Record<string, number> = {};
-    for (const r of rows) buckets[r.bucket] = (buckets[r.bucket] ?? 0) + r.balanceMinor;
+    for (const r of rows)
+      buckets[r.bucket] = (buckets[r.bucket] ?? 0) + r.balanceMinor;
 
     return {
       businessDate: property.businessDate,
@@ -345,7 +426,11 @@ export class AnalyticsService {
       where: { tenantId: auth.tenantId, propertyId, status: "PENDING" },
     });
     const unapprovedVariance = await this.prisma.cashierShift.count({
-      where: { tenantId: auth.tenantId, propertyId, status: "PENDING_APPROVAL" },
+      where: {
+        tenantId: auth.tenantId,
+        propertyId,
+        status: "PENDING_APPROVAL",
+      },
     });
     const openExceptions = await this.prisma.reconciliationException.count({
       where: { tenantId: auth.tenantId, propertyId, status: "OPEN" },
@@ -363,7 +448,9 @@ export class AnalyticsService {
       },
       receivables: {
         totalOutstandingMinor: receivables.totalOutstandingMinor,
-        over60Minor: (receivables.byBucket["61-90"] ?? 0) + (receivables.byBucket["90+"] ?? 0),
+        over60Minor:
+          (receivables.byBucket["61-90"] ?? 0) +
+          (receivables.byBucket["90+"] ?? 0),
         closedButOwingCount: receivables.closedButOwingCount,
       },
       // Surfaced together because these are the things that quietly cost money
@@ -385,6 +472,7 @@ export class AnalyticsService {
    */
   async requestExport(auth: AuthContext, body: unknown) {
     const dto = exportSchema.parse(body);
+    this.assertExportPermission(auth, dto.type);
     await this.properties.assertProperty(auth, dto.propertyId);
     this.assertRange(dto.from, dto.to);
 
@@ -417,7 +505,10 @@ export class AnalyticsService {
     });
 
     try {
-      const { from, to } = JSON.parse(job.params) as { from: string; to: string };
+      const { from, to } = JSON.parse(job.params) as {
+        from: string;
+        to: string;
+      };
       const rows = await this.rowsFor(auth, job.type, job.propertyId, from, to);
       const isPdf = job.format === "PDF";
 
@@ -444,7 +535,10 @@ export class AnalyticsService {
           notes: EXPORT_NOTES[job.type] ? [EXPORT_NOTES[job.type]] : undefined,
         });
       } else {
-        bytes = Buffer.from(toCsv(rows as unknown as Record<string, unknown>[]), "utf8");
+        bytes = Buffer.from(
+          toCsv(rows as unknown as Record<string, unknown>[]),
+          "utf8",
+        );
       }
 
       const file = await this.files.storeGenerated(auth, {
@@ -483,7 +577,7 @@ export class AnalyticsService {
     type: string,
     propertyId: string,
     from: string,
-    to: string
+    to: string,
   ): Promise<Record<string, unknown>[]> {
     switch (type) {
       case "OCCUPANCY": {
@@ -542,8 +636,14 @@ export class AnalyticsService {
           { metric: "Occupancy %", value: r.occupancyPct },
           { metric: "Arrivals today", value: r.arrivalsToday },
           { metric: "Departures today", value: r.departuresToday },
-          { metric: "Revenue today (NGN)", value: (r.revenueTodayMinor / 100).toFixed(2) },
-          { metric: "Outstanding (NGN)", value: (r.outstandingMinor / 100).toFixed(2) },
+          {
+            metric: "Revenue today (NGN)",
+            value: (r.revenueTodayMinor / 100).toFixed(2),
+          },
+          {
+            metric: "Outstanding (NGN)",
+            value: (r.outstandingMinor / 100).toFixed(2),
+          },
         ];
         for (const p of r.paymentsByMethod) {
           rows.push({
@@ -618,6 +718,8 @@ export class AnalyticsService {
         error: { code: "JOB_NOT_FOUND", message: "Export job not found." },
       });
     }
+    await this.properties.assertProperty(auth, job.propertyId);
+    this.assertExportPermission(auth, job.type);
     let download: { url: string; expiresAt: Date } | null = null;
     if (job.status === "COMPLETE" && job.fileId) {
       const link = await this.files.downloadUrl(auth, job.fileId);
@@ -637,9 +739,23 @@ export class AnalyticsService {
     };
   }
 
-  listJobs(auth: AuthContext, propertyId: string) {
+  async listJobs(auth: AuthContext, propertyId: string) {
+    await this.properties.assertProperty(auth, propertyId);
+    const allowedTypes = [
+      ...(roleHasPermission(auth.role, "report.operational.read")
+        ? ["DAILY_FLASH", "OCCUPANCY"]
+        : []),
+      ...(roleHasPermission(auth.role, "report.financial.read")
+        ? ["REVENUE", "CASHIER", "TAX", "RECEIVABLES", "GUEST_LEDGER"]
+        : []),
+      ...(roleHasPermission(auth.role, "audit.read") ? ["AUDIT"] : []),
+    ];
     return this.prisma.exportJob.findMany({
-      where: { tenantId: auth.tenantId, propertyId },
+      where: {
+        tenantId: auth.tenantId,
+        propertyId,
+        type: { in: allowedTypes },
+      },
       orderBy: { createdAt: "desc" },
       take: 50,
       select: {
@@ -660,42 +776,53 @@ export class AnalyticsController {
   constructor(private readonly service: AnalyticsService) {}
 
   @Get("occupancy")
+  @RequirePermission("report.operational.read")
   occupancy(
     @CurrentAuth() auth: AuthContext,
     @Query("propertyId") propertyId: string,
     @Query("from") from: string,
-    @Query("to") to: string
+    @Query("to") to: string,
   ) {
     return this.service.occupancy(auth, propertyId, from, to);
   }
 
   @Get("revenue")
+  @RequirePermission("report.financial.read")
   revenue(
     @CurrentAuth() auth: AuthContext,
     @Query("propertyId") propertyId: string,
     @Query("from") from: string,
-    @Query("to") to: string
+    @Query("to") to: string,
   ) {
     return this.service.revenue(auth, propertyId, from, to);
   }
 
   @Get("cashier")
+  @RequirePermission("report.financial.read")
   cashier(
     @CurrentAuth() auth: AuthContext,
     @Query("propertyId") propertyId: string,
     @Query("from") from: string,
-    @Query("to") to: string
+    @Query("to") to: string,
   ) {
     return this.service.cashier(auth, propertyId, from, to);
   }
 
   @Get("receivables")
-  receivables(@CurrentAuth() auth: AuthContext, @Query("propertyId") propertyId: string) {
+  @RequirePermission("report.financial.read")
+  receivables(
+    @CurrentAuth() auth: AuthContext,
+    @Query("propertyId") propertyId: string,
+  ) {
     return this.service.receivables(auth, propertyId);
   }
 
   @Get("owner-dashboard")
-  ownerDashboard(@CurrentAuth() auth: AuthContext, @Query("propertyId") propertyId: string) {
+  @RequirePermission("report.financial.read")
+  ownerDashboard(
+    @CurrentAuth() auth: AuthContext,
+    @Query("propertyId") propertyId: string,
+  ) {
     return this.service.ownerDashboard(auth, propertyId);
   }
 
@@ -705,7 +832,10 @@ export class AnalyticsController {
   }
 
   @Get("exports")
-  listJobs(@CurrentAuth() auth: AuthContext, @Query("propertyId") propertyId: string) {
+  listJobs(
+    @CurrentAuth() auth: AuthContext,
+    @Query("propertyId") propertyId: string,
+  ) {
     return this.service.listJobs(auth, propertyId);
   }
 

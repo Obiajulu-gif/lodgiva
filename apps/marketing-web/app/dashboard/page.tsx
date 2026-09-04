@@ -93,6 +93,11 @@ export default function DashboardOverview() {
     me?.properties.find((candidate) => candidate.id === selectedPropertyId) ??
     me?.properties[0];
   const propertyId = property?.id ?? "";
+  const canOperational =
+    me?.permissions.includes("report.operational.read") ?? false;
+  const canAudit = me?.permissions.includes("audit.read") ?? false;
+  const canReadReservations =
+    me?.permissions.includes("reservation.read") ?? false;
   const businessDate =
     property?.businessDate ?? new Date().toISOString().slice(0, 10);
   const from = isoOffset(businessDate, -6);
@@ -104,7 +109,7 @@ export default function DashboardOverview() {
         {
           queryKey: ["daily-flash", propertyId],
           queryFn: () => api<DailyFlash>(query("/reports/daily-flash")),
-          enabled: Boolean(propertyId),
+          enabled: Boolean(propertyId) && canOperational,
           refetchInterval: 30_000,
         },
         {
@@ -113,19 +118,19 @@ export default function DashboardOverview() {
             api<OccupancyReport>(
               query(`/analytics/occupancy?from=${from}&to=${businessDate}`),
             ),
-          enabled: Boolean(propertyId),
+          enabled: Boolean(propertyId) && canOperational,
           refetchInterval: 60_000,
         },
         {
           queryKey: ["reservations", propertyId],
           queryFn: () => api<Reservation[]>(query("/reservations")),
-          enabled: Boolean(propertyId),
+          enabled: Boolean(propertyId) && canReadReservations,
           refetchInterval: 30_000,
         },
         {
           queryKey: ["audit", propertyId],
           queryFn: () => api<AuditEvent[]>(query("/reports/audit-trail")),
-          enabled: Boolean(propertyId),
+          enabled: Boolean(propertyId) && canAudit,
           refetchInterval: 30_000,
         },
       ],
@@ -141,17 +146,15 @@ export default function DashboardOverview() {
     )
     .slice(0, 8);
   const firstError = [
-    flashQuery.error,
-    occupancyQuery.error,
-    reservationsQuery.error,
-    auditQuery.error,
+    canOperational ? flashQuery.error : null,
+    canOperational ? occupancyQuery.error : null,
+    canReadReservations ? reservationsQuery.error : null,
+    canAudit ? auditQuery.error : null,
   ].find(Boolean);
-  const loading = [
-    flashQuery,
-    occupancyQuery,
-    reservationsQuery,
-    auditQuery,
-  ].some((item) => item.isPending);
+  const loading =
+    (canOperational && (flashQuery.isPending || occupancyQuery.isPending)) ||
+    (canReadReservations && reservationsQuery.isPending) ||
+    (canAudit && auditQuery.isPending);
 
   if (firstError && !flash && !occupancy) {
     return (
@@ -168,10 +171,12 @@ export default function DashboardOverview() {
           type="button"
           onClick={() =>
             void Promise.all([
-              flashQuery.refetch(),
-              occupancyQuery.refetch(),
-              reservationsQuery.refetch(),
-              auditQuery.refetch(),
+              canOperational ? flashQuery.refetch() : Promise.resolve(),
+              canOperational ? occupancyQuery.refetch() : Promise.resolve(),
+              canReadReservations
+                ? reservationsQuery.refetch()
+                : Promise.resolve(),
+              canAudit ? auditQuery.refetch() : Promise.resolve(),
             ])
           }
           className="mt-6 rounded-full bg-brand-800 px-5 py-2.5 text-sm font-semibold text-white"
