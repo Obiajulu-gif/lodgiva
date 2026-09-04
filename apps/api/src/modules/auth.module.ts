@@ -34,10 +34,12 @@ type CookieReply = {
   clearCookie(name: string, options: Record<string, unknown>): void;
 };
 
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-});
+const loginSchema = z
+  .object({
+    email: z.string().trim().toLowerCase().email().max(254),
+    password: z.string().min(1).max(1024),
+  })
+  .strict();
 
 const mfaVerifySchema = z
   .object({
@@ -65,14 +67,27 @@ export class AuthService {
       include: {
         memberships: {
           where: { status: "ACTIVE" },
-          include: { properties: { select: { propertyId: true } } },
+          include: {
+            tenant: { select: { status: true } },
+            properties: { select: { propertyId: true } },
+          },
         },
       },
     });
+    if (user.status !== "ACTIVE") {
+      throw new UnauthorizedException({
+        error: { code: "ACCOUNT_INACTIVE", message: "This account is not active." },
+      });
+    }
     const membership = user.memberships[0];
     if (!membership) {
       throw new UnauthorizedException({
         error: { code: "NO_MEMBERSHIP", message: "User has no active tenant membership." },
+      });
+    }
+    if (!["ACTIVE", "TRIAL"].includes(membership.tenant.status)) {
+      throw new UnauthorizedException({
+        error: { code: "TENANT_INACTIVE", message: "This workspace is not active." },
       });
     }
     const refreshToken = randomBytes(48).toString("base64url");

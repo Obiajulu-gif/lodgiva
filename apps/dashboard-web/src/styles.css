@@ -127,6 +127,14 @@ label { font-size: 11px; font-weight: 600; color: var(--ink-50); display: block;
 .login-card .sub { color: var(--ink-50); font-size: 13px; margin-bottom: 22px; }
 
 .error-box { background: #fef2f2; color: #dc2626; border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; }
+.success-box { background: #ecfdf5; color: #065f46; border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; }
+.login-secondary { width: 100%; margin-top: 8px; }
+.mfa-steps { color: var(--ink-50); font-size: 13px; line-height: 1.6; margin: 0 0 16px; padding-left: 20px; }
+.setup-key { display: block; color: var(--ink); overflow-wrap: anywhere; margin-top: 4px; user-select: all; }
+.mfa-uri { font-size: 11px; color: var(--ink-50); margin-bottom: 16px; }
+.mfa-uri code { display: block; overflow-wrap: anywhere; margin-top: 6px; user-select: all; }
+.recovery-codes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 18px; }
+.recovery-codes code { background: var(--cream); border: 1px solid var(--border); border-radius: 6px; padding: 7px; text-align: center; user-select: all; }
 .hint { font-size: 11px; color: var(--ink-50); margin-top: 10px; line-height: 1.6; }
 .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
 .mt { margin-top: 16px; }
