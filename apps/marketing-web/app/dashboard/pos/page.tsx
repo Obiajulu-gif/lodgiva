@@ -23,6 +23,7 @@ interface Order {
   id: string;
   orderNumber: string;
   status: string;
+  settlement: string | null;
   tableRef: string | null;
   totalMinor: MoneyMinor;
   createdAt: string;
@@ -34,15 +35,37 @@ interface Order {
     lineMinor: MoneyMinor;
   }[];
 }
+interface InHouseReservation {
+  id: string;
+  guest: { firstName: string; lastName: string };
+  rooms: { room: { roomNumber: string } | null }[];
+  folios: { id: string; status: string }[];
+}
+interface Shift {
+  id: string;
+  shiftNumber: string;
+  status: string;
+}
+interface Approval {
+  id: string;
+  type: string;
+  entityId: string;
+  amountMinor: MoneyMinor | null;
+  reason: string;
+}
 
 export default function PosPage() {
   const queryClient = useQueryClient();
   const { me, selectedPropertyId } = useAuth();
   const propertyId = selectedPropertyId || me?.properties[0]?.id || "";
+  const canApprove = me?.permissions.includes("approval.decide") ?? false;
   const [outletId, setOutletId] = useState("");
   const [tableRef, setTableRef] = useState("");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [voidFor, setVoidFor] = useState<Order | null>(null);
+  const [voidReason, setVoidReason] = useState("");
   const outlets = useQuery({
     queryKey: ["pos-outlets", propertyId],
     queryFn: () =>
@@ -58,9 +81,42 @@ export default function PosPage() {
     enabled: Boolean(propertyId),
     refetchInterval: 15_000,
   });
+  const inHouse = useQuery({
+    queryKey: ["pos-in-house", propertyId],
+    queryFn: () =>
+      api<InHouseReservation[]>(
+        `/reservations?propertyId=${encodeURIComponent(propertyId)}&status=CHECKED_IN`,
+      ),
+    enabled: Boolean(propertyId),
+  });
+  const shifts = useQuery({
+    queryKey: ["cashier-shifts", propertyId],
+    queryFn: () =>
+      api<Shift[]>(
+        `/cashiering/shifts?propertyId=${encodeURIComponent(propertyId)}`,
+      ),
+    enabled: Boolean(propertyId),
+    refetchInterval: 15_000,
+  });
+  const approvals = useQuery({
+    queryKey: ["pos-approvals", propertyId],
+    queryFn: () =>
+      api<Approval[]>(
+        `/approvals?propertyId=${encodeURIComponent(propertyId)}&status=PENDING`,
+      ),
+    enabled: Boolean(propertyId) && canApprove,
+    refetchInterval: 15_000,
+  });
   const effectiveOutletId = outletId || outlets.data?.[0]?.id || "";
   const outlet = outlets.data?.find(
     (candidate) => candidate.id === effectiveOutletId,
+  );
+  const openShift = shifts.data?.find((shift) => shift.status === "OPEN");
+  const openFolios = (inHouse.data ?? []).filter((reservation) =>
+    reservation.folios.some((folio) => folio.status === "OPEN"),
+  );
+  const pendingVoids = (approvals.data ?? []).filter(
+    (approval) => approval.type === "POS_VOID",
   );
   const lines = Object.entries(cart)
     .filter(([, quantity]) => quantity > 0)
@@ -79,6 +135,7 @@ export default function PosPage() {
       setCart({});
       setTableRef("");
       setError("");
+      setNotice("Order opened. Choose a settlement method below.");
       await queryClient.invalidateQueries({
         queryKey: ["pos-orders", propertyId],
       });
@@ -86,6 +143,88 @@ export default function PosPage() {
     onError: (cause) =>
       setError(
         cause instanceof Error ? cause.message : "Order could not be created.",
+      ),
+  });
+  async function refreshOrders(message: string) {
+    setError("");
+    setNotice(message);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["pos-orders", propertyId] }),
+      queryClient.invalidateQueries({
+        queryKey: ["pos-approvals", propertyId],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["cashier-shifts", propertyId],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["daily-flash", propertyId] }),
+    ]);
+  }
+  const settle = useMutation({
+    mutationFn: ({
+      id,
+      settlement,
+      folioId,
+    }: {
+      id: string;
+      settlement: string;
+      folioId?: string;
+    }) =>
+      api(`/pos/orders/${id}/settle`, {
+        method: "POST",
+        body: {
+          settlement,
+          ...(folioId ? { folioId } : {}),
+          ...(settlement === "CASH" && openShift
+            ? { shiftId: openShift.id }
+            : {}),
+        },
+      }),
+    onSuccess: () => refreshOrders("Order settled and persisted."),
+    onError: (cause) =>
+      setError(
+        cause instanceof Error ? cause.message : "Order could not be settled.",
+      ),
+  });
+  const voidOrder = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api<{ status: string; message: string | null }>(
+        `/pos/orders/${id}/void`,
+        {
+          method: "POST",
+          body: { reason },
+        },
+      ),
+    onSuccess: async (result) => {
+      setVoidFor(null);
+      setVoidReason("");
+      await refreshOrders(
+        result.status === "PENDING_APPROVAL"
+          ? (result.message ?? "Void sent for approval.")
+          : "Order voided.",
+      );
+    },
+    onError: (cause) =>
+      setError(
+        cause instanceof Error ? cause.message : "Order could not be voided.",
+      ),
+  });
+  const decideVoid = useMutation({
+    mutationFn: ({ id, approve }: { id: string; approve: boolean }) =>
+      api(`/approvals/${id}/${approve ? "approve" : "reject"}`, {
+        method: "POST",
+        body: {},
+      }),
+    onSuccess: (_, variables) =>
+      refreshOrders(
+        variables.approve
+          ? "Void approved."
+          : "Void rejected; order returned to service.",
+      ),
+    onError: (cause) =>
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Approval could not be recorded.",
       ),
   });
   function change(itemId: string, amount: number) {
@@ -111,6 +250,55 @@ export default function PosPage() {
         >
           {error} — dismiss
         </button>
+      ) : null}
+      {notice ? (
+        <button
+          type="button"
+          onClick={() => setNotice("")}
+          className="w-full rounded-xl bg-brand-50 p-3 text-left text-sm text-brand-700"
+        >
+          {notice} — dismiss
+        </button>
+      ) : null}
+      {voidFor ? (
+        <section className="rounded-2xl border border-red-100 bg-white p-6 shadow-sm">
+          <h2 className="font-semibold">
+            Void {voidFor.orderNumber} · {naira(voidFor.totalMinor)}
+          </h2>
+          <p className="mt-1 text-xs text-ink/50">
+            The reason is permanent. Larger or older voids require approval from
+            another authorised user.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <input
+              value={voidReason}
+              onChange={(event) => setVoidReason(event.target.value)}
+              placeholder="Reason for void"
+              autoFocus
+              className="min-w-60 flex-1 rounded-xl border border-ink/10 px-3 py-2.5 text-sm"
+            />
+            <button
+              type="button"
+              disabled={voidReason.trim().length < 3 || voidOrder.isPending}
+              onClick={() =>
+                voidOrder.mutate({ id: voidFor.id, reason: voidReason.trim() })
+              }
+              className="rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              Submit void
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setVoidFor(null);
+                setVoidReason("");
+              }}
+              className="rounded-xl border border-ink/10 px-4 py-2 text-sm font-semibold"
+            >
+              Cancel
+            </button>
+          </div>
+        </section>
       ) : null}
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
         <section className="rounded-2xl bg-white p-6 shadow-sm">
@@ -238,7 +426,65 @@ export default function PosPage() {
       <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
         <div className="px-6 py-5">
           <h2 className="font-semibold">Recent orders</h2>
+          <p className="mt-1 text-xs text-ink/50">
+            Cash settlement requires an open cashier shift. Room charges are
+            posted to an open in-house folio.
+          </p>
         </div>
+        {canApprove && pendingVoids.length ? (
+          <div className="border-y border-amber-100 bg-amber-50/70 px-6 py-4">
+            <h3 className="text-sm font-semibold text-amber-950">
+              Void approvals
+            </h3>
+            <div className="mt-3 space-y-2">
+              {pendingVoids.map((approval) => {
+                const order = orders.data?.find(
+                  (candidate) => candidate.id === approval.entityId,
+                );
+                return (
+                  <div
+                    key={approval.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-3 text-sm"
+                  >
+                    <div>
+                      <p className="font-medium">
+                        {order?.orderNumber ?? "POS order"} ·{" "}
+                        {approval.amountMinor !== null
+                          ? naira(approval.amountMinor)
+                          : "Amount unavailable"}
+                      </p>
+                      <p className="text-xs text-ink/50">
+                        Reason: {approval.reason}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={decideVoid.isPending}
+                        onClick={() =>
+                          decideVoid.mutate({ id: approval.id, approve: false })
+                        }
+                        className="rounded-lg border border-ink/10 px-3 py-2 text-xs font-semibold disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                      <button
+                        type="button"
+                        disabled={decideVoid.isPending}
+                        onClick={() =>
+                          decideVoid.mutate({ id: approval.id, approve: true })
+                        }
+                        className="rounded-lg bg-brand-800 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                      >
+                        Approve
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
@@ -249,6 +495,7 @@ export default function PosPage() {
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Opened</th>
                 <th className="px-6 py-3 text-right">Total</th>
+                <th className="px-6 py-3">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -267,6 +514,81 @@ export default function PosPage() {
                   </td>
                   <td className="px-6 py-4 text-right font-semibold">
                     {naira(order.totalMinor)}
+                  </td>
+                  <td className="min-w-64 px-6 py-4">
+                    {order.status === "OPEN" ? (
+                      <div className="flex items-center gap-2">
+                        <select
+                          defaultValue=""
+                          aria-label={`Settle ${order.orderNumber}`}
+                          disabled={settle.isPending || voidOrder.isPending}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            if (!value) return;
+                            if (value.startsWith("folio:")) {
+                              settle.mutate({
+                                id: order.id,
+                                settlement: "ROOM_POSTING",
+                                folioId: value.slice(6),
+                              });
+                            } else {
+                              settle.mutate({
+                                id: order.id,
+                                settlement: value,
+                              });
+                            }
+                            event.currentTarget.value = "";
+                          }}
+                          className="min-w-40 rounded-lg border border-ink/10 px-2 py-2 text-xs disabled:opacity-50"
+                        >
+                          <option value="">Settle order…</option>
+                          <option value="CASH" disabled={!openShift}>
+                            Cash
+                            {openShift
+                              ? ` · ${openShift.shiftNumber}`
+                              : " · open shift required"}
+                          </option>
+                          <option value="CARD">Card</option>
+                          <option value="POS_TERMINAL">POS terminal</option>
+                          <option value="TRANSFER">Bank transfer</option>
+                          {openFolios.map((reservation) => {
+                            const folio = reservation.folios.find(
+                              (candidate) => candidate.status === "OPEN",
+                            );
+                            const room = reservation.rooms.find(
+                              (assignment) => assignment.room,
+                            )?.room?.roomNumber;
+                            return folio ? (
+                              <option
+                                key={folio.id}
+                                value={`folio:${folio.id}`}
+                              >
+                                Room {room ?? "—"} ·{" "}
+                                {reservation.guest.firstName}{" "}
+                                {reservation.guest.lastName}
+                              </option>
+                            ) : null;
+                          })}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={settle.isPending || voidOrder.isPending}
+                          onClick={() => {
+                            setVoidFor(order);
+                            setVoidReason("");
+                            setNotice("");
+                          }}
+                          className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50"
+                        >
+                          Void
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-ink/50">
+                        {order.settlement?.replaceAll("_", " ") ??
+                          "No action required"}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
