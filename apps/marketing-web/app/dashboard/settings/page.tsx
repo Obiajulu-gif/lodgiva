@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAuth } from "@/components/providers";
 import { api } from "@/lib/api/client";
+import { SettingsWorkflows } from "./settings-workflows";
 
 interface Property {
   id: string;
@@ -22,6 +23,7 @@ interface TaxRule {
   rateBp: number;
   version: number;
   appliesTo: string;
+  basis: string;
   effectiveFrom: string;
 }
 interface Settings {
@@ -267,6 +269,22 @@ export default function SettingsPage() {
             </div>
           </section>
         </div>
+      ) : null}
+      {property ? (
+        <SettingsWorkflows
+          propertyId={propertyId}
+          permissions={me?.permissions ?? []}
+          taxRules={settings.data?.effectiveTaxRules ?? []}
+          onMessage={(message, isError) => {
+            if (isError) {
+              setError(message);
+              setNotice("");
+            } else {
+              setNotice(message);
+              setError("");
+            }
+          }}
+        />
       ) : null}
       {settings.isError ? (
         <p className="rounded-xl bg-red-50 p-4 text-sm text-red-700">

@@ -92,6 +92,8 @@ const navigation = [
       "settings.property.manage",
       "settings.room.manage",
       "settings.tax.manage",
+      "room.block",
+      "user.manage",
     ],
   },
 ] as const;
