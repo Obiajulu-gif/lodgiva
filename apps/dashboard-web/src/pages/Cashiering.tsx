@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, naira } from "../api";
+import { api, ApiError, MoneyMinor, minorBigInt, naira } from "../api";
 
 interface Shift {
   id: string;
   shiftNumber: string;
   status: string;
-  openingFloatMinor: number;
-  expectedMinor?: number;
-  countedMinor: number | null;
-  varianceMinor: number | null;
+  openingFloatMinor: MoneyMinor;
+  expectedMinor?: MoneyMinor;
+  countedMinor: MoneyMinor | null;
+  varianceMinor: MoneyMinor | null;
   varianceReason: string | null;
   openedAt: string;
   movements?: Movement[];
@@ -17,7 +17,7 @@ interface Shift {
 interface Movement {
   id: string;
   type: string;
-  amountMinor: number;
+  amountMinor: MoneyMinor;
   reference: string | null;
   note: string | null;
   createdAt: string;
@@ -100,8 +100,10 @@ export default function CashieringPage({ propertyId }: { propertyId: string }) {
     onError,
   });
 
-  const expected = detail?.expectedMinor ?? 0;
-  const variance = counted ? Math.round(Number(counted) * 100) - expected : 0;
+  const expected = minorBigInt(detail?.expectedMinor ?? 0);
+  const variance = counted
+    ? BigInt(Math.round(Number(counted) * 100)) - expected
+    : 0n;
 
   return (
     <>
@@ -142,7 +144,7 @@ export default function CashieringPage({ propertyId }: { propertyId: string }) {
                   <tr key={m.id}>
                     <td>{m.type.replace(/_/g, " ")}</td>
                     <td style={{ fontSize: 12, color: "var(--ink-50)" }}>{m.note ?? m.reference ?? "—"}</td>
-                    <td style={{ textAlign: "right" }} className={m.amountMinor < 0 ? "ledger-neg" : ""}>
+                    <td style={{ textAlign: "right" }} className={minorBigInt(m.amountMinor) < 0n ? "ledger-neg" : ""}>
                       {naira(m.amountMinor)}
                     </td>
                   </tr>
@@ -189,15 +191,15 @@ export default function CashieringPage({ propertyId }: { propertyId: string }) {
               <div
                 className="field"
                 style={{
-                  background: variance === 0 ? "var(--brand-50)" : "#fef2f2",
-                  color: variance === 0 ? "var(--brand-700)" : "#dc2626",
+                  background: variance === 0n ? "var(--brand-50)" : "#fef2f2",
+                  color: variance === 0n ? "var(--brand-700)" : "#dc2626",
                   padding: "10px 14px", borderRadius: 10, fontWeight: 600, fontSize: 13,
                 }}
               >
-                Variance: {variance === 0 ? "Balanced ✓" : naira(variance)}
+                Variance: {variance === 0n ? "Balanced ✓" : naira(variance)}
               </div>
             )}
-            {counted && variance !== 0 && (
+            {counted && variance !== 0n && (
               <div className="field">
                 <label>VARIANCE REASON (REQUIRED)</label>
                 <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. short-change at dinner" />
@@ -231,7 +233,7 @@ export default function CashieringPage({ propertyId }: { propertyId: string }) {
                 <td>{naira(s.openingFloatMinor)}</td>
                 <td>{s.expectedMinor != null ? naira(s.expectedMinor) : "—"}</td>
                 <td>{s.countedMinor != null ? naira(s.countedMinor) : "—"}</td>
-                <td className={s.varianceMinor ? "ledger-neg" : ""}>
+                <td className={s.varianceMinor != null && minorBigInt(s.varianceMinor) !== 0n ? "ledger-neg" : ""}>
                   {s.varianceMinor != null ? naira(s.varianceMinor) : "—"}
                 </td>
                 <td><span className={`pill ${STATUS_PILL[s.status]}`}>{s.status.replace("_", " ")}</span></td>

@@ -204,11 +204,20 @@ export function canInspect(role?: string): boolean {
 
 function Shell() {
   const navigate = useNavigate();
-  const { data: me } = useQuery({
+  const [selectedPropertyId, setSelectedPropertyId] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const {
+    data: me,
+    error: meError,
+    isLoading: meLoading,
+    refetch: retryMe,
+  } = useQuery({
     queryKey: ["me"],
     queryFn: () => api<Me>("/auth/me"),
   });
-  const property = me?.properties[0];
+  const property =
+    me?.properties.find((candidate) => candidate.id === selectedPropertyId) ??
+    me?.properties[0];
 
   const logout = async () => {
     if (getSession()) await api("/auth/logout", { method: "POST" }).catch(() => {});
@@ -218,13 +227,48 @@ function Shell() {
 
   return (
     <div className="app">
-      <nav className="sidebar">
+      <button
+        className="mobile-menu-button"
+        type="button"
+        aria-label={menuOpen ? "Close navigation" : "Open navigation"}
+        aria-expanded={menuOpen}
+        onClick={() => setMenuOpen((open) => !open)}
+      >
+        {menuOpen ? "×" : "☰"}
+      </button>
+      {menuOpen && (
+        <button
+          className="sidebar-scrim"
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
+      <nav className={`sidebar ${menuOpen ? "open" : ""}`} onClick={() => setMenuOpen(false)}>
         <div className="brand">
           <img src="/icon.svg" alt="" /> Lodgiva
         </div>
         <div className="prop">
           PROPERTY
-          <b>{property?.name ?? "…"}</b>
+          {me && me.properties.length > 1 ? (
+            <select
+              aria-label="Current property"
+              value={property?.id ?? ""}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => {
+                setSelectedPropertyId(event.target.value);
+                setMenuOpen(false);
+              }}
+            >
+              {me.properties.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <b>{property?.name ?? "…"}</b>
+          )}
           Business date: {property?.businessDate ?? "…"}
         </div>
         <NavLink to="/" end>Overview</NavLink>
@@ -241,25 +285,44 @@ function Shell() {
         {canAccess("/settings", me?.role) && <NavLink to="/settings">Settings</NavLink>}
         <div className="spacer" />
         <SyncStatus />
-        <a href="#logout" onClick={(e) => { e.preventDefault(); logout(); }}>
+        <button className="sidebar-action" type="button" onClick={logout}>
           Sign out {me ? `(${me.user.fullName.split(" ")[0]})` : ""}
-        </a>
+        </button>
       </nav>
       <main className="main">
+        {meLoading && <div className="page-state">Loading your workspace…</div>}
+        {meError && (
+          <div className="page-state">
+            <h1>We couldn&apos;t load your workspace</h1>
+            <p>{meError instanceof Error ? meError.message : "The dashboard request failed."}</p>
+            <div className="toolbar">
+              <button type="button" onClick={() => retryMe()}>Try again</button>
+              <button type="button" className="secondary" onClick={logout}>Sign out</button>
+            </div>
+          </div>
+        )}
+        {me && me.properties.length === 0 && (
+          <div className="page-state">
+            <h1>No property assigned</h1>
+            <p>Ask a Lodgiva administrator to add this account to a property.</p>
+            <button type="button" className="secondary" onClick={logout}>Sign out</button>
+          </div>
+        )}
         {property && (
           <Routes>
             <Route path="/" element={<OverviewPage propertyId={property.id} />} />
             <Route path="/board" element={<RoomBoardPage propertyId={property.id} canInspect={canInspect(me?.role)} />} />
             <Route path="/rooms" element={<RoomRackPage propertyId={property.id} />} />
-            <Route path="/reservations" element={<ReservationsPage propertyId={property.id} />} />
-            <Route path="/calendar" element={<CalendarPage propertyId={property.id} />} />
-            <Route path="/housekeeping" element={<HousekeepingPage propertyId={property.id} />} />
+            <Route path="/reservations" element={canAccess("/reservations", me?.role) ? <ReservationsPage propertyId={property.id} /> : <Navigate to="/" replace />} />
+            <Route path="/calendar" element={canAccess("/calendar", me?.role) ? <CalendarPage propertyId={property.id} /> : <Navigate to="/" replace />} />
+            <Route path="/housekeeping" element={<HousekeepingPage propertyId={property.id} canInspect={canInspect(me?.role)} />} />
             <Route path="/maintenance" element={<MaintenancePage propertyId={property.id} />} />
-            <Route path="/pos" element={<PosPage propertyId={property.id} />} />
-            <Route path="/payments" element={<PaymentsPage propertyId={property.id} />} />
-            <Route path="/cashiering" element={<CashieringPage propertyId={property.id} />} />
-            <Route path="/night-audit" element={<NightAuditPage propertyId={property.id} />} />
-            <Route path="/settings" element={<SettingsPage propertyId={property.id} />} />
+            <Route path="/pos" element={canAccess("/pos", me?.role) ? <PosPage propertyId={property.id} /> : <Navigate to="/" replace />} />
+            <Route path="/payments" element={canAccess("/payments", me?.role) ? <PaymentsPage propertyId={property.id} /> : <Navigate to="/" replace />} />
+            <Route path="/cashiering" element={canAccess("/cashiering", me?.role) ? <CashieringPage propertyId={property.id} /> : <Navigate to="/" replace />} />
+            <Route path="/night-audit" element={canAccess("/night-audit", me?.role) ? <NightAuditPage propertyId={property.id} /> : <Navigate to="/" replace />} />
+            <Route path="/settings" element={canAccess("/settings", me?.role) ? <SettingsPage propertyId={property.id} /> : <Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         )}
       </main>

@@ -55,7 +55,19 @@ export default function NightAuditPage({ propertyId }: { propertyId: string }) {
             rejected.
           </p>
         </div>
-        <button className="gold" disabled={run.isPending} onClick={() => run.mutate()}>
+        <button
+          className="gold"
+          disabled={run.isPending}
+          onClick={() => {
+            if (
+              window.confirm(
+                "Run night audit now? This posts room charges and advances the business date."
+              )
+            ) {
+              run.mutate();
+            }
+          }}
+        >
           {run.isPending ? "Running…" : "Run night audit"}
         </button>
       </div>
@@ -67,7 +79,7 @@ export default function NightAuditPage({ propertyId }: { propertyId: string }) {
           <p style={{ fontSize: 13 }}>
             Occupancy <b>{String(result.occupancyPct)}%</b> ·{" "}
             {String(result.roomChargesPosted)} room charge(s) posted ·{" "}
-            room revenue <b>{naira(Number(result.roomRevenueMinor))}</b> ·{" "}
+            room revenue <b>{naira(String(result.roomRevenueMinor ?? 0))}</b> ·{" "}
             business date advanced to <b>{String(result.newBusinessDate)}</b>
           </p>
         </div>

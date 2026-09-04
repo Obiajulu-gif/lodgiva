@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import { enqueue, flush, isConnectivityFailure, readQueue } from "../offline";
 
 interface Task {
@@ -22,8 +23,15 @@ const ACTION_FOR: Record<string, string> = {
 
 const COLUMNS = ["PENDING", "IN_PROGRESS", "COMPLETED", "INSPECTED"];
 
-export default function HousekeepingPage({ propertyId }: { propertyId: string }) {
+export default function HousekeepingPage({
+  propertyId,
+  canInspect,
+}: {
+  propertyId: string;
+  canInspect: boolean;
+}) {
   const qc = useQueryClient();
+  const [error, setError] = useState("");
   const { data: tasks } = useQuery({
     queryKey: ["hk-tasks", propertyId],
     queryFn: () => api<Task[]>(`/housekeeping/tasks?propertyId=${propertyId}`),
@@ -61,9 +69,12 @@ export default function HousekeepingPage({ propertyId }: { propertyId: string })
       }
     },
     onSuccess: () => {
+      setError("");
       qc.invalidateQueries({ queryKey: ["hk-tasks", propertyId] });
       qc.invalidateQueries({ queryKey: ["room-rack", propertyId] });
     },
+    onError: (reason) =>
+      setError(reason instanceof ApiError ? reason.message : String(reason)),
   });
 
   const queuedFor = (taskId: string) =>
@@ -88,6 +99,12 @@ export default function HousekeepingPage({ propertyId }: { propertyId: string })
         </div>
       </div>
 
+      {error && (
+        <button className="error-box error-button" type="button" onClick={() => setError("")}>
+          {error} (tap to dismiss)
+        </button>
+      )}
+
       <div className="grid cols-4">
         {COLUMNS.map((col) => {
           const colTasks = (tasks ?? []).filter((t) => t.status === col);
@@ -97,12 +114,16 @@ export default function HousekeepingPage({ propertyId }: { propertyId: string })
                 {col.replace("_", " ")} ({colTasks.length})
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {colTasks.map((t) => (
-                  <div
+                {colTasks.map((t) => {
+                  const supervisorOnly = col === "COMPLETED" && !canInspect;
+                  return (
+                  <button
                     key={t.id}
-                    className="card"
-                    style={{ cursor: col !== "INSPECTED" ? "pointer" : "default", padding: 14 }}
-                    onClick={() => col !== "INSPECTED" && advance.mutate(t)}
+                    className="card task-card"
+                    type="button"
+                    disabled={col === "INSPECTED" || supervisorOnly || advance.isPending}
+                    title={supervisorOnly ? "Inspection requires a supervisor" : undefined}
+                    onClick={() => advance.mutate(t)}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <b>
@@ -123,8 +144,10 @@ export default function HousekeepingPage({ propertyId }: { propertyId: string })
                         {t.notes}
                       </div>
                     )}
-                  </div>
-                ))}
+                    {supervisorOnly && <span className="hint">Supervisor inspection required</span>}
+                  </button>
+                  );
+                })}
                 {!colTasks.length && (
                   <div style={{
                     border: "1px dashed var(--border)", borderRadius: 12,

@@ -1,6 +1,8 @@
 // Typed-ish fetch client for the Lodgiva API with refresh-token rotation.
 
 import { isCacheable, readCache, writeCache } from "./cache";
+export { minorBigInt, naira } from "./money";
+export type { MoneyMinor } from "./money";
 
 const BASE = "/api/v1";
 
@@ -19,7 +21,6 @@ export interface Session {
   accessToken: string;
   claims: { userId: string; email: string; tenantId: string; role: string; sessionId: string };
 }
-
 let currentSession: Session | null = null;
 
 export function getSession(): Session | null {
@@ -127,6 +128,3 @@ export async function api<T = unknown>(
   }
   return data as T;
 }
-
-export const naira = (minor: number) =>
-  `₦${(minor / 100).toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;

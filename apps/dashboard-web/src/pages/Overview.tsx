@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { api, naira } from "../api";
 
 interface Flash {
@@ -14,6 +15,7 @@ interface Flash {
 }
 
 export default function OverviewPage({ propertyId }: { propertyId: string }) {
+  const navigate = useNavigate();
   const { data: flash } = useQuery({
     queryKey: ["daily-flash", propertyId],
     queryFn: () => api<Flash>(`/reports/daily-flash?propertyId=${propertyId}`),
@@ -39,26 +41,26 @@ export default function OverviewPage({ propertyId }: { propertyId: string }) {
       </div>
 
       <div className="grid cols-4">
-        <div className="card kpi">
+        <button className="card kpi kpi-link" type="button" onClick={() => navigate("/rooms")}>
           <div className="label">Occupancy</div>
           <div className="value">{flash?.occupancyPct ?? 0}%</div>
           <div className="sub">{flash?.occupied ?? 0} of {flash?.totalRooms ?? 0} rooms in-house</div>
-        </div>
-        <div className="card kpi">
+        </button>
+        <button className="card kpi kpi-link" type="button" onClick={() => navigate("/payments")}>
           <div className="label">Revenue (business date)</div>
           <div className="value">{naira(flash?.revenueTodayMinor ?? 0)}</div>
           <div className="sub">Charges incl. VAT & service</div>
-        </div>
-        <div className="card kpi">
+        </button>
+        <button className="card kpi kpi-link" type="button" onClick={() => navigate("/reservations")}>
           <div className="label">Movements today</div>
           <div className="value">{flash?.arrivalsToday ?? 0} in · {flash?.departuresToday ?? 0} out</div>
           <div className="sub">Arrivals / departures</div>
-        </div>
-        <div className="card kpi">
+        </button>
+        <button className="card kpi kpi-link" type="button" onClick={() => navigate("/reservations")}>
           <div className="label">Outstanding balances</div>
           <div className="value">{naira(flash?.outstandingMinor ?? 0)}</div>
           <div className="sub">Open folios owing</div>
-        </div>
+        </button>
       </div>
 
       <div className="grid cols-2 mt">

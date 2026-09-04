@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { api, naira } from "../api";
+import { api, MoneyMinor, minorBigInt, naira } from "../api";
 
 interface Payment {
   id: string;
   method: string;
   provider: string | null;
-  amountMinor: number;
+  amountMinor: MoneyMinor;
   status: string;
   externalReference: string | null;
   receivedAt: string;
@@ -31,7 +31,7 @@ export default function PaymentsPage({ propertyId }: { propertyId: string }) {
 
   const total = (payments ?? [])
     .filter((p) => p.status === "CONFIRMED")
-    .reduce((s, p) => s + p.amountMinor, 0);
+    .reduce((sum, payment) => sum + minorBigInt(payment.amountMinor), 0n);
 
   return (
     <>

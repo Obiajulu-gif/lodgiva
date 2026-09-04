@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, naira } from "../api";
+import { api, ApiError, MoneyMinor, minorBigInt, naira } from "../api";
 
 interface Reservation {
   id: string;
@@ -21,7 +21,7 @@ interface RackRoom {
   roomType: { code: string };
 }
 
-interface RoomType { id: string; code: string; name: string; baseRateMinor: number }
+interface RoomType { id: string; code: string; name: string; baseRateMinor: MoneyMinor }
 interface Guest { id: string; firstName: string; lastName: string }
 
 const STATUS_PILL: Record<string, string> = {
@@ -116,7 +116,14 @@ export default function ReservationsPage({ propertyId }: { propertyId: string })
                         <button className="small" onClick={() => { setError(""); setCheckInFor(r); }}>
                           Check in
                         </button>
-                        <button className="small secondary" onClick={() => cancel.mutate(r.id)}>
+                        <button
+                          className="small secondary"
+                          onClick={() => {
+                            if (window.confirm(`Cancel reservation ${r.confirmationCode}?`)) {
+                              cancel.mutate(r.id);
+                            }
+                          }}
+                        >
                           Cancel
                         </button>
                       </>
@@ -349,8 +356,8 @@ function CheckInModal({
 interface FolioData {
   id: string;
   status: string;
-  balanceMinor: number;
-  entries: { id: string; type: string; description: string; amountMinor: number; businessDate: string }[];
+  balanceMinor: MoneyMinor;
+  entries: { id: string; type: string; description: string; amountMinor: MoneyMinor; businessDate: string }[];
 }
 
 function FolioModal({
@@ -423,7 +430,7 @@ function FolioModal({
               <tr key={e.id}>
                 <td>{e.description}</td>
                 <td style={{ fontSize: 11, color: "var(--ink-50)" }}>{e.type}</td>
-                <td style={{ textAlign: "right" }} className={e.amountMinor < 0 ? "ledger-neg" : "ledger-pos"}>
+                <td style={{ textAlign: "right" }} className={minorBigInt(e.amountMinor) < 0n ? "ledger-neg" : "ledger-pos"}>
                   {naira(e.amountMinor)}
                 </td>
               </tr>
@@ -431,7 +438,7 @@ function FolioModal({
             <tr>
               <td colSpan={2}><b>Balance</b></td>
               <td style={{ textAlign: "right" }}>
-                <b style={{ color: (folio?.balanceMinor ?? 0) > 0 ? "var(--gold-600)" : "var(--brand-600)" }}>
+                <b style={{ color: minorBigInt(folio?.balanceMinor ?? 0) > 0n ? "var(--gold-600)" : "var(--brand-600)" }}>
                   {naira(folio?.balanceMinor ?? 0)}
                 </b>
               </td>

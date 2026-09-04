@@ -273,7 +273,9 @@ function RoomTypesTab({ propertyId, canManage, onOk, onError }: TabProps) {
                 </td>
                 <td>
                   {canManage && (
-                    <button className="small secondary" onClick={() => remove.mutate(t.id)}
+                    <button className="small secondary" onClick={() => {
+                      if (window.confirm(`Delete room type ${t.code}?`)) remove.mutate(t.id);
+                    }}
                       title={t._count.rooms > 0 ? "Room types with rooms cannot be deleted" : "Delete"}>
                       Delete
                     </button>
@@ -395,7 +397,9 @@ function RoomsTab({ propertyId, canManage, onOk, onError }: TabProps) {
                   {r.operationalStatus.replace(/_/g, " ")}
                 </span></td>
                 <td>{r.blocks.length || "—"}</td>
-                <td>{canManage && <button className="small secondary" onClick={() => remove.mutate(r.id)}>Delete</button>}</td>
+                <td>{canManage && <button className="small secondary" onClick={() => {
+                  if (window.confirm(`Delete room ${r.roomNumber}?`)) remove.mutate(r.id);
+                }}>Delete</button>}</td>
               </tr>
             ))}
             {!rooms?.length && <tr><td colSpan={6} style={{ color: "var(--ink-50)" }}>No rooms yet.</td></tr>}
@@ -453,7 +457,9 @@ function AmenitiesTab({ propertyId, canManage, onOk, onError }: TabProps) {
                 <td style={{ fontFamily: "monospace" }}>{a.code}</td>
                 <td>{a.name}</td>
                 <td><span className="pill blue">{a.category}</span></td>
-                <td>{canManage && <button className="small secondary" onClick={() => remove.mutate(a.id)}>Delete</button>}</td>
+                <td>{canManage && <button className="small secondary" onClick={() => {
+                  if (window.confirm(`Delete amenity ${a.name}?`)) remove.mutate(a.id);
+                }}>Delete</button>}</td>
               </tr>
             ))}
             {!data?.length && <tr><td colSpan={4} style={{ color: "var(--ink-50)" }}>No amenities yet.</td></tr>}

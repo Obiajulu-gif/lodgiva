@@ -1,15 +1,15 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, naira } from "../api";
+import { api, ApiError, MoneyMinor, minorBigInt, naira } from "../api";
 
-interface MenuItem { id: string; code: string; name: string; category: string; priceMinor: number }
+interface MenuItem { id: string; code: string; name: string; category: string; priceMinor: MoneyMinor }
 interface Outlet { id: string; code: string; name: string; menuItems: MenuItem[] }
 interface Order {
   id: string;
   orderNumber: string;
   status: string;
   settlement: string | null;
-  totalMinor: number;
+  totalMinor: MoneyMinor;
   outlet: { name: string };
   lines: { id: string; description: string; quantity: number; lineMinor: number }[];
 }
@@ -26,7 +26,7 @@ interface Approval {
   id: string;
   type: string;
   entityId: string;
-  amountMinor: number | null;
+  amountMinor: MoneyMinor | null;
   reason: string;
   status: string;
   requestedById: string;
@@ -71,14 +71,14 @@ export default function PosPage({ propertyId }: { propertyId: string }) {
   const openShift = shifts?.find((s) => s.status === "OPEN");
 
   const subtotal = useMemo(() => {
-    if (!outlet) return 0;
+    if (!outlet) return 0n;
     return Object.entries(cart).reduce((sum, [id, qty]) => {
       const item = outlet.menuItems.find((m) => m.id === id);
-      return sum + (item ? item.priceMinor * qty : 0);
-    }, 0);
+      return sum + (item ? minorBigInt(item.priceMinor) * BigInt(qty) : 0n);
+    }, 0n);
   }, [cart, outlet]);
-  const service = Math.floor((subtotal * 500) / 10000);
-  const vat = Math.floor(((subtotal + service) * 750) / 10000);
+  const service = (subtotal * 500n) / 10_000n;
+  const vat = ((subtotal + service) * 750n) / 10_000n;
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["pos-orders", propertyId] });
@@ -248,7 +248,7 @@ export default function PosPage({ propertyId }: { propertyId: string }) {
                   return (
                     <tr key={id}>
                       <td>{qty} × {item.name}</td>
-                      <td style={{ textAlign: "right" }}>{naira(item.priceMinor * qty)}</td>
+                      <td style={{ textAlign: "right" }}>{naira(minorBigInt(item.priceMinor) * BigInt(qty))}</td>
                       <td style={{ width: 30 }}>
                         <button
                           className="small secondary"
