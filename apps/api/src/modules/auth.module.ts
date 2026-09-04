@@ -547,7 +547,10 @@ export class AuthController {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      path: "/api/v1/auth",
+      // Keep the rotating token available to the same-origin Next.js route
+      // guard as well as the API proxy. It remains HttpOnly and is never read
+      // by application JavaScript.
+      path: "/",
       maxAge: 30 * 24 * 60 * 60,
     });
     return publicResult;
@@ -584,7 +587,7 @@ export class AuthController {
   ) {
     const token = request.cookies?.lodgiva_refresh;
     if (token) await this.service.logout(token);
-    reply.clearCookie("lodgiva_refresh", { path: "/api/v1/auth" });
+    reply.clearCookie("lodgiva_refresh", { path: "/" });
     return { ok: true };
   }
 
