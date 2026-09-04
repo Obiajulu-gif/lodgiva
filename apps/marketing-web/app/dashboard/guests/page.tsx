@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, X } from "lucide-react";
 import { useAuth } from "@/components/providers";
 import { api } from "@/lib/api/client";
+import { GuestDetails } from "./guest-details";
 
 interface Guest {
   id: string;
@@ -24,6 +25,7 @@ export default function GuestsPage() {
   const canManage = me?.permissions.includes("guest.manage") ?? false;
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
+  const [selectedGuestId, setSelectedGuestId] = useState("");
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -31,6 +33,7 @@ export default function GuestsPage() {
     email: "",
   });
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const guests = useQuery({
     queryKey: ["guests", search],
     queryFn: () =>
@@ -54,6 +57,7 @@ export default function GuestsPage() {
       setCreating(false);
       setForm({ firstName: "", lastName: "", phone: "", email: "" });
       setError("");
+      setNotice("Guest profile created.");
       await queryClient.invalidateQueries({ queryKey: ["guests"] });
     },
     onError: (cause) =>
@@ -94,7 +98,33 @@ export default function GuestsPage() {
           className="w-full rounded-xl border border-ink/10 bg-white py-2.5 pl-11 pr-4 text-sm outline-none focus:border-brand-500"
         />
       </label>
+      {notice ? (
+        <button
+          type="button"
+          onClick={() => setNotice("")}
+          className="w-full rounded-xl bg-brand-50 p-3 text-left text-sm text-brand-700"
+        >
+          {notice} — dismiss
+        </button>
+      ) : null}
+      {!creating && error ? (
+        <button
+          type="button"
+          onClick={() => setError("")}
+          className="w-full rounded-xl bg-red-50 p-3 text-left text-sm text-red-700"
+        >
+          {error} — dismiss
+        </button>
+      ) : null}
       <section className="overflow-hidden rounded-2xl border border-ink/5 bg-white shadow-sm">
+        {guests.isPending ? (
+          <p className="p-10 text-center text-sm text-ink/45">
+            Loading guest profiles…
+          </p>
+        ) : null}
+        {guests.isError ? (
+          <p className="p-6 text-sm text-red-700">{guests.error.message}</p>
+        ) : null}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
@@ -104,6 +134,7 @@ export default function GuestsPage() {
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Nationality</th>
                 <th className="px-6 py-3 font-medium">Flags</th>
+                <th className="px-6 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -132,6 +163,15 @@ export default function GuestsPage() {
                         BLOCKED
                       </span>
                     ) : null}
+                  </td>
+                  <td className="px-6 py-4">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedGuestId(guest.id)}
+                      className="text-xs font-semibold text-brand-700"
+                    >
+                      View profile
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -201,6 +241,22 @@ export default function GuestsPage() {
             </button>
           </form>
         </div>
+      ) : null}
+      {selectedGuestId ? (
+        <GuestDetails
+          guestId={selectedGuestId}
+          canManage={canManage}
+          onClose={() => setSelectedGuestId("")}
+          onMessage={(message, isError) => {
+            if (isError) {
+              setError(message);
+              setNotice("");
+            } else {
+              setNotice(message);
+              setError("");
+            }
+          }}
+        />
       ) : null}
     </div>
   );
