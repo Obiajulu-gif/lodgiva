@@ -14,24 +14,29 @@ services:
   - type: web
     name: lodgiva-api
     runtime: node
-    plan: starter
+    # Free tier: 512MB, and the service sleeps after 15 minutes of inactivity,
+    # so the first request after idle waits ~50s for a cold start. Fine for
+    # trialling; move to `starter` before a real property depends on it, since
+    # a front desk waiting a minute to load arrivals is not acceptable.
+    plan: free
     region: frankfurt # closest of Render's regions to Nigerian traffic
     branch: main
     # The whole workspace is needed: the API imports @lodgiva/database, so a
     # build rooted at apps/api alone cannot resolve the Prisma client.
     rootDir: .
+    #
+    # Migrations run here rather than in `preDeployCommand`, which is a paid
+    # feature. The ordering still works for additive changes: the migration
+    # lands before the new code serves traffic. A destructive migration would
+    # need the paid pre-deploy hook, or a manual run -- see
+    # `pnpm check:migrations --strict`, which fails on exactly those.
     buildCommand: >-
       corepack enable &&
       pnpm install --frozen-lockfile &&
       pnpm --filter @lodgiva/database run build &&
+      pnpm --filter @lodgiva/database run migrate &&
       pnpm --filter @lodgiva/api run build
     startCommand: pnpm --filter @lodgiva/api run start
-
-    # Runs after the build, before traffic moves to the new version, so an
-    # additive migration is in place before the code that needs it serves a
-    # request. Requires a paid instance type; on the free tier, move this into
-    # buildCommand instead.
-    preDeployCommand: pnpm --filter @lodgiva/database run migrate
 
     # /health/live only proves the process is up. /health/ready runs a query,
     # so a service that cannot reach Neon never receives traffic.

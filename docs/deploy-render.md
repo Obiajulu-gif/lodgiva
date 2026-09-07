@@ -14,8 +14,46 @@ setting you can skip.
 | Requirement | Why it is not optional |
 | --- | --- |
 | **Neon connection strings** (pooled + direct) | Already in use locally. Prisma needs the direct URL for migrations and the pooled one at runtime. |
-| **A Cloudflare R2 bucket pair** (public + private) | `assertSafeProductionEnvironment()` rejects any other adapter in production. Render's disk is ephemeral: the local filesystem adapter would lose every guest ID scan and invoice PDF on each redeploy. |
-| **A paid Render instance** (Starter or above) | `preDeployCommand` runs migrations before traffic shifts. On the free tier, move that command into `buildCommand` — and note free services sleep, so the first request after idle takes ~30s. |
+| **A Cloudflare R2 bucket pair** (public + private) | `assertSafeProductionEnvironment()` rejects any other adapter in production. The host's disk is ephemeral: the local filesystem adapter would lose every guest ID scan and invoice PDF on each redeploy. R2 has a free storage allowance, so this costs nothing to start. |
+
+The blueprint targets Render's **free** plan. That means the service sleeps
+after ~15 minutes of inactivity and the next request pays a cold start of
+roughly a minute — acceptable for trialling, not for a property whose front
+desk is waiting on the arrivals list. Change `plan: free` to `plan: starter`
+when it matters, and move the migration back out of `buildCommand` into
+`preDeployCommand` at the same time.
+
+---
+
+## 1a. Why not Vercel, and what else fits
+
+Vercel already hosts the front end, so putting the API there too is the
+obvious question. It is a poor fit for **this** API, for four specific reasons
+rather than a general preference:
+
+| Feature in this codebase | What serverless does to it |
+| --- | --- |
+| SSE live updates (`events.module.ts` sends `text/event-stream` with a heartbeat) | The connection dies at the function timeout. The live room rack stops updating. |
+| Async exports (`void this.runExport(...)` continues after the response) | The instance may freeze the moment it responds, so the export never finishes and the job sits in RUNNING forever. |
+| Rate limiting (`@fastify/rate-limit`, in-memory, no shared store) | Counters become per-instance. The 30/minute auth limit multiplies by however many instances are warm — a real weakening of brute-force protection, not a cosmetic one. |
+| Metrics buffer flushed on a 10-second timer | Buffered counts are lost when the instance freezes between invocations. |
+
+None of that is unfixable — SSE could become polling, exports a queue, rate
+limiting a Redis store — but it is a re-architecture, not a deployment choice.
+
+Anything that runs a **normal long-lived Node process** works without changes.
+Free allowances move around, so check current terms before committing:
+
+- **Render free web service** — what this blueprint targets. Sleeps when idle.
+- **Fly.io** — long-running VMs, needs a `Dockerfile`; good regional coverage.
+- **Koyeb** — free web service tier, long-running.
+- **A small VPS** — not free, but a $4–6/month box runs the API, the worker and
+  a Redis for the rate-limit store together, which is cheaper than three
+  managed services once you outgrow the free tiers.
+
+Whichever you pick, the requirements are the same: run `pnpm --filter
+@lodgiva/api run start`, set the variables in §3, and bind the port the
+platform injects as `PORT` (the API reads it).
 
 Verify the guard yourself before paying for anything:
 
