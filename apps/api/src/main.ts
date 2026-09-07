@@ -174,7 +174,11 @@ async function bootstrap() {
     }
   }
 
-  const port = Number(process.env.API_PORT ?? 4000);
+  // PORT is what a platform injects (Render, Fly, Heroku); API_PORT is the
+  // local convention. The platform wins, because a service that ignores it
+  // binds a port nothing routes to and the health check fails a deploy that
+  // otherwise built perfectly.
+  const port = Number(process.env.PORT ?? process.env.API_PORT ?? 4000);
   await app.listen(port, "0.0.0.0");
   console.log(`Lodgiva API listening on http://localhost:${port}/api/v1`);
 }

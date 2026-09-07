@@ -1,0 +1,122 @@
+# Render blueprint for the Lodgiva API.
+#
+# Connect this repository as a Blueprint in the Render dashboard; Render reads
+# this file and creates the service. Every secret is declared but NOT stored
+# here — `sync: false` makes Render prompt for the value, and `generateValue`
+# makes Render invent one. Nothing in this file is a credential, so it is safe
+# to commit and safe to read in a pull request.
+#
+# Before the first deploy, read docs/deploy-render.md: the API refuses to start
+# in production unless storage is genuinely configured (see
+# apps/api/src/common/runtime-config.ts), and that needs a Cloudflare R2 bucket.
+
+services:
+  - type: web
+    name: lodgiva-api
+    runtime: node
+    plan: starter
+    region: frankfurt # closest of Render's regions to Nigerian traffic
+    branch: main
+    # The whole workspace is needed: the API imports @lodgiva/database, so a
+    # build rooted at apps/api alone cannot resolve the Prisma client.
+    rootDir: .
+    buildCommand: >-
+      corepack enable &&
+      pnpm install --frozen-lockfile &&
+      pnpm --filter @lodgiva/database run build &&
+      pnpm --filter @lodgiva/api run build
+    startCommand: pnpm --filter @lodgiva/api run start
+
+    # Runs after the build, before traffic moves to the new version, so an
+    # additive migration is in place before the code that needs it serves a
+    # request. Requires a paid instance type; on the free tier, move this into
+    # buildCommand instead.
+    preDeployCommand: pnpm --filter @lodgiva/database run migrate
+
+    # /health/live only proves the process is up. /health/ready runs a query,
+    # so a service that cannot reach Neon never receives traffic.
+    healthCheckPath: /api/v1/health/ready
+
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+
+      # Turning this on is what enables the production guard AND the Secure
+      # flag on the refresh cookie. Do not set it to anything else to "get the
+      # service booting" — that ships session cookies without Secure.
+      - key: NODE_ENV
+        value: production
+
+      # Neon. Use the POOLED connection string; DIRECT_URL is the unpooled one
+      # Prisma needs for migrations.
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+
+      # Render generates a 256-bit random value, comfortably over the 32-char
+      # minimum the runtime guard enforces.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: STORAGE_SIGNING_KEY
+        generateValue: true
+
+      # Must decode to EXACTLY 32 bytes, so it is supplied rather than
+      # generated: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+      - key: MFA_ENCRYPTION_KEY
+        sync: false
+
+      # Exact HTTPS origins, comma separated. The guard rejects "*" — a
+      # credentialed API that accepts any origin is an account-takeover
+      # primitive, not a convenience.
+      - key: CORS_ORIGINS
+        value: https://lodgiva.vercel.app
+
+      # Object storage. The production guard requires r2; the local filesystem
+      # adapter is development only and would lose every upload on redeploy,
+      # because Render's disk is ephemeral.
+      - key: STORAGE_ADAPTER
+        value: r2
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_PUBLIC_BUCKET
+        sync: false
+      - key: R2_PRIVATE_BUCKET
+        sync: false
+      - key: R2_PUBLIC_BASE_URL
+        sync: false
+      - key: STORAGE_BASE_URL
+        sync: false
+
+      # Payments. Webhook secrets are what make a payment callback trustworthy;
+      # without them the gateway module rejects every webhook signature.
+      - key: PAYMENTS_MODE
+        value: live
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_WEBHOOK_SECRET
+        sync: false
+      - key: FLUTTERWAVE_SECRET_KEY
+        sync: false
+      - key: FLUTTERWAVE_WEBHOOK_HASH
+        sync: false
+
+      # Optional. Web push stays disabled and reports PUSH_DISABLED rather than
+      # silently accepting subscriptions it can never deliver to.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+
+      # Optional observability. /observability/status reports plainly whether
+      # these are live, so nothing has to be assumed.
+      - key: SENTRY_DSN
+        sync: false
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        sync: false
