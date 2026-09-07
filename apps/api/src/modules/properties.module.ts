@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ConflictException,
   Get,
   Injectable,
   Module,
@@ -12,6 +13,7 @@ import {
 import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
+import { RequirePermission } from "../common/permissions.guard";
 import { AuditService } from "../common/audit.service";
 
 // §7.2 — occupancy and housekeeping condition are distinct concepts; these are
@@ -132,16 +134,27 @@ export class PropertiesService {
         error: { code: "ROOM_NOT_FOUND", message: "Room not found." },
       });
     }
-    const occupied = room.operationalStatus.startsWith("OCCUPIED");
-    if (occupied && (status === "VACANT_CLEAN" || status === "VACANT_DIRTY")) {
+    await this.assertProperty(auth, room.propertyId);
+    return this.prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Room" WHERE id = ${room.id} AND "tenantId" = ${auth.tenantId} FOR UPDATE`;
+    const current = await tx.room.findUniqueOrThrow({ where: { id: room.id } });
+    const occupied = await tx.reservationRoom.count({ where: { tenantId: auth.tenantId, roomId: room.id, status: "IN_HOUSE" } }) > 0;
+    if (occupied !== status.startsWith("OCCUPIED")) {
       throw new BadRequestException({
         error: {
-          code: "ROOM_OCCUPIED",
-          message: "Room has an in-house guest; check the guest out instead of forcing a vacant state.",
+          code: occupied ? "ROOM_OCCUPIED" : "ROOM_NOT_OCCUPIED",
+          message: "Use reservation check-in or checkout to change room occupancy. Housekeeping can only change its condition.",
         },
       });
     }
-    return this.prisma.$transaction(async (tx) => {
+      if (["VACANT_CLEAN", "INSPECTED"].includes(status)) {
+        const property = await tx.property.findUniqueOrThrow({ where: { id: room.propertyId } });
+        const block = await tx.roomBlock.count({ where: {
+          tenantId: auth.tenantId, roomId: room.id, status: "ACTIVE",
+          startDate: { lte: property.businessDate }, endDate: { gt: property.businessDate },
+        } });
+        if (block) throw new ConflictException({ error: { code: "ROOM_BLOCKED", message: "Release the active room block before marking this room ready." } });
+      }
       const updated = await tx.room.update({
         where: { id: room.id },
         data: { operationalStatus: status },
@@ -151,13 +164,13 @@ export class PropertiesService {
         entityType: "room",
         entityId: room.id,
         propertyId: room.propertyId,
-        summary: { from: room.operationalStatus, to: status, reason },
+        summary: { from: current.operationalStatus, to: status, reason },
       });
       await this.audit.emit(tx, auth.tenantId, {
         aggregateType: "room",
         aggregateId: room.id,
         eventType: "room.status_changed",
-        payload: { roomNumber: room.roomNumber, from: room.operationalStatus, to: status },
+        payload: { roomNumber: room.roomNumber, from: current.operationalStatus, to: status },
       });
       return updated;
     });
@@ -174,6 +187,7 @@ export class PropertiesController {
   }
 
   @Get("properties/:id/room-rack")
+  @RequirePermission("housekeeping.read")
   roomRack(@CurrentAuth() auth: AuthContext, @Param("id") id: string) {
     return this.service.roomRack(auth, id);
   }
@@ -184,6 +198,7 @@ export class PropertiesController {
   }
 
   @Patch("rooms/:id/status")
+  @RequirePermission("housekeeping.update")
   setRoomStatus(
     @CurrentAuth() auth: AuthContext,
     @Param("id") id: string,

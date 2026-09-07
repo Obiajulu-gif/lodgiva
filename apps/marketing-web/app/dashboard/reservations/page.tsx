@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 import { useAuth } from "@/components/providers";
@@ -12,9 +13,12 @@ import {
   type Reservation,
 } from "./reservation-workflows";
 
-const activeStatuses = ["CONFIRMED", "CHECKED_IN", "PENDING_PAYMENT", "HOLD"];
-
 export default function ReservationsPage() {
+  return <Suspense fallback={<p role="status">Loading reservations…</p>}><ReservationsContent /></Suspense>;
+}
+
+function ReservationsContent() {
+  const params = useSearchParams();
   const queryClient = useQueryClient();
   const { me, selectedPropertyId } = useAuth();
   const property =
@@ -26,7 +30,8 @@ export default function ReservationsPage() {
   const canCheckIn = me?.permissions.includes("frontdesk.check_in") ?? false;
   const canCheckOut = me?.permissions.includes("frontdesk.check_out") ?? false;
   const canReadFolio = me?.permissions.includes("folio.read") ?? false;
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(params.get("search") ?? "");
+  const [page, setPage] = useState(0);
   const [status, setStatus] = useState("ACTIVE");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -36,10 +41,10 @@ export default function ReservationsPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const reservations = useQuery({
-    queryKey: ["reservations", propertyId],
+    queryKey: ["reservations", propertyId, search, status, from, to, page],
     queryFn: () =>
       api<Reservation[]>(
-        `/reservations?propertyId=${encodeURIComponent(propertyId)}`,
+        `/reservations?${new URLSearchParams({ propertyId, q: search, status, from, to, offset: String(page * 50), limit: "51" })}`,
       ),
     enabled: Boolean(propertyId),
     refetchInterval: 15_000,
@@ -53,6 +58,9 @@ export default function ReservationsPage() {
       queryClient.invalidateQueries({ queryKey: ["room-rack", propertyId] }),
       queryClient.invalidateQueries({ queryKey: ["daily-flash", propertyId] }),
       queryClient.invalidateQueries({ queryKey: ["payments", propertyId] }),
+      queryClient.invalidateQueries({ queryKey: ["housekeeping", propertyId] }),
+      queryClient.invalidateQueries({ queryKey: ["reservation-availability", propertyId] }),
+      queryClient.invalidateQueries({ queryKey: ["guests"] }),
     ]);
   }
   const lifecycle = useMutation({
@@ -78,31 +86,7 @@ export default function ReservationsPage() {
       );
     },
   });
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return (reservations.data ?? []).filter((reservation) => {
-      if (status === "ACTIVE" && !activeStatuses.includes(reservation.status))
-        return false;
-      if (
-        status !== "ALL" &&
-        status !== "ACTIVE" &&
-        reservation.status !== status
-      )
-        return false;
-      if (from && reservation.departureDate <= from) return false;
-      if (to && reservation.arrivalDate >= to) return false;
-      if (!needle) return true;
-      return [
-        reservation.confirmationCode,
-        reservation.guest.firstName,
-        reservation.guest.lastName,
-        ...reservation.rooms.map((room) => room.room?.roomNumber ?? ""),
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(needle);
-    });
-  }, [from, reservations.data, search, status, to]);
+  const filtered = (reservations.data ?? []).slice(0, 50);
 
   return (
     <div className="space-y-7">
@@ -150,7 +134,7 @@ export default function ReservationsPage() {
           <Search className="absolute left-3 top-3 h-4 w-4 text-ink/35" />
           <input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => { setSearch(event.target.value); setPage(0); }}
             placeholder="Code, guest, or room"
             className="w-full rounded-xl border border-ink/10 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-brand-500"
           />
@@ -159,7 +143,7 @@ export default function ReservationsPage() {
           <span className="sr-only">Status</span>
           <select
             value={status}
-            onChange={(event) => setStatus(event.target.value)}
+            onChange={(event) => { setStatus(event.target.value); setPage(0); }}
             className="w-full rounded-xl border border-ink/10 px-3 py-2.5 text-sm"
           >
             <option value="ACTIVE">Active stays</option>
@@ -176,7 +160,7 @@ export default function ReservationsPage() {
           <input
             type="date"
             value={from}
-            onChange={(event) => setFrom(event.target.value)}
+            onChange={(event) => { setFrom(event.target.value); setPage(0); }}
             className="mt-1 w-full rounded-xl border border-ink/10 px-3 py-2 text-sm font-normal text-ink"
           />
         </label>
@@ -185,7 +169,7 @@ export default function ReservationsPage() {
           <input
             type="date"
             value={to}
-            onChange={(event) => setTo(event.target.value)}
+            onChange={(event) => { setTo(event.target.value); setPage(0); }}
             className="mt-1 w-full rounded-xl border border-ink/10 px-3 py-2 text-sm font-normal text-ink"
           />
         </label>
@@ -233,7 +217,7 @@ export default function ReservationsPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex justify-end gap-2">
-                      {reservation.status === "CONFIRMED" && canCheckIn ? (
+                      {reservation.status === "CONFIRMED" && canCheckIn && reservation.arrivalDate <= (property?.businessDate ?? "") && reservation.departureDate > (property?.businessDate ?? "") ? (
                         <button
                           type="button"
                           onClick={() => setCheckInFor(reservation)}
@@ -331,17 +315,24 @@ export default function ReservationsPage() {
             </tbody>
           </table>
         </div>
-        {!reservations.isPending && !filtered.length ? (
+        {reservations.isPending ? <p role="status" className="p-10 text-center">Loading reservations…</p> : null}
+        {reservations.isSuccess && !filtered.length ? (
           <p className="p-10 text-center text-sm text-ink/45">
-            {reservations.data?.length
+            {search || status !== "ALL" || from || to
               ? "No reservations match these filters."
               : "No reservations yet."}
           </p>
         ) : null}
       </section>
+      <div className="flex items-center justify-between text-sm">
+        <button type="button" disabled={page === 0 || reservations.isFetching} onClick={() => setPage((current) => current - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Previous page</button>
+        <span>Page {page + 1} · {filtered.length} reservations</span>
+        <button type="button" disabled={(reservations.data?.length ?? 0) <= 50 || reservations.isFetching} onClick={() => setPage((current) => current + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Next page</button>
+      </div>
       {reservations.isError ? (
         <p className="rounded-xl bg-red-50 p-4 text-sm text-red-700">
           {reservations.error.message}
+          <button type="button" className="ml-3 underline" onClick={() => void reservations.refetch()}>Retry reservations</button>
         </p>
       ) : null}
       {createOpen && property ? (

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   ConflictException,
+  ForbiddenException,
   Controller,
   Get,
   Injectable,
@@ -16,6 +17,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
+import { RequirePermission } from "../common/permissions.guard";
 import { AuditService } from "../common/audit.service";
 import { nightsBetween } from "../common/money";
 import {
@@ -34,7 +36,7 @@ import { FoliosModule, FoliosService } from "./folios.module";
 type Tx = Prisma.TransactionClient;
 
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const isoDate = z.string().date();
 
 const createSchema = z
   .object({
@@ -125,6 +127,7 @@ export class ReservationsService {
         error: { code: "RESERVATION_NOT_FOUND", message: "Reservation not found." },
       });
     }
+    await this.properties.assertProperty(auth, res.propertyId);
     return res;
   }
 
@@ -236,6 +239,8 @@ export class ReservationsService {
     arrival: string,
     departure: string
   ) {
+    isoDate.parse(arrival);
+    isoDate.parse(departure);
     await this.properties.assertProperty(auth, propertyId);
     if (arrival >= departure) {
       throw new BadRequestException({
@@ -248,14 +253,8 @@ export class ReservationsService {
     });
     const result = [];
     for (const rt of roomTypes) {
-      const sold = await this.prisma.reservationRoom.count({
-        where: {
-          tenantId: auth.tenantId,
-          roomTypeId: rt.id,
-          status: { in: ["RESERVED", "IN_HOUSE"] },
-          ...this.overlapWhere(arrival, departure),
-          reservation: { status: { in: ["CONFIRMED", "CHECKED_IN", "PENDING_PAYMENT", "HOLD"] } },
-        },
+      const nights = await this.inventory.availabilityByNight({
+        tenantId: auth.tenantId, roomTypeId: rt.id, arrival, departure,
       });
       result.push({
         roomTypeId: rt.id,
@@ -263,21 +262,37 @@ export class ReservationsService {
         name: rt.name,
         baseRateMinor: rt.baseRateMinor,
         totalRooms: rt._count.rooms,
-        available: rt._count.rooms - sold,
+        available: Math.min(...nights.map((night) => night.available)),
       });
     }
     return result;
   }
 
-  list(auth: AuthContext, propertyId?: string, status?: string) {
+  async list(auth: AuthContext, propertyId?: string, status?: string, filters: { q?: string; from?: string; to?: string; offset?: string; limit?: string } = {}) {
+    if (propertyId) await this.properties.assertProperty(auth, propertyId);
+    const offset = z.coerce.number().int().min(0).max(1_000_000).parse(filters.offset ?? 0);
+    const limit = z.coerce.number().int().min(1).max(100).parse(filters.limit ?? 100);
+    if (filters.from) isoDate.parse(filters.from);
+    if (filters.to) isoDate.parse(filters.to);
+    const q = filters.q?.trim();
     return this.prisma.reservation.findMany({
       where: {
         tenantId: auth.tenantId,
+        ...(!auth.allProperties ? { propertyId: { in: auth.propertyIds } } : {}),
         ...(propertyId ? { propertyId } : {}),
-        ...(status ? { status } : {}),
+        ...(status && status !== "ALL" ? { status: status === "ACTIVE" ? { in: ["CONFIRMED", "CHECKED_IN", "PENDING_PAYMENT", "HOLD"] } : status } : {}),
+        ...(filters.from ? { departureDate: { gt: filters.from } } : {}),
+        ...(filters.to ? { arrivalDate: { lt: filters.to } } : {}),
+        ...(q ? { OR: [
+          { confirmationCode: { contains: q, mode: "insensitive" as const } },
+          { guest: { firstName: { contains: q, mode: "insensitive" as const } } },
+          { guest: { lastName: { contains: q, mode: "insensitive" as const } } },
+          { rooms: { some: { room: { roomNumber: { contains: q, mode: "insensitive" as const } } } } },
+        ] } : {}),
       },
-      orderBy: [{ arrivalDate: "desc" }],
-      take: 100,
+      orderBy: [{ arrivalDate: "desc" }, { id: "asc" }],
+      skip: offset,
+      take: limit,
       include: {
         guest: { select: { id: true, firstName: true, lastName: true, vip: true } },
         rooms: {
@@ -304,7 +319,10 @@ export class ReservationsService {
         error: { code: "INVALID_DATE_RANGE", message: "Departure must be after arrival." },
       });
     }
-    await this.properties.assertProperty(auth, dto.propertyId);
+    const property = await this.properties.assertProperty(auth, dto.propertyId);
+    if (dto.arrivalDate < property.businessDate) {
+      throw new BadRequestException({ error: { code: "ARRIVAL_IN_PAST", message: "Arrival cannot precede the property's business date." } });
+    }
 
     // Serialise claims against the same room type in this process so writers
     // queue instead of colliding; the unique index remains the guarantee.
@@ -347,6 +365,10 @@ export class ReservationsService {
       }
 
       if (dto.roomId) {
+        const assigned = await tx.room.findFirst({ where: {
+          id: dto.roomId, tenantId: auth.tenantId, propertyId: dto.propertyId, roomTypeId: dto.roomTypeId,
+        } });
+        if (!assigned) throw new BadRequestException({ error: { code: "ROOM_TYPE_MISMATCH", message: "Choose a room of the booked type in this property." } });
         const clash = await tx.reservationRoom.count({
           where: {
             tenantId: auth.tenantId,
@@ -449,9 +471,17 @@ export class ReservationsService {
 
   async checkIn(auth: AuthContext, id: string, body: unknown) {
     const dto = checkInSchema.parse(body);
+    if (dto.overrideDirtyRoom && !["TENANT_OWNER", "GENERAL_MANAGER"].includes(auth.role)) {
+      throw new ForbiddenException({ error: { code: "OVERRIDE_FORBIDDEN", message: "A manager must authorize a dirty-room override." } });
+    }
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Reservation" WHERE id = ${id} AND "tenantId" = ${auth.tenantId} FOR UPDATE`;
       const res = await this.getOrThrow(auth, id, tx);
       this.assertTransition(res.status, "CHECKED_IN");
+      const property = await this.properties.assertProperty(auth, res.propertyId);
+      if (property.businessDate < res.arrivalDate || property.businessDate >= res.departureDate) {
+        throw new ConflictException({ error: { code: "OUTSIDE_STAY_DATES", message: "Check-in must occur within the reservation's stay dates. Modify the stay dates first." } });
+      }
       const resRoom = res.rooms[0];
       // Auto-assign when the desk has not pre-allocated: a check-in should not
       // fail simply because nobody picked a room number in advance.
@@ -475,6 +505,7 @@ export class ReservationsService {
         }
         roomId = picked.id;
       }
+      await tx.$queryRaw`SELECT id FROM "Room" WHERE id = ${roomId} AND "tenantId" = ${auth.tenantId} FOR UPDATE`;
       const room = await tx.room.findFirst({
         where: { id: roomId, tenantId: auth.tenantId, propertyId: res.propertyId },
       });
@@ -483,6 +514,22 @@ export class ReservationsService {
           error: { code: "ROOM_NOT_FOUND", message: "Room not found." },
         });
       }
+      if (room.roomTypeId !== resRoom.roomTypeId) {
+        throw new ConflictException({ error: { code: "ROOM_TYPE_MISMATCH", message: "Choose a room matching the reserved room type." } });
+      }
+      const blocked = await tx.roomBlock.count({ where: {
+        tenantId: auth.tenantId, roomId: room.id, status: "ACTIVE",
+        startDate: { lt: res.departureDate }, endDate: { gt: res.arrivalDate },
+      } });
+      if (blocked || ["OUT_OF_ORDER", "OUT_OF_SERVICE"].includes(room.operationalStatus)) {
+        throw new ConflictException({ error: { code: "ROOM_BLOCKED", message: "This room is blocked or out of service for the stay." } });
+      }
+      const assignedElsewhere = await tx.reservationRoom.count({ where: {
+        tenantId: auth.tenantId, roomId: room.id, id: { not: resRoom.id },
+        status: { in: ["RESERVED", "IN_HOUSE"] },
+        ...this.overlapWhere(res.arrivalDate, res.departureDate),
+      } });
+      if (assignedElsewhere) throw new ConflictException({ error: { code: "ROOM_NOT_AVAILABLE", message: "This room is assigned to another overlapping stay." } });
       // §7.2: only inspected/clean rooms may be assigned unless an authorised
       // override is recorded (the override itself becomes an audit event).
       const assignable = ["VACANT_CLEAN", "INSPECTED"].includes(room.operationalStatus);
@@ -542,7 +589,11 @@ export class ReservationsService {
   /** Posts any unposted room nights up to today, then requires settlement. */
   async checkOut(auth: AuthContext, id: string, body: unknown) {
     const dto = checkOutSchema.parse(body);
+    if (dto.allowOutstandingBalance && !["TENANT_OWNER", "GENERAL_MANAGER"].includes(auth.role)) {
+      throw new ForbiddenException({ error: { code: "OVERRIDE_FORBIDDEN", message: "A manager must authorize checkout with an outstanding balance." } });
+    }
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Reservation" WHERE id = ${id} AND "tenantId" = ${auth.tenantId} FOR UPDATE`;
       const res = await this.getOrThrow(auth, id, tx);
       this.assertTransition(res.status, "CHECKED_OUT");
       const property = await tx.property.findUniqueOrThrow({
@@ -1167,6 +1218,7 @@ export class ReservationsController {
   constructor(private readonly service: ReservationsService) {}
 
   @Get("availability")
+  @RequirePermission("reservation.read")
   availability(
     @CurrentAuth() auth: AuthContext,
     @Query("propertyId") propertyId: string,
@@ -1177,60 +1229,76 @@ export class ReservationsController {
   }
 
   @Get()
+  @RequirePermission("reservation.read")
   list(
     @CurrentAuth() auth: AuthContext,
     @Query("propertyId") propertyId?: string,
-    @Query("status") status?: string
+    @Query("status") status?: string,
+    @Query("q") q?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("offset") offset?: string,
+    @Query("limit") limit?: string
   ) {
-    return this.service.list(auth, propertyId, status);
+    return this.service.list(auth, propertyId, status, { q, from, to, offset, limit });
   }
 
   @Get(":id")
+  @RequirePermission("reservation.read")
   get(@CurrentAuth() auth: AuthContext, @Param("id") id: string) {
     return this.service.get(auth, id);
   }
 
   @Post()
+  @RequirePermission("reservation.create")
   create(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.create(auth, body);
   }
 
   @Post(":id/check-in")
+  @RequirePermission("frontdesk.check_in")
   checkIn(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.checkIn(auth, id, body ?? {});
   }
 
   @Post(":id/check-out")
+  @RequirePermission("frontdesk.check_out")
   checkOut(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.checkOut(auth, id, body ?? {});
   }
 
   @Post(":id/room-move")
+  @RequirePermission("frontdesk.room_move")
   roomMove(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.roomMove(auth, id, body);
   }
 
   @Post(":id/extend")
+  @RequirePermission("reservation.modify")
   extend(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.extendStay(auth, id, body);
   }
 
   @Patch(":id")
+  @RequirePermission("reservation.modify")
   modify(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.modify(auth, id, body);
   }
 
   @Post(":id/assign-room")
+  @RequirePermission("reservation.modify")
   assignRoom(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.assignRoom(auth, id, body ?? {});
   }
 
   @Post(":id/cancel")
+  @RequirePermission("reservation.cancel")
   cancel(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.cancel(auth, id, body);
   }
 
   @Post(":id/no-show")
+  @RequirePermission("reservation.cancel")
   noShow(@CurrentAuth() auth: AuthContext, @Param("id") id: string) {
     return this.service.noShow(auth, id);
   }

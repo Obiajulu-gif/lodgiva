@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, type ReactNode, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { api } from "@/lib/api/client";
@@ -68,6 +68,7 @@ const field =
   "mt-2 w-full rounded-xl border border-ink/10 px-3 py-2.5 text-sm outline-none focus:border-brand-500 disabled:bg-cream";
 
 function addDays(iso: string, amount: number) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return "";
   const [year, month, day] = iso.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day + amount))
     .toISOString()
@@ -85,6 +86,12 @@ function Dialog({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const dialogRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    dialogRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    return () => previous?.focus();
+  }, []);
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 px-4 py-8"
@@ -94,7 +101,19 @@ function Dialog({
       }}
     >
       <section
+        ref={dialogRef}
         role="dialog"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") { event.preventDefault(); onClose(); }
+          if (event.key !== "Tab") return;
+          const elements = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+            'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]',
+          ) ?? []);
+          const first = elements[0];
+          const last = elements.at(-1);
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+          if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        }}
         aria-modal="true"
         aria-labelledby="reservation-dialog-title"
         className={`max-h-full w-full overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8 ${wide ? "max-w-3xl" : "max-w-xl"}`}
@@ -168,6 +187,9 @@ export function CreateReservationDialog({
   });
   const create = useMutation({
     mutationFn: async () => {
+      if (!validDates || !availability.data?.some((item) => item.roomTypeId === roomTypeId && item.available > 0)) {
+        throw new Error("Select valid dates and an available room type.");
+      }
       let selectedGuestId = guestId;
       if (guestMode === "new") {
         if (!canCreateGuest)
@@ -182,6 +204,11 @@ export function CreateReservationDialog({
           },
         });
         selectedGuestId = created.id;
+        // Keep the created guest if inventory is lost between availability
+        // and booking, so retrying does not create duplicate profiles.
+        setGuestId(created.id);
+        setGuestMode("existing");
+        setGuestSearch(`${created.firstName} ${created.lastName}`);
       }
       if (!selectedGuestId) throw new Error("Select an existing guest.");
       if (!roomTypeId) throw new Error("Select an available room type.");
@@ -214,7 +241,7 @@ export function CreateReservationDialog({
     create.mutate();
   }
   return (
-    <Dialog title="New reservation" onClose={onClose} wide>
+    <Dialog title="New reservation" onClose={() => { if (!create.isPending) onClose(); }} wide>
       <form onSubmit={submit} className="mt-6 space-y-5">
         {error ? (
           <p
@@ -224,6 +251,8 @@ export function CreateReservationDialog({
             {error}
           </p>
         ) : null}
+        {guests.isError ? <p role="alert" className="text-sm text-red-700">Could not load guests: {guests.error.message} <button type="button" onClick={() => void guests.refetch()}>Retry guests</button></p> : null}
+        {availability.isError ? <p role="alert" className="text-sm text-red-700">Could not load availability: {availability.error.message} <button type="button" onClick={() => void availability.refetch()}>Retry availability</button></p> : null}
         <div className="flex gap-2">
           <button
             type="button"
@@ -303,7 +332,7 @@ export function CreateReservationDialog({
               type="date"
               min={property.businessDate}
               value={arrival}
-              onChange={(event) => setArrival(event.target.value)}
+              onChange={(event) => { setArrival(event.target.value); setRoomTypeId(""); }}
               required
               className={field}
             />
@@ -314,7 +343,7 @@ export function CreateReservationDialog({
               type="date"
               min={addDays(arrival, 1)}
               value={departure}
-              onChange={(event) => setDeparture(event.target.value)}
+              onChange={(event) => { setDeparture(event.target.value); setRoomTypeId(""); }}
               required
               className={field}
             />
@@ -342,6 +371,7 @@ export function CreateReservationDialog({
               ))}
           </select>
           {validDates &&
+          availability.isSuccess &&
           !availability.isFetching &&
           !availability.data?.some((item) => item.available > 0) ? (
             <span className="mt-2 block text-xs text-red-600">
@@ -399,13 +429,14 @@ export function CreateReservationDialog({
           <button
             type="button"
             onClick={onClose}
+            disabled={create.isPending}
             className="rounded-full border border-ink/10 px-5 py-2.5 text-sm font-semibold"
           >
             Cancel
           </button>
           <button
             type="submit"
-            disabled={create.isPending || !validDates}
+            disabled={create.isPending || !validDates || availability.isFetching || !availability.data?.some((item) => item.roomTypeId === roomTypeId && item.available > 0)}
             className="rounded-full bg-brand-800 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             {create.isPending ? "Creating…" : "Create reservation"}
@@ -441,7 +472,7 @@ export function CheckInDialog({
     (room) =>
       room.roomTypeId === roomTypeId &&
       !room.occupant &&
-      !["OUT_OF_ORDER", "OUT_OF_SERVICE"].includes(room.operationalStatus),
+      ["VACANT_CLEAN", "VACANT_DIRTY", "INSPECTED"].includes(room.operationalStatus),
   );
   const checkIn = useMutation({
     mutationFn: () =>
@@ -456,7 +487,7 @@ export function CheckInDialog({
   return (
     <Dialog
       title={`Check in ${reservation.confirmationCode}`}
-      onClose={onClose}
+      onClose={() => { if (!checkIn.isPending) onClose(); }}
     >
       <form
         onSubmit={(event) => {
@@ -473,6 +504,9 @@ export function CheckInDialog({
             {error}
           </p>
         ) : null}
+        {rooms.isPending ? <p role="status">Loading available rooms…</p> : null}
+        {rooms.isError ? <p role="alert">{rooms.error.message} <button type="button" onClick={() => void rooms.refetch()}>Retry rooms</button></p> : null}
+        {rooms.isSuccess && !candidates.length ? <p>No compatible vacant rooms. Review the Room Rack or contact housekeeping.</p> : null}
         <label className="block text-xs font-semibold text-ink/60">
           Room
           <select
@@ -512,7 +546,7 @@ export function CheckInDialog({
           </button>
           <button
             type="submit"
-            disabled={!roomId || checkIn.isPending}
+            disabled={!candidates.some((room) => room.id === roomId) || rooms.isFetching || checkIn.isPending}
             className="rounded-full bg-brand-800 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             {checkIn.isPending ? "Checking in…" : "Check in guest"}
@@ -605,6 +639,8 @@ export function FolioDialog({
       onClose={onClose}
       wide
     >
+      {folio.isPending ? <p role="status" className="mt-5">Loading folio…</p> : null}
+      {folio.isError ? <p role="alert" className="mt-5 text-sm text-red-700">{folio.error.message} <button type="button" onClick={() => void folio.refetch()}>Retry folio</button></p> : null}
       {error ? (
         <button
           type="button"
@@ -646,7 +682,7 @@ export function FolioDialog({
                 Balance
               </td>
               <td className="px-4 py-4 text-right font-display text-xl font-semibold">
-                {naira(folio.data?.balanceMinor ?? 0)}
+                {folio.data ? naira(folio.data.balanceMinor) : "—"}
               </td>
             </tr>
           </tfoot>

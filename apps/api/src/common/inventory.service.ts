@@ -28,19 +28,16 @@ export class InventoryService {
     tx: Tx | PrismaService,
     input: { tenantId: string; roomTypeId: string; date: string }
   ): Promise<number> {
-    const total = await tx.room.count({
-      where: { tenantId: input.tenantId, roomTypeId: input.roomTypeId },
-    });
-    const blocked = await tx.roomBlock.count({
-      where: {
-        tenantId: input.tenantId,
-        status: "ACTIVE",
-        startDate: { lte: input.date },
-        endDate: { gt: input.date },
-        room: { roomTypeId: input.roomTypeId },
-      },
-    });
-    return Math.max(0, total - blocked);
+    // Count rooms, not block rows: two overlapping blocks on one room must
+    // reduce capacity only once. Unserviceable rooms cannot be sold either.
+    return tx.room.count({ where: {
+      tenantId: input.tenantId, roomTypeId: input.roomTypeId,
+      operationalStatus: { notIn: ["OUT_OF_ORDER", "OUT_OF_SERVICE"] },
+      blocks: { none: {
+        tenantId: input.tenantId, status: "ACTIVE",
+        startDate: { lte: input.date }, endDate: { gt: input.date },
+      } },
+    } });
   }
 
   /** Slots already taken, ignoring holds that have expired. */
