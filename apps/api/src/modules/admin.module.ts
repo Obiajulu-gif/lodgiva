@@ -39,9 +39,30 @@ const onboardSchema = z
     propertyName: z.string().min(2),
     propertyCode: z.string().min(2).max(12),
     timezone: z.string().default("Africa/Lagos"),
-    businessDate: isoDate,
+    // Optional: when the caller omits it the server derives today in the
+    // property's own timezone. The business date is advanced only by night
+    // audit (ADR-009), so starting it on the wrong day because a laptop clock
+    // was wrong is a mistake nobody can correct from the UI afterwards.
+    businessDate: isoDate.optional(),
   })
   .strict();
+
+/** Today, as the property's own timezone sees it. */
+function todayIn(timezone: string): string {
+  try {
+    // en-CA renders ISO-shaped dates, which is exactly the format stored.
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  } catch {
+    // An unknown IANA zone must not take onboarding down; UTC is the honest
+    // fallback and the owner can correct the zone in settings.
+    return new Date().toISOString().slice(0, 10);
+  }
+}
 
 const createPropertySchema = z
   .object({
@@ -138,7 +159,7 @@ export class AdminService {
           code: dto.propertyCode.toUpperCase(),
           slug: slugify(dto.propertyName),
           timezone: dto.timezone,
-          businessDate: dto.businessDate,
+          businessDate: dto.businessDate ?? todayIn(dto.timezone),
         },
       });
       // Audit the creation against the new owner as actor.

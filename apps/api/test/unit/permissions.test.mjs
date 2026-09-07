@@ -72,3 +72,29 @@ test("no role is granted every permission", () => {
     );
   }
 });
+
+test("every role that can create a reservation can also create a guest", () => {
+  // POST /reservations requires a guestId, so reservation.create without
+  // guest.manage is a permission the holder can never actually use. This bit
+  // a brand-new self-serve owner hardest: the only user in the tenant, unable
+  // to take a first booking until they invited a colleague.
+  for (const role of ROLES) {
+    if (!roleHasPermission(role, "reservation.create")) continue;
+    assert.equal(
+      roleHasPermission(role, "guest.manage"),
+      true,
+      `${role} can create reservations but cannot create the guest one needs`
+    );
+  }
+});
+
+test("owner keeps reservation and configuration rights without the front desk's", () => {
+  // The operational split is deliberate (see the note in permissions.ts) and
+  // must not drift open just because guest.manage was added.
+  for (const granted of ["reservation.create", "guest.manage", "user.manage"]) {
+    assert.equal(roleHasPermission("TENANT_OWNER", granted), true, granted);
+  }
+  for (const withheld of ["frontdesk.check_in", "frontdesk.check_out", "pos.operate"]) {
+    assert.equal(roleHasPermission("TENANT_OWNER", withheld), false, withheld);
+  }
+});

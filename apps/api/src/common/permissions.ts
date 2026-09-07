@@ -97,6 +97,14 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "reservation.modify",
     "reservation.cancel",
     "reservation.override_rate",
+    // A reservation cannot be created without a guest to attach it to, so an
+    // owner holding reservation.create but not guest.manage holds a
+    // permission they can never use. That bites hardest on a brand-new
+    // self-serve account, where the owner is the only user in the tenant and
+    // would otherwise have to invite a colleague before taking a first
+    // booking. This is not the operational front-desk grant the note above
+    // withholds: check-in, POS and cashiering stay out.
+    "guest.manage",
     "folio.apply_discount",
     "payment.refund",
     "cashier.approve_variance",

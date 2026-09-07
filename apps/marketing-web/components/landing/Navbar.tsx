@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { Logo } from "./Logo";
-import { dashboardUrl, salesUrl } from "@/lib/urls";
 
 const links = [
   { href: "#features", label: "Features" },
@@ -53,13 +52,13 @@ export function Navbar() {
 
         <div className="hidden items-center gap-3 lg:flex">
           <a
-            href={dashboardUrl}
+            href="/login"
             className="rounded-full px-5 py-2.5 text-sm font-semibold text-ink/80 transition-colors hover:text-brand-700"
           >
             Sign in
           </a>
           <a
-            href={salesUrl}
+            href="/signup"
             className="press rounded-control bg-brand-800 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 hover:shadow-md"
           >
             Start free trial
@@ -90,13 +89,13 @@ export function Navbar() {
             ))}
             <div className="mt-2 flex flex-col gap-3">
               <a
-                href={dashboardUrl}
+                href="/login"
                 className="rounded-full border border-ink/10 px-6 py-3 text-center text-sm font-semibold"
               >
                 Sign in
               </a>
               <a
-                href={salesUrl}
+                href="/signup"
                 className="rounded-full bg-brand-800 px-6 py-3 text-center text-sm font-semibold text-white"
               >
                 Start free trial

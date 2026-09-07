@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, type FormEvent, useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, ShieldCheck } from "lucide-react";
 import { Logo } from "@/components/landing/Logo";
 import { useAuth } from "@/components/providers";
@@ -21,8 +21,28 @@ const inputClass =
 const buttonClass =
   "w-full rounded-full bg-brand-800 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60";
 
-export default function LoginPage() {
+/**
+ * Where to land after signing in. The middleware puts the page the visitor was
+ * refused on into `next`, so they resume where they were interrupted instead
+ * of always being dropped at the overview.
+ *
+ * Only same-origin paths are honoured: a bare "/" prefix still permits
+ * "//evil.example" (protocol-relative) and "/\evil.example", which browsers
+ * treat as absolute. An open redirect on a login page is how a credible
+ * phishing link gets built.
+ */
+function safeNext(raw: string | null): string {
+  if (!raw) return "/dashboard";
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) {
+    return "/dashboard";
+  }
+  return raw;
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const destination = safeNext(searchParams.get("next"));
   const { status, completeSignIn } = useAuth();
   const [step, setStep] = useState<Step>("password");
   const [email, setEmail] = useState("");
@@ -37,12 +57,12 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (status === "authenticated" && step !== "recovery")
-      router.replace("/dashboard");
-  }, [router, status, step]);
+      router.replace(destination);
+  }, [destination, router, status, step]);
 
   async function finishSignIn(nextSession: Session) {
     await completeSignIn(nextSession);
-    router.replace("/dashboard");
+    router.replace(destination);
   }
 
   function showFailure(cause: unknown, fallback: string) {
@@ -360,7 +380,7 @@ export default function LoginPage() {
                 className={`${buttonClass} mt-7`}
                 onClick={async () => {
                   await completeSignIn(getSessionOrThrow());
-                  router.replace("/dashboard");
+                  router.replace(destination);
                 }}
               >
                 I have saved the codes
@@ -370,6 +390,25 @@ export default function LoginPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+/**
+ * useSearchParams makes this subtree client-rendered, which Next requires to
+ * be inside a Suspense boundary or the production build refuses to prerender
+ * the route at all.
+ */
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-cream text-sm text-ink/55">
+          Loading sign in…
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }
 

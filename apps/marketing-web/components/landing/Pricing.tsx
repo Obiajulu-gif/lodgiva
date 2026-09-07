@@ -224,7 +224,7 @@ export function Pricing() {
                 </div>
 
                 <Link
-                  href="/dashboard"
+                  href="/signup"
                   className={`press mt-8 rounded-control py-3.5 text-center text-sm font-semibold ${
                     dark
                       ? "bg-gold-400 text-brand-950 hover:bg-gold-300"

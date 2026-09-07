@@ -22,7 +22,7 @@ export function Cta() {
           </p>
           <div className="mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Link
-              href="/dashboard"
+              href="/signup"
               className="group inline-flex items-center gap-2 press rounded-control bg-gold-400 px-8 py-4 text-base font-semibold text-brand-950 hover:bg-gold-300"
             >
               Start your 30-day free trial

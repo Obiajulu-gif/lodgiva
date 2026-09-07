@@ -1,6 +1,5 @@
 import { ShieldCheck, Headset, WifiOff, ArrowRight } from "lucide-react";
 import { RoomRackStar } from "./RoomRackStar";
-import { salesUrl } from "@/lib/urls";
 
 export function Hero() {
   return (
@@ -35,7 +34,7 @@ export function Hero() {
 
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a
-              href={salesUrl}
+              href="/signup"
               className="press lift group inline-flex items-center gap-2 rounded-control bg-brand-800 px-7 py-3.5 text-[15px] font-semibold text-white hover:bg-brand-700"
             >
               Start free trial

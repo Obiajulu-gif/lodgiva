@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
-  Banknote,
   BarChart3,
   BedDouble,
   CalendarRange,
@@ -15,8 +14,6 @@ import {
   Settings,
   Sparkles,
   Users,
-  UtensilsCrossed,
-  Wallet,
   X,
 } from "lucide-react";
 import { useAuth } from "@/components/providers";
@@ -51,28 +48,6 @@ const navigation = [
     label: "Housekeeping",
     icon: Sparkles,
     permissions: ["housekeeping.read"],
-  },
-  {
-    href: "/dashboard/pos",
-    label: "POS",
-    icon: UtensilsCrossed,
-    permissions: ["pos.operate"],
-  },
-  {
-    href: "/dashboard/payments",
-    label: "Payments",
-    icon: Wallet,
-    permissions: ["payment.capture", "report.financial.read"],
-  },
-  {
-    href: "/dashboard/cashiering",
-    label: "Cashiering",
-    icon: Banknote,
-    permissions: [
-      "cashier.open_shift",
-      "cashier.close_shift",
-      "cashier.approve_variance",
-    ],
   },
   {
     href: "/dashboard/reports",
@@ -138,7 +113,9 @@ export default function DashboardLayout({
   useEffect(() => {
     if (status !== "authenticated" || !me) return;
     const current = navigation.find(
-      (item) => item.href !== "/dashboard" && pathname.startsWith(item.href),
+      (item) =>
+        item.href !== "/dashboard" &&
+        (pathname === item.href || pathname.startsWith(`${item.href}/`)),
     );
     if (
       current?.permissions &&
@@ -261,10 +238,14 @@ export default function DashboardLayout({
         className="flex-1 space-y-1 overflow-y-auto px-4"
       >
         {allowedNavigation.map((item) => {
+          // A child route keeps its parent highlighted, but the match stops
+          // at a path segment: /dashboard/rooms must not also match a
+          // /dashboard/rooms-archive added later.
           const active =
             item.href === "/dashboard"
               ? pathname === item.href
-              : pathname.startsWith(item.href);
+              : pathname === item.href ||
+                pathname.startsWith(`${item.href}/`);
           return (
             <Link
               key={item.href}

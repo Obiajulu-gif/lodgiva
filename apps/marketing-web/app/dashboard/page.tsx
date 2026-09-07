@@ -212,7 +212,7 @@ export default function DashboardOverview() {
           sub={`${flash?.occupied ?? 0} of ${flash?.totalRooms ?? 0} rooms in-house`}
         />
         <Kpi
-          href="/dashboard/payments"
+          href="/dashboard/reports"
           icon={Wallet}
           label="Revenue today"
           value={naira(flash?.revenueTodayMinor ?? 0)}
