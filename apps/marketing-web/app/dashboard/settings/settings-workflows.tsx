@@ -381,7 +381,8 @@ function Rooms({ propertyId, canManage, onMessage }: ChildProps) {
       queryClient.invalidateQueries({
         queryKey: ["configuration", propertyId, "rooms"],
       }),
-      queryClient.invalidateQueries({ queryKey: ["rooms", propertyId] }),
+      queryClient.invalidateQueries({ queryKey: ["room-rack", propertyId] }),
+      queryClient.invalidateQueries({ queryKey: ["configuration", propertyId, "room-types"] }),
       queryClient.invalidateQueries({ queryKey: ["settings", propertyId] }),
     ]);
     onMessage(message);
@@ -661,7 +662,9 @@ function Blocks({ propertyId, canManage, onMessage }: ChildProps) {
       queryClient.invalidateQueries({
         queryKey: ["configuration", propertyId, "room-blocks"],
       }),
-      queryClient.invalidateQueries({ queryKey: ["rooms", propertyId] }),
+      queryClient.invalidateQueries({ queryKey: ["room-rack", propertyId] }),
+      queryClient.invalidateQueries({ queryKey: ["configuration", propertyId, "rooms"] }),
+      queryClient.invalidateQueries({ queryKey: ["housekeeping", propertyId] }),
       queryClient.invalidateQueries({ queryKey: ["settings", propertyId] }),
     ]);
     onMessage(message);

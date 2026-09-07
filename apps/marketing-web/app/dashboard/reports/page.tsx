@@ -330,7 +330,7 @@ export default function ReportsPage() {
               >
                 <dt className="text-ink/55">{label}</dt>
                 <dd className="font-semibold">
-                  {naira((value ?? 0) as MoneyMinor)}
+                  {value === undefined ? "—" : naira(value as MoneyMinor)}
                 </dd>
               </div>
             ))}

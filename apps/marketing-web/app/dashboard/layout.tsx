@@ -367,7 +367,7 @@ export default function DashboardLayout({
             </span>
           </div>
         </header>
-        <main className="p-5 sm:p-6 lg:p-10">{children}</main>
+        <main key={property.id} className="p-5 sm:p-6 lg:p-10">{children}</main>
       </div>
     </div>
   );

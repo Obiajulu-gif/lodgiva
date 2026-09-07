@@ -213,6 +213,9 @@ export class PosService {
           });
         }
         const folio = await this.folios.getFolioOrThrow(auth, dto.folioId, tx);
+        if (folio.propertyId !== order.propertyId) {
+          throw new BadRequestException({ error: { code: "PROPERTY_MISMATCH", message: "The order and guest folio must belong to the same property." } });
+        }
         if (folio.status !== "OPEN") {
           throw new ConflictException({
             error: { code: "FOLIO_CLOSED", message: "Cannot post to a closed folio." },
@@ -227,10 +230,13 @@ export class PosService {
           applyTaxes: true,
           businessDate: order.businessDate,
         });
-      } else if (dto.settlement === "CASH" && dto.shiftId) {
+      } else if (dto.settlement === "CASH") {
+        if (!dto.shiftId) {
+          throw new BadRequestException({ error: { code: "SHIFT_REQUIRED", message: "Cash settlement requires an open cashier shift." } });
+        }
         // Cash tendered at an outlet lands in the cashier drawer.
         const shift = await tx.cashierShift.findFirst({
-          where: { id: dto.shiftId, tenantId: auth.tenantId, status: "OPEN" },
+          where: { id: dto.shiftId, tenantId: auth.tenantId, propertyId: order.propertyId, status: "OPEN" },
         });
         if (!shift) {
           throw new NotFoundException({
