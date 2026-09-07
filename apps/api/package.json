@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "ts-node --transpile-only src/main.ts",
-    "start": "node dist/main.js",
+    "dev": "node -r ../../scripts/load-env.cjs -r ts-node/register/transpile-only src/main.ts",
+    "start": "node -r ../../scripts/load-env.cjs dist/main.js",
     "test": "node test/run-e2e.mjs",
     "test:against-running-db": "node test/e2e.mjs",
     "test:auth:smoke": "node test/auth-smoke.mjs",

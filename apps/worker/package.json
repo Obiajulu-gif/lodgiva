@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "node src/main.js",
-    "start": "node src/main.js",
+    "dev": "node -r ../../scripts/load-env.cjs src/main.js",
+    "start": "node -r ../../scripts/load-env.cjs src/main.js",
     "check": "node --check src/main.js"
   },
   "dependencies": {

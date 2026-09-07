@@ -8,7 +8,16 @@ if (!process.env.DATABASE_URL) {
 }
 
 const { getPrisma } = require("@lodgiva/database");
-const prisma = getPrisma();
+const database = getPrisma();
+const { AsyncLocalStorage } = require('node:async_hooks');
+const tenantTransaction = new AsyncLocalStorage();
+const prisma = new Proxy(database, {
+  get(target, key) {
+    const active = tenantTransaction.getStore() ?? target;
+    const value = active[key];
+    return typeof value === 'function' ? value.bind(active) : value;
+  },
+});
 
 // Web Push delivery. Configured only when VAPID keys are present; otherwise
 // assignment events are logged and the app still shows them in-band.
@@ -101,7 +110,7 @@ async function handle(event) {
   }
 }
 
-async function tick() {
+async function tickTenant() {
   const events = await prisma.$queryRawUnsafe(`
     WITH candidates AS (
       SELECT id FROM "OutboxEvent"
@@ -148,6 +157,18 @@ async function tick() {
     }
   }
   return events.length;
+}
+
+async function tick() {
+  const tenants = await database.tenant.findMany({ select: { id: true } });
+  let processed = 0;
+  for (const tenant of tenants) {
+    processed += await database.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenant.id}, true)`;
+      return tenantTransaction.run(tx, tickTenant);
+    }, { timeout: 60000 });
+  }
+  return processed;
 }
 
 async function main() {
