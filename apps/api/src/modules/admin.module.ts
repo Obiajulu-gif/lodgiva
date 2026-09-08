@@ -141,6 +141,22 @@ export class AdminService {
           status: "TRIAL",
         },
       });
+      /**
+       * Adopt the tenant we just created as this transaction's RLS context.
+       *
+       * Every table carrying tenantId is protected by a row-level security
+       * policy of the form `tenantId = current_setting('app.tenant_id')`, and
+       * onboarding is the one write path that legitimately runs before any
+       * tenant context exists — there was no tenant to scope to until the line
+       * above. Without this, the Property insert below is refused with
+       * "new row violates row-level security policy" and self-serve signup
+       * fails as the application role while working fine as the database
+       * owner, which is exactly the sort of difference that only shows up in
+       * production. Scoped with `true` so it lasts for this transaction only
+       * and cannot leak onto a pooled connection.
+       */
+      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenant.id}, true)`;
+
       const user = await tx.user.create({
         data: { email: dto.ownerEmail, fullName: dto.ownerFullName, passwordHash },
       });

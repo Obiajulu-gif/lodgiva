@@ -38,6 +38,27 @@ export function assertSafeProductionEnvironment(
     issues.push("CORS_ORIGINS must contain exact comma-separated HTTPS origins");
   }
 
+  /**
+   * File storage can be switched off deliberately, and only deliberately.
+   *
+   * A trial deployment may have no object store yet. The honest options are
+   * "configure R2" or "admit there is no storage"; what must never happen is a
+   * silent fallback to a local disk that an ephemeral host wipes on every
+   * deploy, taking guest ID scans and invoices with it. STORAGE_ADAPTER
+   * =disabled is that admission: the checks below are skipped, and every file
+   * endpoint refuses with a stated reason instead of pretending to work.
+   */
+  if ((env.STORAGE_ADAPTER ?? "").toLowerCase() === "disabled") {
+    const mfaKeyOnly = Buffer.from(env.MFA_ENCRYPTION_KEY ?? "", "base64");
+    if (mfaKeyOnly.length !== 32) {
+      issues.push("MFA_ENCRYPTION_KEY must be 32 random bytes encoded as base64");
+    }
+    if (issues.length > 0) {
+      throw new Error(`Unsafe production configuration:\n- ${issues.join("\n- ")}`);
+    }
+    return;
+  }
+
   const storageSecret = env.STORAGE_SIGNING_KEY ?? "";
   if (storageSecret.length < 32 || storageSecret === DEVELOPMENT_STORAGE_SECRET) {
     issues.push("STORAGE_SIGNING_KEY must be a non-default secret of at least 32 characters");

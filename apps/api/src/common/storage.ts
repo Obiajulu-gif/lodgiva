@@ -1,3 +1,4 @@
+import { ServiceUnavailableException } from "@nestjs/common";
 import { createHash, createHmac, randomBytes } from "crypto";
 import { promises as fs } from "fs";
 import { dirname, join, resolve, sep } from "path";
@@ -56,6 +57,52 @@ export interface StorageAdapter {
   delete(bucket: BucketName, objectKey: string): Promise<void>;
   put(bucket: BucketName, objectKey: string, body: Buffer): Promise<void>;
   get(bucket: BucketName, objectKey: string): Promise<Buffer | null>;
+}
+
+/**
+ * The adapter used when STORAGE_ADAPTER=disabled.
+ *
+ * A null object rather than a throw at construction: FilesService resolves the
+ * adapter in a field initializer, so throwing there takes down dependency
+ * injection and with it the entire API — a deployment with no object store
+ * would return 500 for every route, including the ones that never touch a
+ * file. This lets everything else work and refuses only at the point where a
+ * file is actually needed, with a message that says what to configure.
+ */
+class DisabledStorageAdapter implements StorageAdapter {
+  readonly name = "disabled";
+  // Not remote, but also never silently writing to a disk that will vanish.
+  readonly remote = false;
+
+  private refuse(): never {
+    throw new ServiceUnavailableException({
+      error: {
+        code: "STORAGE_NOT_CONFIGURED",
+        message:
+          "File storage is switched off on this deployment. Set STORAGE_ADAPTER=r2 with R2 credentials to enable uploads, invoices and exports.",
+        retryable: false,
+      },
+    });
+  }
+
+  async presignPut(): Promise<PresignedUpload> {
+    this.refuse();
+  }
+  async presignGet(): Promise<{ url: string; expiresAt: Date }> {
+    this.refuse();
+  }
+  async stat(): Promise<{ size: number; sha256: string } | null> {
+    this.refuse();
+  }
+  async delete(): Promise<void> {
+    this.refuse();
+  }
+  async put(): Promise<void> {
+    this.refuse();
+  }
+  async get(): Promise<Buffer | null> {
+    this.refuse();
+  }
 }
 
 /** Deterministic, collision-resistant, and never derived from user input. */
@@ -336,6 +383,10 @@ let adapter: StorageAdapter | null = null;
 export function getStorage(): StorageAdapter {
   if (!adapter) {
     const kind = process.env.STORAGE_ADAPTER ?? (process.env.NODE_ENV === "production" ? "r2" : "local");
+    if (kind.toLowerCase() === "disabled") {
+      adapter = new DisabledStorageAdapter();
+      return adapter;
+    }
     adapter = kind.toLowerCase() === "r2" ? new R2StorageAdapter() : new LocalStorageAdapter();
     if (process.env.NODE_ENV === "production" && !adapter.remote) {
       throw new Error("Production requires a remote storage adapter.");

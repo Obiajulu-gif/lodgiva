@@ -16,3 +16,6 @@ dev.db*
 # Local database backups produced by scripts/backup.mjs
 backups/
 restored.db
+
+# Vercel CLI project link (contains project and org ids)
+.vercel

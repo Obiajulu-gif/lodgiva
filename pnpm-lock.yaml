@@ -132,6 +132,9 @@ importers:
 
   apps/marketing-web:
     dependencies:
+      '@lodgiva/api':
+        specifier: workspace:*
+        version: link:../api
       '@tanstack/react-query':
         specifier: ^5.87.1
         version: 5.101.4(react@19.2.8)

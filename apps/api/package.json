@@ -39,5 +39,13 @@
     "@types/web-push": "^3.6.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
+  },
+  "main": "dist/app-factory.js",
+  "types": "dist/app-factory.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/app-factory.d.ts",
+      "default": "./dist/app-factory.js"
+    }
   }
 }
