@@ -88,13 +88,40 @@ test("every role that can create a reservation can also create a guest", () => {
   }
 });
 
-test("owner keeps reservation and configuration rights without the front desk's", () => {
-  // The operational split is deliberate (see the note in permissions.ts) and
-  // must not drift open just because guest.manage was added.
+test("a role that can take a booking can carry it through the whole stay", () => {
+  // Creating a reservation nobody can check in, charge, or check out is a
+  // dead end. It bit the self-serve owner hardest: the only user in a new
+  // tenant, holding reservation.create and nothing that could follow it.
+  const stay = [
+    "frontdesk.check_in",
+    "folio.post_charge",
+    "payment.capture",
+    "frontdesk.check_out",
+  ];
+  for (const role of ROLES) {
+    if (!roleHasPermission(role, "reservation.create")) continue;
+    for (const step of stay) {
+      assert.equal(
+        roleHasPermission(role, step),
+        true,
+        `${role} can create a reservation but cannot ${step} — the booking dead-ends`
+      );
+    }
+  }
+});
+
+test("the owner still cannot open, take and close their own cash drawer", () => {
+  // Granting the owner the operational set above deliberately stopped short of
+  // cash handling. The shift is the reconciliation unit, and one person who
+  // opens it, takes the money and closes it has removed the only check on it.
   for (const granted of ["reservation.create", "guest.manage", "user.manage"]) {
     assert.equal(roleHasPermission("TENANT_OWNER", granted), true, granted);
   }
-  for (const withheld of ["frontdesk.check_in", "frontdesk.check_out", "pos.operate"]) {
-    assert.equal(roleHasPermission("TENANT_OWNER", withheld), false, withheld);
+  for (const withheld of ["pos.operate", "cashier.open_shift", "cashier.close_shift"]) {
+    assert.equal(
+      roleHasPermission("TENANT_OWNER", withheld),
+      false,
+      `${withheld} must stay out of the owner role`
+    );
   }
 });

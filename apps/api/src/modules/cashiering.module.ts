@@ -14,6 +14,7 @@ import {
 import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
+import { RequirePermission } from "../common/permissions.guard";
 import { AuditService } from "../common/audit.service";
 import { roleHasPermission } from "../common/permissions";
 import { PropertiesModule, PropertiesService } from "./properties.module";
@@ -293,6 +294,7 @@ export class CashieringController {
     return this.service.list(auth, propertyId);
   }
 
+  @RequirePermission("cashier.open_shift")
   @Post()
   open(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.open(auth, body);
@@ -303,16 +305,19 @@ export class CashieringController {
     return this.service.get(auth, id);
   }
 
+  @RequirePermission("cashier.open_shift")
   @Post(":id/movements")
   movement(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.addMovement(auth, id, body);
   }
 
+  @RequirePermission("cashier.close_shift")
   @Post(":id/close")
   close(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.close(auth, id, body);
   }
 
+  @RequirePermission("cashier.approve_variance")
   @Post(":id/approve")
   approve(@CurrentAuth() auth: AuthContext, @Param("id") id: string) {
     return this.service.approve(auth, id);

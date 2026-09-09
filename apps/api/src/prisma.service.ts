@@ -26,6 +26,8 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   private static readonly tenantTransaction = new AsyncLocalStorage<TransactionClient>();
+  /** The Proxy this constructor returns; see the note in the constructor. */
+  private self!: PrismaService;
 
   constructor() {
     super({
@@ -41,7 +43,11 @@ export class PrismaService
     // Route those properties (and nested interactive transactions) to the
     // request's tenant-scoped transaction without a risky whole-codebase
     // repository rewrite.
-    return new Proxy(this, {
+    // The constructor returns a Proxy, so `this` inside a method is the raw
+    // target — and Prisma's own client internals are only reachable through
+    // the proxy. Keep a handle on it for the one method that needs to
+    // re-enter the client from outside the request's transaction.
+    const proxy: PrismaService = new Proxy(this, {
       get: (target, property, receiver) => {
         const tx = PrismaService.tenantTransaction.getStore() as Record<PropertyKey, unknown> | undefined;
         if (tx && property === "$transaction") {
@@ -60,6 +66,33 @@ export class PrismaService
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
+    this.self = proxy;
+    return proxy;
+  }
+
+  /**
+   * Runs work in a NEW transaction that commits independently of the request.
+   *
+   * Every request is wrapped in a single tenant transaction (see
+   * TenantContextInterceptor), so a thrown error rolls back everything the
+   * request did — including work that was meant to outlive the failure. Check
+   * out is the case that forced this: it posts the room charges for nights
+   * actually stayed and then refuses if the folio is unsettled, and those two
+   * things must not share a fate. The nights were stayed; the ledger has to
+   * say so whether or not the guest can pay this minute.
+   *
+   * Exiting the AsyncLocalStorage is what makes it a real second transaction:
+   * without it the proxy above routes straight back into the request's own.
+   * Use this only for work that is correct on its own — never to paper over a
+   * failure that should have rolled the whole request back.
+   */
+  async runInNewTenantTransaction<T>(
+    tenantId: string,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    return PrismaService.tenantTransaction.exit(() =>
+      this.self.runWithTenant(tenantId, operation)
+    );
   }
 
   async runWithTenant<T>(tenantId: string, operation: () => Promise<T>): Promise<T> {

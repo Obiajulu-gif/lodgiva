@@ -743,11 +743,15 @@ export function FolioDialog({
                   onChange={(event) => setMethod(event.target.value)}
                   className={field}
                 >
+                  {/*
+                    Only tenders a member of staff can witness. Card and
+                    payment-link collection goes through the gateway, where a
+                    signed webhook credits the folio - it is not something the
+                    front desk types in.
+                  */}
                   <option value="CASH">Cash</option>
                   <option value="BANK_TRANSFER">Bank transfer</option>
                   <option value="POS_TERMINAL">POS terminal</option>
-                  <option value="CARD">Card</option>
-                  <option value="PAYMENT_LINK">Payment link</option>
                 </select>
               </label>
               <label className="mt-4 block text-xs font-semibold text-ink/60">
@@ -760,9 +764,18 @@ export function FolioDialog({
                   className={field}
                 />
               </label>
-              {!["CASH", "BANK_TRANSFER", "POS_TERMINAL"].includes(method) ? (
+              {/*
+                The reference used to be asked for on card payments only,
+                which was backwards: those are the ones the gateway supplies.
+                A transfer or a terminal payment has evidence outside Lodgiva
+                -- the bank narration, the slip number -- and without it there
+                is nothing to reconcile against when the statement arrives.
+              */}
+              {method !== "CASH" ? (
                 <label className="mt-4 block text-xs font-semibold text-ink/60">
-                  Provider reference
+                  {method === "BANK_TRANSFER"
+                    ? "Bank narration or sender"
+                    : "Terminal slip number"}
                   <input
                     value={reference}
                     onChange={(event) => setReference(event.target.value)}

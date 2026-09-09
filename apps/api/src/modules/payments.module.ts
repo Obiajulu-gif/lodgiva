@@ -11,6 +11,7 @@ import {
 import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
+import { RequirePermission } from "../common/permissions.guard";
 import { AuditService } from "../common/audit.service";
 import { FoliosModule, FoliosService } from "./folios.module";
 
@@ -29,28 +30,36 @@ export class ManualProvider implements PaymentProvider {
   }
 }
 
-/**
- * Sandbox stand-in for Paystack/Flutterwave. In production this calls the
- * provider's verify endpoint server-to-server with the secret key
- * (PAYSTACK_SECRET_KEY / FLUTTERWAVE_SECRET_KEY in .env.example).
- */
-export class SandboxGatewayProvider implements PaymentProvider {
-  constructor(public readonly name: string) {}
-  async verifyTransaction(reference: string) {
-    if (!reference) return { verified: false, note: "Gateway payments require a provider reference." };
-    return { verified: true, note: `Sandbox verification for ${reference}.` };
-  }
-}
-
 const recordPaymentSchema = z
   .object({
     folioId: z.string().min(1),
-    method: z.enum(["CASH", "BANK_TRANSFER", "CARD", "POS_TERMINAL", "PAYMENT_LINK"]),
+    /**
+     * Manual recording covers only tenders a member of staff can witness:
+     * cash counted into the drawer, a transfer seen landing in the account,
+     * a terminal slip in hand. CARD and PAYMENT_LINK are deliberately absent
+     * -- they used to be "verified" by a stand-in that accepted ANY non-empty
+     * reference, so typing a word settled a folio as though a card had
+     * cleared. Those collect through POST /payments/intents and are credited
+     * only by a signed webhook or a server-side verify.
+     */
+    method: z.enum(["CASH", "BANK_TRANSFER", "POS_TERMINAL"]),
     amountMinor: z.number().int().positive(),
     externalReference: z.string().optional(),
     idempotencyKey: z.string().optional(),
   })
-  .strict();
+  .strict()
+  // Cash is witnessed by the person counting it into the drawer. A transfer
+  // or a terminal payment has evidence that exists outside Lodgiva -- the
+  // bank narration, the terminal slip -- and recording one without it leaves
+  // nothing to reconcile against when the statement arrives.
+  .refine(
+    (v) => v.method === "CASH" || Boolean(v.externalReference?.trim()),
+    {
+      path: ["externalReference"],
+      message:
+        "Record the bank narration or terminal slip number so this payment can be reconciled later.",
+    }
+  );
 
 @Injectable()
 export class PaymentsService {
@@ -58,8 +67,6 @@ export class PaymentsService {
     CASH: new ManualProvider("FrontDesk"),
     BANK_TRANSFER: new ManualProvider("ManualTransfer"),
     POS_TERMINAL: new ManualProvider("POSTerminal"),
-    CARD: new SandboxGatewayProvider("PaystackSandbox"),
-    PAYMENT_LINK: new SandboxGatewayProvider("PaystackSandbox"),
   };
 
   constructor(
@@ -163,11 +170,13 @@ export class PaymentsService {
 export class PaymentsController {
   constructor(private readonly service: PaymentsService) {}
 
+  @RequirePermission("payment.capture")
   @Post()
   record(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.record(auth, body);
   }
 
+  @RequirePermission("folio.read")
   @Get()
   list(@CurrentAuth() auth: AuthContext, @Query("propertyId") propertyId?: string) {
     return this.service.list(auth, propertyId);

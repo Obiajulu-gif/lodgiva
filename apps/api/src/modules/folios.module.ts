@@ -15,6 +15,7 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
+import { RequirePermission } from "../common/permissions.guard";
 import { AuditService } from "../common/audit.service";
 import { TaxService } from "../common/tax.service";
 
@@ -54,10 +55,24 @@ export class FoliosService {
     private readonly tax: TaxService
   ) {}
 
+  /**
+   * Every folio read and write funnels through here, so this is where property
+   * scope has to hold.
+   *
+   * Tenant alone is not enough: staff scoped to one property could read and
+   * charge folios belonging to a sister property in the same group, because
+   * every other check downstream trusts this one. The 404 is deliberate --
+   * telling an unauthorised caller that a folio exists elsewhere is itself a
+   * disclosure.
+   */
   async getFolioOrThrow(auth: AuthContext, folioId: string, tx?: Tx) {
     const db = tx ?? this.prisma;
     const folio = await db.folio.findFirst({
-      where: { id: folioId, tenantId: auth.tenantId },
+      where: {
+        id: folioId,
+        tenantId: auth.tenantId,
+        ...(auth.allProperties ? {} : { propertyId: { in: auth.propertyIds } }),
+      },
     });
     if (!folio) {
       throw new NotFoundException({
@@ -437,11 +452,13 @@ export class FoliosService {
 export class FoliosController {
   constructor(private readonly service: FoliosService) {}
 
+  @RequirePermission("folio.read")
   @Get(":id")
   get(@CurrentAuth() auth: AuthContext, @Param("id") id: string) {
     return this.service.get(auth, id);
   }
 
+  @RequirePermission("folio.post_charge")
   @Post(":id/charges")
   postCharge(
     @CurrentAuth() auth: AuthContext,
@@ -451,11 +468,13 @@ export class FoliosController {
     return this.service.postCharge(auth, id, body);
   }
 
+  @RequirePermission("folio.read")
   @Post("split")
   split(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.split(auth, body);
   }
 
+  @RequirePermission("folio.read")
   @Get("by-reservation/:reservationId")
   listForReservation(
     @CurrentAuth() auth: AuthContext,
@@ -464,6 +483,7 @@ export class FoliosController {
     return this.service.listForReservation(auth, reservationId);
   }
 
+  @RequirePermission("folio.post_charge")
   @Post(":id/transfer")
   transfer(
     @CurrentAuth() auth: AuthContext,
@@ -473,6 +493,7 @@ export class FoliosController {
     return this.service.transfer(auth, id, body);
   }
 
+  @RequirePermission("folio.reverse_entry")
   @Post(":id/entries/:entryId/reverse")
   reverse(
     @CurrentAuth() auth: AuthContext,

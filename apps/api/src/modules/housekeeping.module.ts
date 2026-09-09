@@ -13,6 +13,7 @@ import {
 import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
+import { RequirePermission } from "../common/permissions.guard";
 import { AuditService } from "../common/audit.service";
 import { PushModule, PushService } from "./push.module";
 
@@ -231,16 +232,19 @@ export class HousekeepingController {
     return this.service.list(auth, propertyId);
   }
 
+  @RequirePermission("housekeeping.update")
   @Post()
   create(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.create(auth, body);
   }
 
+  @RequirePermission("housekeeping.update")
   @Post(":id/assign")
   assign(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.assign(auth, id, body);
   }
 
+  @RequirePermission("housekeeping.update")
   @Post(":id/advance")
   advance(@CurrentAuth() auth: AuthContext, @Param("id") id: string) {
     return this.service.advance(auth, id);

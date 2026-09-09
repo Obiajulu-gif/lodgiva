@@ -97,14 +97,34 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "reservation.modify",
     "reservation.cancel",
     "reservation.override_rate",
-    // A reservation cannot be created without a guest to attach it to, so an
-    // owner holding reservation.create but not guest.manage holds a
-    // permission they can never use. That bites hardest on a brand-new
-    // self-serve account, where the owner is the only user in the tenant and
-    // would otherwise have to invite a colleague before taking a first
-    // booking. This is not the operational front-desk grant the note above
-    // withholds: check-in, POS and cashiering stay out.
+    /**
+     * The stay, end to end.
+     *
+     * An owner used to hold reservation.create and nothing that could carry
+     * the booking any further: no check-in, no charge, no payment, no
+     * check-out. On a brand-new self-serve account the owner is the ONLY user
+     * in the tenant, so a booking they had just taken was a dead end until
+     * they invited a colleague — and owner-operated properties are most of
+     * this market.
+     *
+     * Withholding these protected nothing. The same role already holds
+     * payment.refund, folio.apply_discount, reservation.cancel and
+     * night_audit.run; somebody trusted to refund money and close the business
+     * day is certainly trusted to hand over a room key. The controls that do
+     * matter are elsewhere and stay intact: the approval engine still refuses
+     * to let anyone decide their own request, and cash handling (pos.operate,
+     * cashier.open_shift, cashier.close_shift) is still withheld, because the
+     * shift is the reconciliation unit and an owner who opens, takes and
+     * closes their own drawer has removed the only check on it.
+     */
     "guest.manage",
+    "frontdesk.check_in",
+    "frontdesk.check_out",
+    "frontdesk.room_move",
+    "folio.post_charge",
+    "payment.capture",
+    "housekeeping.update",
+    "maintenance.manage",
     "folio.apply_discount",
     "payment.refund",
     "cashier.approve_variance",

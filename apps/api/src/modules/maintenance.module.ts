@@ -12,6 +12,7 @@ import {
 import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
+import { RequirePermission } from "../common/permissions.guard";
 import { AuditService } from "../common/audit.service";
 import { PropertiesModule, PropertiesService } from "./properties.module";
 
@@ -155,11 +156,13 @@ export class MaintenanceController {
     return this.service.list(auth, propertyId);
   }
 
+  @RequirePermission("maintenance.manage")
   @Post()
   create(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.create(auth, body);
   }
 
+  @RequirePermission("maintenance.manage")
   @Post(":id/status")
   setStatus(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.setStatus(auth, id, body);

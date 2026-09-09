@@ -586,12 +586,72 @@ export class ReservationsService {
     });
   }
 
+  /**
+   * Brings a folio up to date with the nights actually stayed.
+   *
+   * Committed on its OWN transaction, deliberately. These charges used to be
+   * posted inside the checkout transaction that then threw on an outstanding
+   * balance — which rolled them back. The front desk was told to collect
+   * money for a charge that did not exist on the folio they could see, and
+   * there was no way out: settling the visible ₦0.00 balance changed nothing,
+   * and checkout refused again. The nights were stayed and the money is owed
+   * whether or not the guest can pay this minute, so the ledger records that
+   * first and settlement is a separate question.
+   *
+   * Idempotent: each night is matched by description before posting, so the
+   * checkout transaction re-running this loop is a no-op.
+   */
+  private async postStayedNights(auth: AuthContext, id: string) {
+    // A genuinely separate transaction. `this.prisma.$transaction` here would
+    // join the request's own and roll back with the refusal below, which is
+    // exactly the bug this exists to fix.
+    return this.prisma.runInNewTenantTransaction(auth.tenantId, async () => {
+      const tx = this.prisma;
+      await tx.$queryRaw`SELECT id FROM "Reservation" WHERE id = ${id} AND "tenantId" = ${auth.tenantId} FOR UPDATE`;
+      const res = await this.getOrThrow(auth, id, tx);
+      if (res.status !== "CHECKED_IN") return;
+      const property = await tx.property.findUniqueOrThrow({ where: { id: res.propertyId } });
+      const folioRow = res.folios[0];
+      if (!folioRow) return;
+      const folio = await this.folios.getFolioOrThrow(auth, folioRow.id, tx);
+      if (folio.status !== "OPEN") return;
+      const resRoom = res.rooms[0];
+      const room = resRoom?.roomId
+        ? await tx.room.findUnique({ where: { id: resRoom.roomId } })
+        : null;
+
+      const stayedUntil =
+        property.businessDate < res.departureDate ? property.businessDate : res.departureDate;
+      const nights = nightsBetween(res.arrivalDate, stayedUntil);
+      const lastNight = nights.length
+        ? nights
+        : nightsBetween(res.arrivalDate, res.departureDate).slice(0, 1);
+      for (const night of lastNight) {
+        const description = `Room ${room?.roomNumber ?? ""} night ${night}`.trim();
+        const already = await tx.folioEntry.findFirst({
+          where: { folioId: folio.id, type: "ROOM_CHARGE", description },
+        });
+        if (already) continue;
+        await this.folios.postChargeTx(tx, auth, folio, {
+          type: "ROOM_CHARGE",
+          description,
+          amountMinor: resRoom.nightlyRateMinor,
+          applyTaxes: true,
+          businessDate: property.businessDate,
+        });
+      }
+    });
+  }
+
   /** Posts any unposted room nights up to today, then requires settlement. */
   async checkOut(auth: AuthContext, id: string, body: unknown) {
     const dto = checkOutSchema.parse(body);
     if (dto.allowOutstandingBalance && !["TENANT_OWNER", "GENERAL_MANAGER"].includes(auth.role)) {
       throw new ForbiddenException({ error: { code: "OVERRIDE_FORBIDDEN", message: "A manager must authorize checkout with an outstanding balance." } });
     }
+    // Committed before the checkout attempt, so a refusal leaves the folio
+    // showing what is actually owed.
+    await this.postStayedNights(auth, id);
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Reservation" WHERE id = ${id} AND "tenantId" = ${auth.tenantId} FOR UPDATE`;
       const res = await this.getOrThrow(auth, id, tx);

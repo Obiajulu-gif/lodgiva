@@ -480,3 +480,65 @@ test("lifecycle actions are audited and published to the outbox", async () => {
     assert.ok(mine.includes(expected), `${expected} should be audited (saw ${mine.join(", ")})`);
   }
 });
+
+test("a refused checkout still leaves the stayed nights on the folio", async () => {
+  // Regression. The room charges for stayed nights were posted inside the same
+  // transaction that then threw OUTSTANDING_BALANCE, so they rolled back with
+  // it. The front desk was told to collect money for a charge that was not on
+  // the folio they could see, and settling the visible zero balance changed
+  // nothing — checkout refused again, forever. The nights were stayed; the
+  // ledger has to say so whether or not the guest can pay this minute.
+  const r = await book({
+    arrivalDate: businessDate,
+    departureDate: addDays(businessDate, 2),
+  });
+  assert.equal(r.status, 201, JSON.stringify(r.data));
+  const checkIn = await call(`/reservations/${r.data.id}/check-in`, {
+    method: "POST",
+    token,
+    body: {},
+  });
+  assert.equal(checkIn.status, 201, JSON.stringify(checkIn.data));
+
+  const folioId = r.data.folioId;
+  const before = await call(`/folios/${folioId}`, { token });
+  const beforeBalance = BigInt(before.data.balanceMinor);
+
+  const refused = await call(`/reservations/${r.data.id}/check-out`, {
+    method: "POST",
+    token,
+    body: {},
+  });
+  assert.equal(refused.status, 409, JSON.stringify(refused.data));
+  assert.equal(refused.data.error.code, "OUTSTANDING_BALANCE");
+
+  const after = await call(`/folios/${folioId}`, { token });
+  const afterBalance = BigInt(after.data.balanceMinor);
+  assert.ok(
+    afterBalance > beforeBalance,
+    "the stayed night must be on the folio after the refusal, not rolled back"
+  );
+  // The number the guest is asked for must be the number they can see.
+  assert.equal(
+    String(afterBalance),
+    String(refused.data.error.details.balanceMinor),
+    "the refusal amount must match the folio the front desk is looking at"
+  );
+
+  const roomCharges = after.data.entries.filter((e) => e.type === "ROOM_CHARGE");
+  assert.ok(roomCharges.length >= 1, "the stayed night is posted as a room charge");
+
+  // And it stays idempotent: a second refusal must not double-charge.
+  const again = await call(`/reservations/${r.data.id}/check-out`, {
+    method: "POST",
+    token,
+    body: {},
+  });
+  assert.equal(again.status, 409);
+  const third = await call(`/folios/${folioId}`, { token });
+  assert.equal(
+    String(BigInt(third.data.balanceMinor)),
+    String(afterBalance),
+    "retrying checkout must not post the same night twice"
+  );
+});

@@ -11,6 +11,7 @@ import {
 import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
+import { RequirePermission } from "../common/permissions.guard";
 import { AuditService } from "../common/audit.service";
 import { addDaysIso } from "../common/money";
 import { PropertiesModule, PropertiesService } from "./properties.module";
@@ -333,6 +334,7 @@ export class NightAuditService {
 export class NightAuditController {
   constructor(private readonly service: NightAuditService) {}
 
+  @RequirePermission("night_audit.run")
   @Post("run")
   run(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.run(auth, body);

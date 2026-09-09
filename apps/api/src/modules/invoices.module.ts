@@ -15,6 +15,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
+import { RequirePermission } from "../common/permissions.guard";
 import { AuditService } from "../common/audit.service";
 import { FoliosModule, FoliosService } from "./folios.module";
 import { PropertiesModule, PropertiesService } from "./properties.module";
@@ -393,6 +394,7 @@ export class InvoicesController {
     return this.service.list(auth, propertyId, folioId);
   }
 
+  @RequirePermission("folio.post_charge")
   @Post()
   issue(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.issue(auth, body);
@@ -408,6 +410,7 @@ export class InvoicesController {
     return this.service.render(auth, id).then((text) => ({ text }));
   }
 
+  @RequirePermission("folio.reverse_entry")
   @Post(":id/void")
   voidInvoice(
     @CurrentAuth() auth: AuthContext,
