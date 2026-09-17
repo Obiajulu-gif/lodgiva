@@ -18,6 +18,7 @@ import { createHash, randomBytes } from "crypto";
 import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth, Public } from "../common/auth";
+import { RequirePermission } from "../common/permissions.guard";
 import { AuditService } from "../common/audit.service";
 import { getProvider, PROVIDERS } from "../common/payment-providers";
 import { parseSettlementCsv } from "../common/settlement-csv";
@@ -1002,11 +1003,13 @@ export class GatewayController {
   }
 
   @Post("payments/intents")
+  @RequirePermission("payment.capture")
   createIntent(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.createIntent(auth, body);
   }
 
   @Post("payments/intents/:id/verify")
+  @RequirePermission("payment.capture")
   verifyIntent(@CurrentAuth() auth: AuthContext, @Param("id") id: string) {
     return this.service.verifyIntent(auth, id);
   }
@@ -1026,6 +1029,7 @@ export class GatewayController {
   }
 
   @Post("refunds")
+  @RequirePermission("payment.capture")
   requestRefund(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.requestRefund(auth, body);
   }

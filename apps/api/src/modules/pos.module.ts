@@ -14,6 +14,7 @@ import {
 import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth } from "../common/auth";
+import { RequirePermission } from "../common/permissions.guard";
 import { AuditService } from "../common/audit.service";
 import { TaxService } from "../common/tax.service";
 import { roleHasPermission } from "../common/permissions";
@@ -411,16 +412,19 @@ export class PosController {
   }
 
   @Post("orders")
+  @RequirePermission("pos.operate")
   create(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.createOrder(auth, body);
   }
 
   @Post("orders/:id/settle")
+  @RequirePermission("pos.operate")
   settle(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.settle(auth, id, body);
   }
 
   @Post("orders/:id/void")
+  @RequirePermission("pos.operate")
   voidOrder(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.void(auth, id, body);
   }

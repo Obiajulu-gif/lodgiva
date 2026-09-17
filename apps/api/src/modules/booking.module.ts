@@ -16,6 +16,7 @@ import { createHash, randomBytes } from "crypto";
 import { z } from "zod";
 import { PrismaService } from "../prisma.service";
 import { AuthContext, CurrentAuth, Public } from "../common/auth";
+import { RequirePermission } from "../common/permissions.guard";
 import { AuditService } from "../common/audit.service";
 import { TaxService } from "../common/tax.service";
 import { InventoryService } from "../common/inventory.service";
@@ -592,6 +593,7 @@ export class BookingController {
   }
 
   @Post("holds")
+  @RequirePermission("reservation.create")
   createHold(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.createHold(auth, body);
   }
@@ -602,6 +604,7 @@ export class BookingController {
   }
 
   @Post("holds/:id/release")
+  @RequirePermission("reservation.create")
   releaseHold(@CurrentAuth() auth: AuthContext, @Param("id") id: string) {
     return this.service.releaseHold(auth, id);
   }

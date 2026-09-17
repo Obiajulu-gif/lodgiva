@@ -827,6 +827,7 @@ export class AnalyticsController {
   }
 
   @Post("exports")
+  @RequirePermission("report.financial.read")
   requestExport(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.requestExport(auth, body);
   }

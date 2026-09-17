@@ -628,6 +628,7 @@ export class FilesController {
   }
 
   @Post("intents")
+  @RequirePermission("file.manage")
   createIntent(@CurrentAuth() auth: AuthContext, @Body() body: unknown) {
     return this.service.createIntent(auth, body);
   }
@@ -643,6 +644,7 @@ export class FilesController {
   }
 
   @Post(":id/complete")
+  @RequirePermission("file.manage")
   complete(@CurrentAuth() auth: AuthContext, @Param("id") id: string, @Body() body: unknown) {
     return this.service.complete(auth, id, body);
   }
