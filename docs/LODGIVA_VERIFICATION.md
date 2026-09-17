@@ -72,6 +72,63 @@ behaviour worked at the time; they are **not** a substitute for class B runs.
 
 ## Blocked
 
+### B-00 · The host itself is the blocker — diagnosed 2026-09-17
+
+WSL2 and Docker both fail for the same underlying reason, which is why the
+isolated database (B-01) and the Frappe bench for the Kamra evaluation are
+blocked together.
+
+| Measurement | Value |
+| --- | --- |
+| C: free space | **0.21 GB** of 476.6 GB (before cleanup) |
+| RAM free | **0.1 GB** of 7.7 GB |
+| `.wslconfig` asked for | `memory=5632MB`, `swap=8GB` |
+| WSL error | `CreateInstance/CreateVm/0x800705b4` (timeout), once `ConfigureNetworking/E_UNEXPECTED` |
+| Windows build | 10.0.22000.2538 (Windows 11 21H2) |
+| WSL version | 2.7.13.0 |
+| Virtualization present | Yes (`HypervisorPresent: True`) |
+
+A VM cannot allocate 5.5 GB of RAM when 0.1 GB is free, nor create an 8 GB
+swap file on a disk with 0.21 GB free. Docker Desktop runs on WSL2, so it
+failed for the same reason.
+
+**Actions taken:**
+
+- Cleared npm, Yarn and user temp caches; pruned the pnpm store.
+  **0.21 GB → 3.51 GB free.** No project files or `node_modules` touched.
+- Rewrote `~/.wslconfig` to `memory=3GB`, `processors=2`, `swap=2GB`, with
+  `sparseVhd=true`. Original saved as `.wslconfig.backup-20260917`.
+
+**Result: WSL still times out.** Resource exhaustion was real and had to be
+fixed, but it was not the whole cause.
+
+**Remaining cause — a pending reboot.**
+`HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations`
+is set, and the host has been up 6.2 days. A staged file-rename means an
+update is waiting for a restart to complete; given `wsl --update` then hung
+with no output for several minutes (the process was stopped), the staged
+update is plausibly the WSL platform itself. `LxssManager` was also found
+stopped.
+
+**Next step: restart the host.** That is not something to do from a coding
+session — it would close the browsers and editor along with any unsaved work,
+so it is the user's call. Afterwards:
+
+```bash
+wsl --update
+wsl -d Ubuntu-24.04 --exec /bin/echo ok
+```
+
+If that echoes, both blocked workstreams open up at once: the Kamra vertical
+slice (ADR-001 option B) and the isolated PostgreSQL harness (B-01/B-02).
+
+**One caveat for the bench.** Even repaired, this host is tight for Frappe:
+7.7 GB RAM with Chrome and the editor already using ~3 GB, and 3.4 GB of disk
+free after cleanup. A Frappe bench plus MariaDB, Redis and a Node asset build
+wants more than that. Expect to free more space, or run the evaluation bench
+on a small cloud VM instead — which is also closer to how it would be
+deployed.
+
 ### B-01 · No isolated PostgreSQL (blocks all integration and E2E)
 
 **Attempted:**
