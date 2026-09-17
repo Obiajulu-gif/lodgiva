@@ -1,14 +1,93 @@
-/* Clears all rows from the local development database so the seed can
- * recreate a known state. Truncating rather than deleting the file means it
- * works while the API is running (which holds the SQLite file open).
+/* Clears every row so the seed can recreate a known state.
  *
- * Guarded to file: databases — never point this at a shared or production
- * database. */
+ * WHAT THIS GUARD IS FOR
+ *
+ * This script deletes all data. Pointed at the wrong database it destroys a
+ * hotel's bookings and ledger. The previous guard only accepted `file:` URLs,
+ * which was safe but had stopped matching reality -- PostgreSQL is now the
+ * only provider the schema supports, so `pnpm test:e2e` could not run at all.
+ *
+ * The condition is widened, not loosened. A disposable PostgreSQL target must
+ * satisfy BOTH of these, and a production URL cannot satisfy either:
+ *
+ *   1. The host is loopback. A database reachable over a network is never a
+ *      safe reset target from a test script, however it is named.
+ *   2. The database name ends with `_test`. Naming is the second, independent
+ *      signal, so one mistyped host cannot be enough on its own.
+ *
+ * Managed hosts are refused by name as well, because "localhost" can be made
+ * to point anywhere and a tunnel to Neon should still fail closed.
+ *
+ * The rejected URL is never printed -- it carries credentials. Only the parts
+ * needed to explain the refusal are shown.
+ */
 const { PrismaClient } = require("@prisma/client");
 
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+const MANAGED_HOST_MARKERS = [
+  "neon.tech",
+  "supabase.",
+  "rds.amazonaws.com",
+  "azure.com",
+  "render.com",
+  "railway.app",
+  "-pooler",
+];
+
+function assertDisposable(rawUrl) {
+  // Legacy SQLite development databases stay allowed: a local file is
+  // self-evidently disposable.
+  if (rawUrl.startsWith("file:")) return { kind: "sqlite", label: "local file" };
+
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error("DATABASE_URL is not a URL this script can check. Refusing to reset.");
+  }
+  if (!/^postgres(ql)?:$/.test(parsed.protocol)) {
+    throw new Error(`Refusing to reset a ${parsed.protocol.replace(":", "")} database.`);
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const database = parsed.pathname.replace(/^\//, "");
+  const problems = [];
+
+  if (!LOOPBACK.has(host)) {
+    problems.push(`host "${host}" is not loopback (expected localhost)`);
+  }
+  const managed = MANAGED_HOST_MARKERS.find((m) => rawUrl.toLowerCase().includes(m));
+  if (managed) {
+    problems.push(`the URL names a managed host ("${managed}")`);
+  }
+  if (!/_test$/.test(database)) {
+    problems.push(`database "${database}" does not end with _test`);
+  }
+
+  if (problems.length > 0) {
+    throw new Error(
+      [
+        "Refusing to reset this database. It does not look disposable:",
+        ...problems.map((p) => `  - ${p}`),
+        "",
+        "This script deletes every row. A disposable target must be on",
+        "localhost AND named *_test. Create one rather than relaxing this:",
+        "",
+        "  createdb lodgiva_test",
+        "  DATABASE_URL=postgresql://USER@localhost:5432/lodgiva_test pnpm db:migrate",
+      ].join("
+")
+    );
+  }
+  return { kind: "postgres", label: `${host}/${database}` };
+}
+
 const url = process.env.DATABASE_URL ?? "file:./dev.db";
-if (!url.startsWith("file:")) {
-  console.error(`Refusing to reset a non-file database (${url}).`);
+let target;
+try {
+  target = assertDisposable(url);
+} catch (err) {
+  console.error(err.message);
   process.exit(1);
 }
 
@@ -83,7 +162,7 @@ async function main() {
   if (remaining.length) {
     throw new Error(`Could not clear: ${remaining.join(", ")} (foreign keys still held).`);
   }
-  console.log(`Development database cleared (${plan.length} tables).`);
+  console.log(`Cleared ${plan.length} tables in ${target.label} (${target.kind}).`);
 }
 
 main()
