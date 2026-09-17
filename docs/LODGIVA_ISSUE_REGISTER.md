@@ -154,9 +154,58 @@ cannot open, take and close their own cash drawer". **Passing.**
 
 ---
 
-## Confirmed, not yet fixed
+## Fixed 2026-09-18, and what closing them exposed
 
-### L-07 · Undecorated mutating routes remain — **Confirmed**
+These were listed as open on 2026-09-09. Each entry records what the fix
+was and, where a fix uncovered something further, the new finding beside it
+rather than filed away separately.
+
+### L-07 · Undecorated mutating routes — **Fixed 2026-09-18**
+
+`test/unit/route-permissions.test.mjs` now scans every controller and fails
+when a mutating route neither declares a permission nor appears in an explicit
+list with a reason. Missing metadata can no longer quietly mean "open".
+
+Four assertions, the first of which matters most: the scanner must actually
+find routes and detect existing decorators, or every other check passes
+vacuously. A fourth forbids any route in `folios`, `payments`, `invoices`,
+`cashiering` or `night-audit` from being excepted at all — those must be
+declared outright.
+
+**A note on the tool, because it nearly caused harm.** The first version only
+looked for decorators *above* the route decorator, and this codebase writes
+`@Post()` then `@RequirePermission(...)`. It reported 27 correctly-guarded
+routes as wide open. Checking `reservations.module.ts` by hand before changing
+anything is the only reason the real list below is six rather than
+thirty-three. A scanner is a claim, not evidence, until its false-positive
+rate is known.
+
+### L-24 · Six routes had no authorisation check at all — **Fixed 2026-09-18**
+
+Found by L-07's test, not by reading. All six were callable by any
+authenticated account, a housekeeper included.
+
+| Route | Now requires |
+| --- | --- |
+| `POST /payments/intents` | `payment.capture` |
+| `POST /payments/intents/:id/verify` | `payment.capture` |
+| `POST /refunds` | `payment.capture` |
+| `POST /files/intents` | `file.manage` |
+| `POST /files/:id/complete` | `file.manage` |
+| `POST /analytics/exports` | `report.financial.read` |
+
+Requesting a refund is not refunding — approval still gates the money leaving
+— but it should not have been open to every account either. POS
+order/settle/void and booking holds are now declared too; they had been
+relying on nothing.
+
+Refund approval, settlement import and exception resolution turned out to be
+genuinely guarded, by an `APPROVER_ROLES` allow-list (owner / GM / finance)
+inside the service. They are on the exception list with the reason recorded
+rather than decorated — these are the routes that move money **out**, so the
+argument for excepting them belongs on the record where a reviewer will see it.
+
+### L-07b · Route classification still incomplete — **Open**
 
 20 routes are now decorated, but a route-by-route audit is incomplete. Modules
 with mutating routes and no `@RequirePermission`, needing individual
@@ -175,7 +224,18 @@ classification (some enforce in-service, which is valid but undeclared):
 non-public route neither declares a permission nor appears on a reviewed
 allow-list with a stated reason. Missing metadata must not keep meaning "open".
 
-### L-08 · Test harness cannot target PostgreSQL — **Confirmed**
+### L-08 · Test harness cannot target PostgreSQL — **Fixed 2026-09-18**
+
+`packages/database/src/reset.js` now accepts a disposable PostgreSQL target:
+loopback host **and** a database named `*_test`, with managed hosts refused by
+name so a tunnel to Neon still fails closed. The rejected URL is never printed
+— it carries credentials.
+
+Checked against five URLs that must never be reset — Neon pooled, Neon direct,
+localhost without the suffix, a remote host with it, and a non-PostgreSQL
+engine — **all five refused**.
+
+### L-08b · Original finding, for the record — **was Confirmed**
 
 `packages/database/src/reset.js` rejects any `DATABASE_URL` not starting with
 `file:` (line 10), while PostgreSQL is now the only schema provider. So
@@ -183,7 +243,25 @@ allow-list with a stated reason. Missing metadata must not keep meaning "open".
 to stop a reset against a shared database — but its condition no longer
 matches reality.
 
-### L-09 · No isolated test database available — **Confirmed (external blocker)**
+### L-09 · No isolated test database — **Partly resolved 2026-09-18**
+
+The host was the blocker, and it is now repaired. WSL2 failed for three
+stacked reasons: 0.21 GB free disk, 0.1 GB free RAM against a `.wslconfig`
+demanding 5.5 GB plus an 8 GB swap file, and a pending reboot. Caches were
+cleared (0.21 → 3.5 GB), the config right-sized, and the user restarted —
+after which disk reached 21.5 GB and WSL started cleanly (Ubuntu 24.04.4,
+Python 3.12.3).
+
+`scripts/test-db-up.sh` provisions `lodgiva_test` with an application role that
+is explicitly `NOSUPERUSER NOBYPASSRLS`, and prints those flags so a suite
+cannot pass by accidentally running as the owner.
+
+**Still outstanding:** the PostgreSQL install inside WSL was interrupted
+mid-`dpkg`, so no cluster exists yet. Until it does, integration and E2E
+remain unrun and every access-control fix in this register — L-01, L-04 and
+L-24 — stands on code reading and type checking alone.
+
+### L-09b · Original finding, for the record — **was Confirmed**
 
 `psql` is not installed; nothing listens on 5432; Docker CLI 29.6.2 is present
 but the daemon did not start within 2 minutes of launching Docker Desktop.
@@ -191,6 +269,10 @@ but the daemon did not start within 2 minutes of launching Docker Desktop.
 Consequence: **every integration and E2E claim in this cycle is unverified.**
 Unit tests, type checks and builds are the only executed evidence. See
 `docs/LODGIVA_VERIFICATION.md`.
+
+---
+
+## Open
 
 ### L-10 · Production database was seeded — **Confirmed (needs cleanup decision)**
 
