@@ -103,3 +103,59 @@ honest summary is:
 The §8 vertical slice — Nigeria setup → room/rate → booking → check-in →
 bank-transfer payment → checkout → NGN receipt — answers most of the `?` rows
 in one pass. That is the cheapest way to turn this matrix into evidence.
+
+---
+
+## 7. Kamra source audit — verified 2026-09-19
+
+Against a real install, not the plan's description: separate bench
+`~/kamra-bench` in WSL, **Frappe v16.25.0**, **Kamra v2.6.2** (`1533503`),
+payments `86fefa9`. The existing ERPNext bench was not touched.
+
+### The finding that shapes the whole plan
+
+Kamra already has a **country-pack seam**. `kamra/localization/` ships packs
+for India, Indonesia, Malaysia, Thailand and UAE plus a `generic` fallback,
+and `pack_for()` resolves them through `frappe.get_hooks("kamra_localization")`
+— which Frappe merges across every installed app. So a separate app can claim
+a country without editing Kamra.
+
+**Demonstrated:** `lodgiva_nigeria` now registers
+`{"Nigeria": "lodgiva_nigeria.localization.nigeria"}` and implements the pack
+contract (VAT/TIN labels, ₦, `en-NG`, 7.5% configurable default VAT, naira-and-
+kobo amounts in words). **18 unit tests pass**, including one asserting no
+Indian marker (₹, INR, GST, SAC, lakh…) reaches Nigerian output. Committed
+locally in the app repo (`e923b16`). **Not yet run against a live site.**
+
+The pack contract returns *one* tax rate per line. That fits Nigeria because
+Kamra's own UAE pack sets the precedent: VAT is one line, and service charge
+and municipal levies are **separate folio charges, not tax**. Nigeria's service
+charge and state consumption levies follow the same pattern.
+
+### India assumptions outside the pack
+
+Counts are production code only — tests, demo scripts, translations and the
+country packs themselves excluded.
+
+| Where | Defect | Severity | Fix path |
+| --- | --- | --- | --- |
+| `frontend/src/lib/phone.ts` | `dialForCountry()` has no Nigeria entry and **falls back to `"91"`**, so `0803 123 4567` becomes an Indian number | **High** — every guest record | Fork edit: add `nigeria`/`ng` → `234`, length 10. Small; good upstream contribution |
+| `kamra/api.py` and others | `₹` hard-coded in 39 user-facing strings (rate guardrails, action logs) | Medium | Fork edit: use the pack's `currency_symbol` |
+| `PublicBooking.tsx` | `priceCurrency: "INR"` in the booking engine's structured data | Medium | Fork edit |
+| `payments.py` | Razorpay-only; payment link currency hard-coded `"INR"` | Medium | Paystack belongs in `lodgiva_nigeria`; override the endpoint via hooks — **unverified** |
+| `Property` doctype | Defaults: country India, `Asia/Kolkata`, INR, `en-IN`; GST slab fields (5%/18%, ₹7,500 threshold) | Medium | Property Setter fixtures in `lodgiva_nigeria`, no fork edit — **needs a site to verify** |
+| `pack_for()` | Blank country is treated as India | Low | Covered once the Property default is Nigeria |
+| `money.ts` | India defaults until the pack resolves (first-load flash only; cached thereafter) | Low | Fork edit, optional |
+| Billing, TapeChart, CalendarView | Dates formatted with hard-coded `en-IN` | Low | `en-IN` and `en-NG` render day-month alike; cosmetic |
+| `words.py` | No NGN entry — would print "NGN Twelve Only", dropping kobo | — | **Fixed** by the pack's own `amount_in_words` |
+
+**Reading this honestly:** the tax/label/currency work the plan feared is
+mostly absorbed by the existing seam. The fork still needs a handful of small,
+upstreamable edits, and one of them (phone numbers) is not cosmetic.
+
+### Still unverified
+
+Nothing here has run against a live site. The end-to-end slice — Nigeria setup
+→ room and rate → booking → check-in → bank-transfer payment → checkout → NGN
+receipt — is blocked on creating the bench's database admin, which needs the
+MariaDB root password (see the command in the session notes).
