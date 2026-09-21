@@ -153,9 +153,66 @@ country packs themselves excluded.
 mostly absorbed by the existing seam. The fork still needs a handful of small,
 upstreamable edits, and one of them (phone numbers) is not cosmetic.
 
-### Still unverified
+---
 
-Nothing here has run against a live site. The end-to-end slice — Nigeria setup
-→ room and rate → booking → check-in → bank-transfer payment → checkout → NGN
-receipt — is blocked on creating the bench's database admin, which needs the
-MariaDB root password (see the command in the session notes).
+## 8. The vertical slice, run against a live site — 2026-09-21
+
+Site `kamra.localhost` on the evaluation bench, all four apps installed
+(frappe 16.25.0, payments, kamra 2.6.2, lodgiva_nigeria 0.0.1). Property
+**Lodgiva Demo Hotel**, Ikeja, Lagos, country Nigeria, currency NGN, created
+through Kamra's own `setup_property` onboarding API — not by hand-inserting
+rows. Two room types, four rooms. Every claim below was produced by running
+the product, and the scripts are in the session scratchpad.
+
+### The seam holds
+
+`pack_for("Lodgiva Demo Hotel")` returns `lodgiva_nigeria.localization.nigeria`.
+Note the signature: it takes a **property name**, not a country string, and
+looks up that property's country — an unknown name silently falls back to
+India, which is worth knowing before anyone calls it directly.
+
+Through the live seam: `₦`, `en-NG`, `NGN`, labels VAT and TIN, place of
+supply Lagos, split `[("vat", 1)]`. A two-night Deluxe stay priced
+₦170,000 + ₦12,750 VAT = **₦182,750**; a Standard night posted by the night
+audit as ₦45,000 + ₦3,375 = **₦48,375**. 7.5% throughout, via the pack, with
+no Kamra source edited. Amount in words: "Naira Forty Eight Thousand Three
+Hundred Seventy Five Only".
+
+**Night audit, inventory control and check-in all work.** The audit posted
+room charges, advanced the business date and flagged a no-show; booking a
+third Deluxe room was refused — "2 of 2 rooms sold and the overbooking
+allowance (0.0%) is used up".
+
+### What the slice found — the reason to run it
+
+| # | Finding | Severity | Evidence |
+| --- | --- | --- | --- |
+| 1 | **Checkout does not refuse an unsettled folio.** A guest owing ₦48,375 was checked out; the balance stayed ₦48,375 | **High** | `check_out()` sets `status = "Checked Out"` and saves — no balance check anywhere in the path |
+| 2 | **A folio that still owes money can be closed and issued an invoice**, with no transfer to a receivable or city ledger — the debt simply sits on a closed folio | **High** | `INV-LDH-26-00003` issued on a folio with ₦91,375 outstanding |
+| 3 | **A naira payment is stored as INR.** `Folio Payment.currency` is a Data field hard-defaulted to `"INR"`; the country pack cannot reach it | **High** | Live row: `mode: Bank Transfer, amount: 48375.0, currency: 'INR'` on a Nigerian property |
+| 4 | **Payments are not idempotent.** The same amount and the same bank reference posted twice, taking the folio to **−₦1,000**; the overpayment was accepted silently with no refund state | **High** | Two identical `Bank Transfer` rows, `payments_total` 49,375 against a 48,375 bill |
+| 5 | **Tax columns are named `gst_rate` / `gst_amount`** in the Folio Charge schema, so Nigerian VAT is stored in a column called GST | Medium | Doctype fields; inherited by every report, export and integration |
+| 6 | **Payment modes are a fixed Select**: Cash, Card, **UPI**, Bank Transfer, OTA Prepaid, Company Credit, Payment Link. UPI is Indian; there is no POS terminal, Nigeria's second tender | Medium | `folio_payment.json` |
+| 7 | **Money is float end to end** (Frappe Currency fields), against Lodgiva's integer kobo | Medium | Every amount above printed as `float` |
+| 8 | Nothing normalises a phone number server-side — `"0803 123 4567"` is stored exactly as typed | Low–Medium | Compounds §7's `phone.ts` defect: the frontend would turn it Indian, the backend defends nothing |
+| 9 | A zero-total folio consumed an invoice number in the legal series | Low | `INV-LDH-26-00002`, grand total 0 |
+
+On the matrix's "append-only ledger" row: Kamra's intended correction path is
+`post_allowance`, a write-off carrying a reason — a real mechanism. I also
+changed a posted charge's amount directly and nothing objected, but that was
+`frappe.db.set_value`, which bypasses the ORM by design, so it is weak
+evidence about the product and is recorded only as "nothing at the storage
+layer enforces immutability".
+
+### What this means for the decision
+
+Findings 1–4 are the same class of defect Lodgiva spent this cycle fixing, and
+three of them touch money directly. They are not reasons to abandon the fork —
+each is a small, targeted change — but they answer the question the matrix was
+built to ask: **a more feature-complete product did not get the financial
+guarantees right either.** A migration that assumes otherwise would move real
+hotel money onto a system that lets guests walk out with an open balance.
+
+Still unverified: whether the invoice series is gapless under a failed
+transaction, `Property` doctype defaults via Property Setter fixtures, and
+overriding the Razorpay endpoint from `lodgiva_nigeria` for Paystack.
