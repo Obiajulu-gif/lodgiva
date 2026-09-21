@@ -1,5 +1,6 @@
 import { Navbar } from "@/components/landing/Navbar";
 import { Hero } from "@/components/landing/Hero";
+import { Showcase } from "@/components/landing/Showcase";
 import { Features } from "@/components/landing/Features";
 import { WhyLodgiva } from "@/components/landing/WhyLodgiva";
 import { Testimonials } from "@/components/landing/Testimonials";
@@ -13,6 +14,7 @@ export default function Home() {
     <main>
       <Navbar />
       <Hero />
+      <Showcase />
       <Features />
       <WhyLodgiva />
       <Testimonials />
