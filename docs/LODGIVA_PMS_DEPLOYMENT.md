@@ -37,6 +37,12 @@ Then open **http://localhost:8001/kamra**.
 
 ### Log in
 
+**The username is `Administrator`, not your email address.** A fresh Frappe
+site has exactly one account and it is not tied to your GitHub or Google
+identity; signing in with a personal email returns "Wrong email, username, or
+password" because no such user exists yet. Add real staff accounts afterwards
+from `/app/user`.
+
 The admin password was generated during install and never printed. Read it
 yourself:
 
@@ -93,20 +99,20 @@ Target from the milestone plan: marketing stays at `lodgiva.com` on Vercel,
 PMS at `app.lodgiva.com`. Kamra's own quickstart is the Docker route; these
 are the same steps with Lodgiva's app added.
 
-### Step 0 — the Nigeria app needs a git remote
+### Step 0 — the repositories (done)
 
-`lodgiva_nigeria` currently exists only on the bench, with three local
-commits and **no remote**. The Docker build installs apps from git URLs, so
-it must be pushed first. Decide where it lives — the milestone plan
-recommends a separate `lodgiva-pms` repository — then:
+Two public repositories, as the milestone plan's branch strategy describes:
 
-```bash
-cd /home/frappe/kamra-bench/apps/lodgiva_nigeria
-git remote add origin https://github.com/<owner>/<repo>.git
-git push -u origin develop
-```
+| Repository | Contents |
+| --- | --- |
+| [`Obiajulu-gif/lodgiva-pms`](https://github.com/Obiajulu-gif/lodgiva-pms) | The branded Kamra fork. `upstream` points at Kamra-PMS/kamra-pms so security fixes can be pulled deliberately |
+| [`Obiajulu-gif/lodgiva-nigeria`](https://github.com/Obiajulu-gif/lodgiva-nigeria) | The Nigerian country pack, financial controls and Lodgiva branding |
 
-If the repository is private, the build needs a token with read access.
+They are **public on purpose**. Kamra is AGPL-3.0: serving a modified version
+over a network obliges Lodgiva to offer the corresponding source to its users,
+and the footer's "source" link points at `lodgiva-pms`. Making them private
+means finding another lawful way to deliver source to every user — possible,
+but decide it deliberately rather than by accident.
 
 ### Step 1 — the server
 
@@ -127,10 +133,14 @@ cd frappe_docker
 ```json
 [
   { "url": "https://github.com/frappe/payments", "branch": "develop" },
-  { "url": "https://github.com/Kamra-PMS/kamra-pms", "branch": "v2.6.2" },
-  { "url": "https://github.com/<owner>/<repo>", "branch": "develop" }
+  { "url": "https://github.com/Obiajulu-gif/lodgiva-pms", "branch": "main" },
+  { "url": "https://github.com/Obiajulu-gif/lodgiva-nigeria", "branch": "main" }
 ]
 ```
+
+Note it pulls **`lodgiva-pms`, not upstream Kamra** — that fork carries the
+rebrand. The app inside it is still called `kamra`, so `bench install-app
+kamra` is correct; only the branding differs.
 
 ```bash
 export APPS_JSON_BASE64=$(base64 -w 0 apps.json)
@@ -194,6 +204,76 @@ async redirects() {
 dashboard out of service, which is a cutover decision, not a deployment
 detail. The milestone plan is explicit that the current stack stays available
 as a fallback until parity is signed off.
+
+---
+
+---
+
+## Part 3 — hosting it for free
+
+Frappe needs about **4 GB of RAM, a persistent disk and processes that never
+sleep**. That single sentence eliminates most "free tier" hosting, so the
+honest shortlist is short. Ranked by what actually works:
+
+### 1. Cloudflare Tunnel — free, live in five minutes, best for a client demo
+
+Publishes the bench already running on this machine at a real HTTPS URL. No
+server, no card, no build. The laptop must stay on and connected — which is
+fine for a scheduled demo and useless as production.
+
+```bash
+# in WSL, with the site already served on 8001
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+chmod +x cloudflared
+./cloudflared tunnel --url http://localhost:8001
+```
+
+It prints a `https://something.trycloudflare.com` URL. One extra step, or
+Frappe will refuse the unfamiliar host:
+
+```bash
+bench --site kamra.localhost add-to-hosts        # optional, local convenience
+bench --site kamra.localhost set-config host_name https://<that-url>
+```
+
+Free, genuinely instant, and the guest-facing `/book` page works over it.
+
+### 2. Oracle Cloud Always Free — free forever, and big enough to mean it
+
+The only free tier that can really run a PMS: **4 Arm CPUs and 24 GB RAM**
+across your Always Free allowance, plus 200 GB of block storage. That is more
+than the 2 vCPU / 4 GB the Docker route asks for.
+
+- Create an Always Free **Ampere A1** instance, Ubuntu 24.04, 4 OCPU / 24 GB.
+- Open ports 80 and 443 in both the VCN security list **and** `iptables` —
+  Oracle's Ubuntu images ship with a restrictive firewall, and this is the
+  step everyone misses.
+- Follow Part 2 unchanged. Build on the instance itself: it is ARM64, so an
+  image built on an x86 laptop will not run.
+
+Two honest caveats: Ampere capacity is genuinely scarce in popular regions and
+you may hit "out of host capacity" for days — pick a quieter region at sign-up.
+And a card is required for identity verification even though the tier is free.
+
+### 3. Frappe Cloud — not free, but the least work
+
+A free trial, then roughly $10–25/month. It handles backups, SSL, updates and
+the scheduler. Kamra is on the Frappe Cloud marketplace; a private bench there
+can install `lodgiva-pms` and `lodgiva-nigeria` from git. If the pilot hotel is
+paying anything at all, this is cheaper than your time.
+
+### What does not work, and why
+
+| Platform | Why not |
+| --- | --- |
+| **Vercel / Netlify** | Serverless. No long-lived process, no MariaDB, no scheduler. The marketing site belongs here; the PMS cannot |
+| **AWS / GCP / Azure free tiers** | 1 GB RAM (`t3.micro`, `e2-micro`, `B1s`). Frappe's build and worker processes thrash and get OOM-killed. Also expires after 12 months |
+| **Render / Railway free** | No persistent MariaDB on the free plan, and free web services sleep. A PMS that sleeps stops running the night audit |
+| **Heroku** | No free dynos any more |
+
+**Recommendation:** Cloudflare Tunnel for the demo this week, Oracle Always
+Free for a pilot that has to stay up, Frappe Cloud the moment real hotel money
+depends on it being someone's job to keep it alive.
 
 ---
 
