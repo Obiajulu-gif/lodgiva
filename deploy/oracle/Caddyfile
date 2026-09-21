@@ -1,9 +1,7 @@
-# Oracle Cloud: Caddy terminates HTTPS for LODGIVA_DOMAIN (a real domain,
+# On the server: Caddy terminates HTTPS for LODGIVA_DOMAIN (a real domain,
 # or <ip-with-dashes>.sslip.io for a free one) and certificates are issued
-# and renewed automatically by Let's Encrypt.
-{
-	email {$ACME_EMAIL}
-}
+# and renewed automatically by Let's Encrypt. setup.sh adds a global
+# `email` block above this only when ACME_EMAIL is given.
 
 import Caddyfile.routes
 

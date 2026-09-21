@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Lodgiva on Oracle Cloud Always Free - one command, on a fresh Ubuntu VM.
+# Lodgiva on any Ubuntu 22.04/24.04 server - one command, on a fresh VM.
+# Needs 4 GB RAM or more. Works on Oracle Cloud, DigitalOcean, Hetzner,
+# Contabo, AWS, Google Cloud and Azure alike (see deploy/README.md).
 #
 #   curl -fsSL https://raw.githubusercontent.com/Obiajulu-gif/lodgiva/main/deploy/oracle/setup.sh -o setup.sh
 #   sudo bash setup.sh                                  # free https://<ip>.sslip.io
@@ -29,7 +31,9 @@ mkdir -p "$WORK"; cd "$WORK"
 # ── 0. Address ────────────────────────────────────────────────────────────
 PUBLIC_IP="$(curl -fsS https://api.ipify.org || curl -fsS https://ifconfig.me)"
 LODGIVA_DOMAIN="${LODGIVA_DOMAIN:-${PUBLIC_IP//./-}.sslip.io}"
-ACME_EMAIL="${ACME_EMAIL:-admin@${LODGIVA_DOMAIN}}"
+# Optional: Let's Encrypt uses it only for expiry warnings. None is invented -
+# a made-up address can get the certificate request refused.
+ACME_EMAIL="${ACME_EMAIL:-}"
 log "Public address: https://${LODGIVA_DOMAIN}"
 
 # ── 1. Swap: the SPA build is memory-hungry even on 24 GB shapes ─────────
@@ -39,14 +43,22 @@ if ! swapon --show | grep -q /swapfile; then
   echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 
-# ── 2. Firewall: Oracle's Ubuntu image rejects 80/443 in iptables ────────
-# This is the step everyone misses. The VCN security list must ALSO allow
-# 80 and 443 (see README); both layers have to be open.
+# ── 2. Firewall ──────────────────────────────────────────────────────────
+# Oracle's Ubuntu image rejects 80/443 in iptables, and its cloud firewall
+# must ALSO allow them (see README). Other providers start with an empty,
+# open chain. Inserting at the top works for both - inserting at a fixed
+# position fails on an empty chain and would abort the whole install.
 log "Opening ports 80 and 443 in the host firewall"
 for p in 80 443; do
   iptables -C INPUT -p tcp --dport "$p" -j ACCEPT 2>/dev/null \
-    || iptables -I INPUT 5 -p tcp -m state --state NEW --dport "$p" -j ACCEPT
+    || iptables -I INPUT -p tcp -m state --state NEW --dport "$p" -j ACCEPT
 done
+if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
+  ufw allow 80/tcp >/dev/null && ufw allow 443/tcp >/dev/null
+fi
+# A fresh VM's package index is empty; without this, installs can fail
+# with "Unable to locate package".
+apt-get update -q >/dev/null
 DEBIAN_FRONTEND=noninteractive apt-get install -y -q iptables-persistent >/dev/null
 netfilter-persistent save >/dev/null
 
@@ -151,14 +163,19 @@ log "Starting Caddy for https://${LODGIVA_DOMAIN}"
 mkdir -p caddy
 curl -fsSL "$REPO_RAW/Caddyfile" -o caddy/Caddyfile
 curl -fsSL "$REPO_RAW/Caddyfile.routes" -o caddy/Caddyfile.routes
+if [ -n "$ACME_EMAIL" ]; then
+  # Caddy's global block must come first in the file.
+  printf '{\n\temail %s\n}\n\n' "$ACME_EMAIL" | cat - caddy/Caddyfile > caddy/Caddyfile.tmp
+  mv caddy/Caddyfile.tmp caddy/Caddyfile
+fi
 docker rm -f lodgiva-caddy >/dev/null 2>&1 || true
 docker run -d --name lodgiva-caddy --restart unless-stopped --network host \
-  -e LODGIVA_DOMAIN="$LODGIVA_DOMAIN" -e ACME_EMAIL="$ACME_EMAIL" \
+  -e LODGIVA_DOMAIN="$LODGIVA_DOMAIN" \
   -e FRAPPE_UPSTREAM=127.0.0.1:8080 \
   -v "$WORK/caddy:/etc/caddy" -v lodgiva_caddy_data:/data \
   caddy:2 caddy run --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
 
-# ── 9. Nightly backup, kept 7 days ────────────────────────────────────────
+# ── 9. Nightly backup (inside the stack's volume - copy it off the server) ─
 cat > /etc/cron.d/lodgiva-backup <<EOF
 30 2 * * * root docker compose -p lodgiva -f $WORK/lodgiva-stack.yaml exec -T backend bench --site $SITE backup --with-files >/dev/null 2>&1
 EOF
