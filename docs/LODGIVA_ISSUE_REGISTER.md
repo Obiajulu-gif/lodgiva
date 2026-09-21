@@ -286,6 +286,48 @@ The seed is upsert-only and touched no pre-existing tenant, but demo logins
 with the password `Password123!` should not remain in a production database.
 **Awaiting a decision** on whether to remove them; nothing has been deleted.
 
+### L-25 · Owner database credentials live in the serverless runtime — **Hypothesis (fix untested)**
+
+Found 2026-09-21 while writing [ARCHITECTURE.md](ARCHITECTURE.md).
+`app-factory.ts` refuses to start without `DIRECT_URL`, and the deploy guides
+set it to the **owner** role, which bypasses row-level security. But nothing in
+`apps/api/src` queries through it: the only reference is `directUrl` in
+`schema.prisma`, which Prisma Migrate uses and Prisma Client merely requires to
+exist. The comment in `app-factory.ts` says signup failed with an RLS
+violation when it was unset. That doesn't follow from any query path, so the
+real cause of that failure is unknown.
+
+**Proposed:** set the runtime `DIRECT_URL` to the unpooled `lodgiva_app` URL,
+keep the owner URL for migrations only, and run
+`scripts/smoke-serverless-api.mjs` (it signs up a tenant) against a staging
+deployment to prove it. **Not yet done.** [deploy-vercel.md](deploy-vercel.md)
+states this as a recommendation, not a fact.
+
+### L-26 · Notifications: no worker on Vercel, no email or SMS anywhere — **Confirmed**
+
+Nothing hosts `apps/worker` on Vercel (no cron, no process), so `OutboxEvent`
+rows accumulate and housekeeping push notifications are never sent. Separately,
+the worker handles `reservation.confirmed`, `guest.checked_in`,
+`guest.checked_out`, `payment.confirmed` and `night_audit.completed` with a
+`console.log` only. `RESEND_API_KEY` and `TERMII_API_KEY` are read by no code.
+Guests receive no confirmations or receipts from the original stack. (The PMS
+has its own WhatsApp and email features.)
+
+### L-27 · Requests routed through the Caddy router may share one rate-limit bucket — **Hypothesis**
+
+When the landing page and its `/api/v1` are reached through the Lodgiva router
+(`deploy/oracle/Caddyfile.routes`), Vercel sees the **server's** address, not
+the visitor's. If Vercel sets `x-forwarded-for` to its immediate peer, every
+visitor coming through one router shares the 30-per-minute authentication
+budget. Low impact while the router serves demos; confirm before a hotel
+depends on it.
+
+### L-28 · The night audit isn't scheduled on the original stack — **Confirmed**
+
+There's no scheduler: no `@Cron`, and no Vercel Cron in `vercel.json`. The
+business date only advances when a person runs the night audit. The PMS runs
+its own through Frappe's scheduler, which the installer enables.
+
 ---
 
 ## Carried forward from the prior audit — not yet re-verified

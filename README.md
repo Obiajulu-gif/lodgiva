@@ -152,8 +152,15 @@ checks they're refused.
 
 ## Documentation
 
+**Start at [docs/README.md](docs/README.md)**, the documentation home,
+organised by what you're trying to do. The most-used documents:
+
 | Document | What it answers |
 |---|---|
+| [**How Lodgiva works**](docs/ARCHITECTURE.md) | The whole system end to end: request path, tenancy, money, auth, data model, limits |
+| [**Deploying to Vercel**](docs/deploy-vercel.md) | From zero to a live landing page, dashboard and API |
+| [**Configuration**](docs/CONFIGURATION.md) | Every environment variable: default, required or not, where it's read |
+| [**Changelog**](CHANGELOG.md) | What changed, and when |
 | [ADR-001](docs/adr/ADR-001-kamra-fork-evaluation.md) | Why build on Kamra, and on what conditions |
 | [Gap matrix](docs/LODGIVA_GAP_MATRIX.md) | What Kamra does and doesn't do, verified on a live site |
 | [Deploying the PMS](docs/LODGIVA_PMS_DEPLOYMENT.md) | The laptop demo, the demo script, and production notes |
