@@ -99,7 +99,7 @@ pnpm --filter @lodgiva/database build        # generates the Prisma client
 PowerShell:
 
 ```powershell
-$env:DIRECT_URL   = "postgresql://neondb_owner:...@ep-xxx.region.aws.neon.tech/neondb?sslmode=require"
+$env:DIRECT_URL   = Read-Host "Paste the owner's DIRECT connection string"   # not echoed into history
 $env:DATABASE_URL = $env:DIRECT_URL
 pnpm db:migrate
 ```
@@ -109,14 +109,21 @@ row-level-security policies. Now give `lodgiva_app` a password. In Neon's SQL
 Editor, as the owner:
 
 ```sql
-ALTER ROLE lodgiva_app WITH LOGIN PASSWORD 'a-long-random-password';
+ALTER ROLE lodgiva_app WITH LOGIN PASSWORD '<paste a long random password here>';
 ```
 
-Compose the **runtime** URL: the pooled host, with the `lodgiva_app` user:
+Compose the **runtime** URL. Take Neon's **pooled** connection string (the
+hostname contains `-pooler`) and change two parts:
 
-```
-postgresql://lodgiva_app:<password>@ep-xxx-pooler.region.aws.neon.tech/neondb?sslmode=require&connect_timeout=15&connection_limit=10&pool_timeout=20
-```
+| Part | Change it to |
+|---|---|
+| User | `lodgiva_app` |
+| Password | The one you just set |
+
+Keep the host and database name. Add these query parameters if they're
+missing: `sslmode=require&connect_timeout=15&connection_limit=10&pool_timeout=20`.
+Paste the result straight into Vercel's secret store (Step 4). Never into a
+file, a chat or a document.
 
 > **Why two roles.** The owner **bypasses** row-level security. If the app ran
 > as the owner, one missing `tenantId` filter would show one hotel another
