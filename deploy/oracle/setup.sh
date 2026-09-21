@@ -141,6 +141,9 @@ if [ "${DEMO_HOTEL:-0}" = 1 ]; then
     "rooms": [{"room_type_code": "DLX", "numbers": ["101", "102", "103"]},
               {"room_type_code": "STD", "numbers": ["201", "202", "203"]}]}}' \
     || echo "  (sample hotel already exists - skipped)"
+  # Photos for the booking page (Unsplash License; credits ship with the app).
+  bench --site "$SITE" execute lodgiva_nigeria.demo.apply_demo_photos \
+    || echo "  (photos not applied - add them in Booking Settings)"
 fi
 
 # ── 8. Caddy: HTTPS, the landing page at /, the PMS behind it ────────────
