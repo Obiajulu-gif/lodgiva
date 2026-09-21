@@ -9,5 +9,10 @@
 import Caddyfile.routes
 
 :8001 {
+	# Frappe's realtime service runs on its own port on the laptop; on Oracle
+	# the frappe_docker frontend already routes /socket.io internally.
+	handle /socket.io/* {
+		reverse_proxy 127.0.0.1:9001
+	}
 	import lodgiva_routes
 }
