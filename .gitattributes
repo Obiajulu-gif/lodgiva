@@ -1,0 +1,5 @@
+# Files that run on Linux servers must keep LF line endings. A single
+# carriage return makes `bash setup.sh` fail with "$'\r': command not found",
+# and Windows checkouts would otherwise add one on the next edit.
+*.sh            text eol=lf
+deploy/**       text eol=lf

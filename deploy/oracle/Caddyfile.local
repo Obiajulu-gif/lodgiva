@@ -1,0 +1,13 @@
+# The laptop demo: Cloudflare Tunnel -> Caddy on :8001 -> Frappe on :8002
+# or the Vercel landing page. The tunnel terminates HTTPS, so Caddy speaks
+# plain HTTP here.
+{
+	admin off
+	auto_https off
+}
+
+import Caddyfile.routes
+
+:8001 {
+	import lodgiva_routes
+}

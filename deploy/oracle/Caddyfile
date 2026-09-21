@@ -1,0 +1,13 @@
+# Oracle Cloud: Caddy terminates HTTPS for LODGIVA_DOMAIN (a real domain,
+# or <ip-with-dashes>.sslip.io for a free one) and certificates are issued
+# and renewed automatically by Let's Encrypt.
+{
+	email {$ACME_EMAIL}
+}
+
+import Caddyfile.routes
+
+{$LODGIVA_DOMAIN} {
+	encode zstd gzip
+	import lodgiva_routes
+}
