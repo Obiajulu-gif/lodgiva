@@ -1,0 +1,36 @@
+# Lodgiva on one address: the landing page at /, the PMS behind it.
+#
+# The landing page stays on Vercel (apps/marketing-web). Caddy fetches it
+# from there for every path the PMS does not own, so the public site is
+# never rebuilt or redeployed here. The PMS paths go to Frappe.
+#
+# Imported by Caddyfile (Oracle) and Caddyfile.local (the laptop tunnel).
+# FRAPPE_UPSTREAM is where Frappe answers: the frappe_docker `frontend`
+# container on Oracle, `127.0.0.1:8002` on the laptop.
+
+(lodgiva_routes) {
+	# The landing page's "Log in" and "Get started" buttons lead to the PMS.
+	# Deliberately NOT to the legacy Next.js signup: through this address it
+	# would create tenants in the production Neon database.
+	redir /signup /login 302
+	redir /dashboard /lodgiva 302
+	redir /dashboard/* /lodgiva 302
+
+	@pms path /lodgiva /lodgiva/* /kamra /kamra/* \
+		/book /book/* /stay /stay/* /hk /hk/* /checkin/* \
+		/app /app/* /apps /login /logout /update-password* /me /message \
+		/api/method/* /api/resource/* /api/v2/* \
+		/assets/* /files/* /private/* /socket.io/* \
+		/website_script.js /print/* /printview* /desk*
+
+	handle @pms {
+		reverse_proxy {$FRAPPE_UPSTREAM}
+	}
+
+	# Everything else - /, /_next/*, pricing, features - is the landing page.
+	handle {
+		reverse_proxy https://lodgiva.vercel.app {
+			header_up Host lodgiva.vercel.app
+		}
+	}
+}

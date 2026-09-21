@@ -17,7 +17,7 @@ Everything below is already built on this machine, in WSL distro
 
 ### Start it
 
-Two processes, each in **its own PowerShell window**, left open while you
+Three processes, each in **its own PowerShell window**, left open while you
 demo. WSL shuts its VM down when nothing is holding it, so these windows are
 the thing keeping it alive.
 
@@ -33,7 +33,15 @@ Window 2 — the site:
 wsl -d Ubuntu-24.04 -u frappe -- bash /home/frappe/kamra-serve.sh
 ```
 
-Then open **http://localhost:8001/kamra**.
+Window 3 — the router, which puts your landing page at `/` and the PMS
+behind it (Frappe itself now answers on 8002):
+
+```powershell
+wsl -d Ubuntu-24.04 -u frappe -- bash -c "cd ~/lodgiva-router && FRAPPE_UPSTREAM=127.0.0.1:8002 ./caddy run --config Caddyfile.local --adapter caddyfile"
+```
+
+Then open **http://localhost:8001/** for the landing page, or
+**http://localhost:8001/lodgiva** for the PMS.
 
 ### Log in
 
@@ -59,8 +67,8 @@ real deployment.
 | # | URL | What it proves |
 | --- | --- | --- |
 | 1 | `/book` | **No login needed.** The public booking engine for "Lodgiva Demo Hotel, Ikeja" priced in naira — ₦96,750 for two nights, taxes in. The best opener: it looks like a product, instantly |
-| 2 | `/kamra` | Front desk: today board, arrivals, departures, the tape chart |
-| 3 | `/kamra/setup` | Hotel onboarding — property, room types, rooms, rates |
+| 2 | `/lodgiva` | Front desk: today board, arrivals, departures, the tape chart |
+| 3 | `/lodgiva/setup` | Hotel onboarding — property, room types, rooms, rates |
 | 4 | `/hk` | Housekeeping, on a phone-shaped screen |
 | 5 | `/app` | Frappe Desk — the admin escape hatch. Useful for showing the audit trail |
 
@@ -85,7 +93,7 @@ product and the controls in ninety seconds.
 
 ### Stop it
 
-Close both windows, or:
+Close all three windows, or:
 
 ```powershell
 wsl -d Ubuntu-24.04 --shutdown
@@ -164,7 +172,6 @@ docker compose exec backend bench new-site app.lodgiva.com \
   --install-app payments --install-app kamra --install-app lodgiva_nigeria
 
 docker compose exec backend bench --site app.lodgiva.com enable-scheduler
-docker compose exec backend bench --site app.lodgiva.com set-config server_script_enabled 1
 ```
 
 Installing `lodgiva_nigeria` runs its `after_migrate` hook, which applies the
@@ -181,7 +188,7 @@ posting room charges.
 
 ### Step 4 — first-run setup
 
-Open `https://app.lodgiva.com/kamra/setup` and create the property. Set
+Open `https://app.lodgiva.com/lodgiva/setup` and create the property. Set
 **country Nigeria** — that one field is what makes every downstream money
 decision use the Nigerian pack. Leaving it blank makes Kamra fall back to
 India.
@@ -194,8 +201,8 @@ Keep `lodgiva.com` on Vercel and send `/dashboard` to the PMS. In
 ```ts
 async redirects() {
   return [
-    { source: "/dashboard", destination: "https://app.lodgiva.com/kamra", permanent: false },
-    { source: "/dashboard/:path*", destination: "https://app.lodgiva.com/kamra", permanent: false },
+    { source: "/dashboard", destination: "https://app.lodgiva.com/lodgiva", permanent: false },
+    { source: "/dashboard/:path*", destination: "https://app.lodgiva.com/lodgiva", permanent: false },
   ];
 }
 ```
@@ -239,6 +246,8 @@ bench --site kamra.localhost set-config host_name https://<that-url>
 Free, genuinely instant, and the guest-facing `/book` page works over it.
 
 ### 2. Oracle Cloud Always Free — free forever, and big enough to mean it
+
+**Step-by-step guide and a one-command installer: [`deploy/oracle/README.md`](../deploy/oracle/README.md).**
 
 The only free tier that can really run a PMS: **4 Arm CPUs and 24 GB RAM**
 across your Always Free allowance, plus 200 GB of block storage. That is more
