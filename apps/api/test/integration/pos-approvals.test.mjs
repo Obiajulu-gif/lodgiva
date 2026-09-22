@@ -11,11 +11,12 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
+import { parseApiJson, fetchWithLoginBackoff } from "./lib/api.mjs";
 
 const BASE = process.env.API_BASE ?? "http://localhost:4000/api/v1";
 
 async function call(path, { method = "GET", body, token } = {}) {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetchWithLoginBackoff(`${BASE}${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -24,7 +25,7 @@ async function call(path, { method = "GET", body, token } = {}) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
-  return { status: res.status, data: text ? JSON.parse(text) : {} };
+  return { status: res.status, data: text ? parseApiJson(text) : {} };
 }
 
 const login = async (email) =>
@@ -43,6 +44,8 @@ let ownerToken; // TENANT_OWNER — a second approver
 let property;
 let outlet;
 let cheapItem;
+// Cash settlement lands in a drawer, so it names an open cashier shift.
+let deskShiftId;
 
 /** Creates an order whose total lands on the requested side of the threshold. */
 async function makeOrder({ large }) {
@@ -82,6 +85,26 @@ test("setup", async () => {
   assert.ok(outlet, "the seed must provide an outlet with menu items");
   cheapItem = [...outlet.menuItems].sort((a, b) => Number(a.priceMinor) - Number(b.priceMinor))[0];
   assert.ok(Number(cheapItem.priceMinor) > 0);
+
+  // Cash settled at an outlet goes into the settling cashier's drawer, so the
+  // front desk works from an open shift. Close any stale one first, the same
+  // way night-audit.test.mjs does, so reruns start clean.
+  const shifts = await call(`/cashiering/shifts?propertyId=${property.id}`, { token: deskToken });
+  for (const stale of shifts.data.filter((x) => x.status === "OPEN")) {
+    const detail = await call(`/cashiering/shifts/${stale.id}`, { token: deskToken });
+    await call(`/cashiering/shifts/${stale.id}/close`, {
+      method: "POST",
+      token: deskToken,
+      body: { countedMinor: detail.data.expectedMinor },
+    });
+  }
+  const opened = await call("/cashiering/shifts", {
+    method: "POST",
+    token: deskToken,
+    body: { propertyId: property.id, openingFloatMinor: 0 },
+  });
+  assert.equal(opened.status, 201, JSON.stringify(opened.data));
+  deskShiftId = opened.data.id;
 });
 
 // ── The self-service window ──────────────────────────────────────────────
@@ -146,7 +169,7 @@ test("a pending void cannot be settled around", async () => {
   const settle = await call(`/pos/orders/${order.id}/settle`, {
     method: "POST",
     token: deskToken,
-    body: { settlement: "CASH" },
+    body: { settlement: "CASH", shiftId: deskShiftId },
   });
   assert.equal(settle.status, 409, JSON.stringify(settle.data));
   assert.equal(settle.data.error.code, "VOID_PENDING");
@@ -239,7 +262,7 @@ test("rejection returns the order to the floor with no trace of a void", async (
   const settle = await call(`/pos/orders/${order.id}/settle`, {
     method: "POST",
     token: deskToken,
-    body: { settlement: "CASH" },
+    body: { settlement: "CASH", shiftId: deskShiftId },
   });
   assert.equal(settle.status, 201, JSON.stringify(settle.data));
 });
@@ -249,7 +272,7 @@ test("a settled order is never voidable, approval or not", async () => {
   await call(`/pos/orders/${order.id}/settle`, {
     method: "POST",
     token: deskToken,
-    body: { settlement: "CASH" },
+    body: { settlement: "CASH", shiftId: deskShiftId },
   });
   const res = await call(`/pos/orders/${order.id}/void`, {
     method: "POST",
@@ -384,4 +407,17 @@ test("an unknown export type fails loudly instead of returning an empty file", a
     },
   });
   assert.equal(res.status, 400, JSON.stringify(res.data));
+});
+
+// ── Teardown ─────────────────────────────────────────────────────────────
+
+test("teardown: the desk closes its drawer balanced", async () => {
+  // An open drawer blocks the night audit, so the suite leaves none behind.
+  const detail = await call(`/cashiering/shifts/${deskShiftId}`, { token: deskToken });
+  const closed = await call(`/cashiering/shifts/${deskShiftId}/close`, {
+    method: "POST",
+    token: deskToken,
+    body: { countedMinor: detail.data.expectedMinor },
+  });
+  assert.equal(closed.status, 201, JSON.stringify(closed.data));
 });

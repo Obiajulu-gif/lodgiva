@@ -9,11 +9,12 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
+import { parseApiJson, fetchWithLoginBackoff } from "./lib/api.mjs";
 
 const BASE = process.env.API_BASE ?? "http://localhost:4000/api/v1";
 
 async function call(path, { method = "GET", body, token } = {}) {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetchWithLoginBackoff(`${BASE}${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -24,7 +25,7 @@ async function call(path, { method = "GET", body, token } = {}) {
   const text = await res.text();
   let data;
   try {
-    data = text ? JSON.parse(text) : {};
+    data = text ? parseApiJson(text) : {};
   } catch {
     data = { raw: text };
   }
@@ -107,28 +108,49 @@ test("passwords are stored as Argon2id, never returned by the API", async () => 
   assert.ok(!serialised.includes("$argon2"), "response must not leak a password hash");
 });
 
-test("refresh rotation invalidates the token it was issued from", async () => {
-  const session = await login("frontdesk@grandpalm.demo");
-  const first = await call("/auth/refresh", {
+/**
+ * The refresh token travels only in the HttpOnly `lodgiva_refresh` cookie; it
+ * is never in a response body, so page scripts can never read it. These
+ * helpers speak that contract the way a browser does.
+ */
+const refreshCookieFrom = (res) => {
+  const cookie = res.headers
+    .getSetCookie()
+    .find((c) => c.startsWith("lodgiva_refresh="));
+  assert.ok(cookie, "the refresh token must be issued as the lodgiva_refresh cookie");
+  assert.match(cookie, /HttpOnly/i, "the refresh cookie must be HttpOnly");
+  return cookie.split(";")[0]; // "lodgiva_refresh=<token>"
+};
+
+const refreshWith = (cookie) =>
+  fetch(`${BASE}/auth/refresh`, {
     method: "POST",
-    body: { refreshToken: session.refreshToken },
+    headers: { "Content-Type": "application/json", Cookie: cookie },
   });
-  assert.equal(first.status, 201, JSON.stringify(first.data));
-  assert.notEqual(first.data.refreshToken, session.refreshToken, "refresh token must rotate");
+
+test("refresh rotation invalidates the token it was issued from", async () => {
+  const loginRes = await fetchWithLoginBackoff(`${BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "frontdesk@grandpalm.demo", password: "Password123!" }),
+  });
+  assert.equal(loginRes.status, 201);
+  const loginBody = await loginRes.json();
+  assert.equal(loginBody.refreshToken, undefined, "the refresh token must never appear in a body");
+  const original = refreshCookieFrom(loginRes);
+
+  const first = await refreshWith(original);
+  assert.equal(first.status, 201, await first.clone().text());
+  const rotated = refreshCookieFrom(first);
+  assert.notEqual(rotated, original, "refresh token must rotate");
 
   // Replaying the consumed token must fail — this is the whole point of rotation.
-  const replay = await call("/auth/refresh", {
-    method: "POST",
-    body: { refreshToken: session.refreshToken },
-  });
+  const replay = await refreshWith(original);
   assert.equal(replay.status, 401);
-  assert.equal(replay.data.error.code, "SESSION_INVALID");
+  assert.equal((await replay.json()).error.code, "SESSION_INVALID");
 
   // The newly issued token still works.
-  const second = await call("/auth/refresh", {
-    method: "POST",
-    body: { refreshToken: first.data.refreshToken },
-  });
+  const second = await refreshWith(rotated);
   assert.equal(second.status, 201);
 });
 

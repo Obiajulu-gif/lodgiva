@@ -86,6 +86,12 @@ Next:
     pnpm --filter @lodgiva/database run migrate
 
 Then grant the app role its rights (the migration creates lodgiva_app):
-  sudo -u postgres psql -d $DB_NAME -c "GRANT lodgiva_app TO $APP_ROLE;"
   sudo -u postgres psql -d $DB_NAME -c "ALTER ROLE $APP_ROLE INHERIT;"
+  sudo -u postgres psql -d $DB_NAME -c "GRANT lodgiva_app TO $APP_ROLE WITH INHERIT TRUE;"
+
+WITH INHERIT TRUE is required on PostgreSQL 16+. There, a membership's
+inherit option is fixed when the GRANT runs (from the role's INHERIT
+attribute at that moment). A grant made while the role was NOINHERIT stays
+non-inheriting even after ALTER ROLE ... INHERIT, and every query then fails
+with "permission denied for table User".
 INFO
