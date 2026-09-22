@@ -75,8 +75,7 @@ function assertDisposable(rawUrl) {
         "",
         "  createdb lodgiva_test",
         "  DATABASE_URL=postgresql://USER@localhost:5432/lodgiva_test pnpm db:migrate",
-      ].join("
-")
+      ].join("\n")
     );
   }
   return { kind: "postgres", label: `${host}/${database}` };
