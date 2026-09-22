@@ -14,7 +14,9 @@ import { HomeSearch } from '@/components/home-search';
 import { appName, siteDescription } from '@/lib/shared';
 
 export const metadata: Metadata = {
-  title: `${appName} — hotel management for Nigerian hotels`,
+  // Absolute: the root layout's "%s | Lodgiva Docs" template would otherwise
+  // append the site name to a title that already ends with it.
+  title: { absolute: `${appName} — hotel management for Nigerian hotels` },
   description: siteDescription,
   alternates: { canonical: '/' },
 };
