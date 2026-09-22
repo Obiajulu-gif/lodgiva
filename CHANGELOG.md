@@ -91,7 +91,7 @@ than this repository. They're recorded here so the product has one history.
 - The installer ran no `apt-get update` before installing, which fails on a
   fresh image.
 - The README said payments used "sandbox adapters"; that adapter was removed on
-  2026-09-09. It also carried stale test counts; the unit suite is 150 tests.
+  2026-09-09. It also carried stale test counts; the unit suite is 156 tests.
 
 ---
 
