@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev",
+    "dev": "next dev --port 3001",
     "start": "next start",
     "types:check": "next typegen && tsc --noEmit",
     "lint": "eslint",
@@ -28,7 +28,7 @@
     "@types/react-dom": "^19.3.0",
     "postcss": "^8.5.28",
     "tailwindcss": "^4.3.3",
-    "typescript": "^7.0.2",
+    "typescript": "^5.8.3",
     "eslint": "^9.39.4",
     "eslint-config-next": "16.3.5"
   }

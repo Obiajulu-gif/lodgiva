@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { Search } from 'lucide-react';
 import { useSearchContext } from 'fumadocs-ui/contexts/search';
 
@@ -13,13 +13,16 @@ import { useSearchContext } from 'fumadocs-ui/contexts/search';
  */
 export function HomeSearch() {
   const { setOpenSearch } = useSearchContext();
-  const [isMac, setIsMac] = useState(false);
 
-  // Rendered after mount: the platform is unknown on the server, and showing
-  // the wrong shortcut is worse than showing none for a moment.
-  useEffect(() => {
-    setIsMac(/Mac|iPhone|iPad/i.test(navigator.platform ?? navigator.userAgent));
-  }, []);
+  // The platform is unknown on the server, so it renders as not-Mac and
+  // corrects itself on hydration. Read through useSyncExternalStore rather
+  // than setting state in an effect: the value never changes after mount, so
+  // there is nothing to subscribe to.
+  const isMac = useSyncExternalStore(
+    () => () => {},
+    () => /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent),
+    () => false,
+  );
 
   return (
     <button
