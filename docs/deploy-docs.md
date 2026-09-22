@@ -51,11 +51,16 @@ A monorepo pushes changes that have nothing to do with the documentation. In
 **Settings → Git → Ignored Build Step**, use:
 
 ```bash
-git diff --quiet HEAD^ HEAD -- apps/docs packages pnpm-lock.yaml
+npx turbo-ignore @lodgiva/docs
 ```
 
-Vercel skips the build when that command succeeds, which is when nothing the
-documentation depends on changed.
+It skips the build when neither `apps/docs` nor anything it depends on
+changed, working the dependency graph out from `turbo.json`.
+
+Do not reach for a hand-written `git diff HEAD^ HEAD` here. Vercel clones
+shallowly, so `HEAD^` is often missing; git then exits 128, and Vercel cancels
+the deployment on any exit code other than 0 or 1. The symptom is a push that
+silently never deploys.
 
 ## Checking a deployment
 
