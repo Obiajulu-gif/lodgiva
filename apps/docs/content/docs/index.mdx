@@ -1,0 +1,46 @@
+---
+title: "Lodgiva documentation"
+description: "Hotel management built for Nigerian hotels. Set up your property, take bookings, check guests in and out, bill in naira with VAT, and close the day."
+---
+
+Lodgiva is hotel management software for Nigerian hotels, serviced apartments
+and small hotel groups. It covers the work a property does every day: taking
+bookings, checking guests in and out, putting charges on a bill, taking
+payment, and closing the day's business.
+
+It is built on [Frappe](https://frappe.io) and the open-source
+[Kamra PMS](https://github.com/Kamra-PMS/kamra-pms), with a Nigerian layer of
+its own: naira, 7.5% VAT on its own line, TIN on invoices, bank transfer and
+POS terminal as first-class payment methods, and controls that stop money
+going missing.
+
+## Where to start
+
+<Cards>
+  <Card title="New to Lodgiva" href="/docs/getting-started" description="What it is, how a hotel is set up, and your first booking from start to finish." />
+  <Card title="Working the front desk" href="/docs/front-desk" description="Take a booking, check a guest in, move a room, check them out." />
+  <Card title="Money and billing" href="/docs/billing" description="Bills, payments, VAT invoices, the cash drawer and the night audit." />
+  <Card title="Setting up the hotel" href="/docs/property" description="Room types, rooms, prices and your own booking page." />
+  <Card title="Installing Lodgiva" href="/docs/install" description="Put it on a server with one command, or run a demo on a laptop." />
+  <Card title="Developers" href="/docs/developers" description="How it is built, its API, and how to extend it without forking." />
+</Cards>
+
+## What this documentation covers
+
+These pages document the **Lodgiva PMS**: the system hotel staff use, built on
+Frappe. Everything described here was checked against the running product.
+
+Lodgiva is made of three repositories:
+
+| Repository | What it holds |
+| --- | --- |
+| [`lodgiva-pms`](https://github.com/Obiajulu-gif/lodgiva-pms) | The PMS itself: front desk, bookings, billing, housekeeping, POS |
+| [`lodgiva-nigeria`](https://github.com/Obiajulu-gif/lodgiva-nigeria) | Naira, VAT and TIN, Nigerian defaults, the money controls, branding |
+| [`lodgiva`](https://github.com/Obiajulu-gif/lodgiva) | The public website, these documents, and the installer |
+
+<Note title="How to read status labels">
+Anything not yet available is labelled where it appears:
+<Status type="available" />, <Status type="beta" />, <Status type="planned" />
+or <Status type="deprecated" />. If a page carries no label, the feature
+works today.
+</Note>

@@ -1,0 +1,66 @@
+---
+title: "Domain and HTTPS"
+description: "Point your own domain at Lodgiva and get a certificate automatically."
+---
+
+## Without a domain
+
+The installer gives you a working HTTPS address derived from your server's IP,
+such as `https://102-37-14-9.sslip.io`. It is real HTTPS and fine for testing.
+
+## With your own domain
+
+<Steps>
+
+<Step>
+
+### Create an A record
+
+At your DNS provider, point the name at your server's IP:
+
+```text
+Type  A
+Name  hotel        (for hotel.example.com)
+Value 102.37.14.9
+TTL   automatic
+```
+
+</Step>
+
+<Step>
+
+### Wait for it to resolve
+
+```bash
+dig +short hotel.example.com
+```
+
+It should print your server's IP. This can take minutes or, occasionally,
+hours.
+
+</Step>
+
+<Step>
+
+### Run the installer with the domain
+
+```bash
+sudo LODGIVA_DOMAIN=hotel.example.com bash setup.sh
+```
+
+The certificate is obtained automatically and renews itself.
+
+</Step>
+
+</Steps>
+
+<Warning>
+Point the DNS **before** running with a domain. A certificate request for a
+name that does not resolve to the server is refused, and repeated failures can
+get you rate-limited for an hour.
+</Warning>
+
+## Changing the address later
+
+Re-run the installer with the new `LODGIVA_DOMAIN`. It reconfigures the proxy
+and gets a new certificate.

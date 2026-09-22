@@ -1,0 +1,80 @@
+---
+title: "Payments"
+description: "Record cash, bank transfer and POS terminal payments in naira, each with the reference that makes it traceable."
+---
+
+## The tenders
+
+Lodgiva's Nigerian setup offers:
+
+| Tender | Reference needed | Notes |
+| --- | --- | --- |
+| **Cash** | No | Goes into the cashier drawer |
+| **Bank Transfer** | **Yes** | The narration or transaction reference |
+| **POS Terminal** | **Yes** | The terminal slip number |
+| **Card** | **Yes** | Authorisation or slip number |
+| **Company Credit** | Yes | The company's reference or PO |
+| **OTA Prepaid** | Yes | Already collected by the channel |
+| **Payment Link** | Yes | Sent to the guest to pay |
+
+## Record a payment
+
+<Steps>
+
+<Step>
+Open the guest's bill and select **Add payment**.
+</Step>
+
+<Step>
+Choose the tender, enter the amount in naira, and enter the reference for
+anything that is not cash.
+</Step>
+
+<Step>
+Save. The balance drops immediately, and cash payments go to the open
+[cashier session](/docs/billing/cashier).
+</Step>
+
+</Steps>
+
+## Why references are required
+
+Lodgiva refuses a non-cash payment without a reference:
+
+```text
+Bank Transfer payments need a reference (the bank narration or
+transaction ID). Cash is the only tender that may be recorded
+without one.
+```
+
+And it refuses the **same reference twice** on one bill:
+
+```text
+Reference 8832019 has already been recorded on this folio.
+If this is a second, separate payment, use its own reference.
+```
+
+Both guard the same failure: a transfer recorded twice, or recorded with
+nothing to match it against at the end of the month. A reference you cannot
+find in the bank statement is money you cannot prove arrived.
+
+<Tip>
+Enter the reference while the guest is standing there. Reconstructing it a
+week later from a screenshot on a phone is how hotels lose afternoons.
+</Tip>
+
+## Part payments
+
+A guest may pay in instalments: a deposit on booking, the balance at
+departure. Each is its own payment line with its own reference.
+
+## Overpayment
+
+If a guest pays more than they owe, the balance goes negative and is refunded
+at departure. See [Refunds](/docs/billing/refunds).
+
+## Card payments
+
+<Status type="planned" /> Direct Paystack and Flutterwave integration is not
+built. Today, cards are taken on your own POS terminal and recorded in Lodgiva
+with the slip number, which is how most Nigerian hotels already work.

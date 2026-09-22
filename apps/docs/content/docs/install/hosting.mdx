@@ -1,0 +1,42 @@
+---
+title: "Where to host"
+description: "Providers that work from Nigeria, what they cost, and the card problem that usually decides it."
+---
+
+The installer works on any Ubuntu 22.04 or 24.04 server, whichever provider
+you choose. What usually decides the choice from Nigeria is not price but
+**whether your card is accepted**.
+
+| Provider | Server to choose | Rough cost | Pays with |
+| --- | --- | --- | --- |
+| **Hetzner Cloud** | CX22, 2 vCPU / 4 GB | ~€4–5 a month | Card **or PayPal** |
+| **DigitalOcean** | Basic Droplet, 2 vCPU / 4 GB | ~$24 a month | Card **or PayPal** |
+| **Contabo** | Cloud VPS 10, 4 vCPU / 8 GB | ~€5–6 a month | Card **or PayPal** |
+| **Frappe Cloud** | Private bench | Check their pricing | Card |
+| Google Cloud, AWS, Azure | 2 vCPU / 4 GB | Trial credit | Card only |
+| Oracle Always Free | Ampere A1 | Free | Card, for verification |
+
+Prices change; treat them as a guide.
+
+## Recommendation
+
+**Hetzner** if your account is approved: cheapest reliable option, and it
+takes PayPal. Otherwise **DigitalOcean**, which also takes PayPal and has the
+simplest dashboard.
+
+If cards keep being declined, a **USD virtual card** from a Nigerian fintech
+is what people most commonly use. PayPal avoids the question entirely.
+
+<Note>
+Oracle's Always Free tier is genuinely free and generous, but its sign-up
+frequently rejects Nigerian cards. Do not build a plan around getting through
+it.
+</Note>
+
+**Students:** the GitHub Student Developer Pack includes DigitalOcean credit,
+and Azure for Students needs no card at all.
+
+## Hosting the marketing site
+
+The Lodgiva landing page is a Next.js app and deploys to Vercel's free tier.
+Only the PMS needs a server.

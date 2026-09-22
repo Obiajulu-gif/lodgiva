@@ -1,0 +1,88 @@
+---
+title: "Create your hotel"
+description: "Use the setup wizard to create your property, room types, rooms and rates, and understand why the country field matters."
+---
+
+A fresh Lodgiva installation has no hotel in it. The setup wizard at
+**`/lodgiva/setup`** creates everything at once: the property, its room types,
+its rooms and its meal plans.
+
+## What you need first
+
+- The hotel's legal and trading name, and its address.
+- Your room categories and the nightly price of each.
+- The room numbers in each category.
+- Your TIN, if you issue VAT invoices.
+
+## Fill in the wizard
+
+<Steps>
+
+<Step>
+
+### The property
+
+Name, city and state. **Set the country to Nigeria.**
+
+<Danger title="The country field decides your tax">
+Lodgiva picks its tax rules from the property's country. Set to Nigeria, you
+get naira, 7.5% VAT on its own line and a TIN field. Left blank, the
+underlying platform falls back to Indian tax rules, and your invoices will be
+wrong. See [Nigerian settings](/docs/administration/nigeria).
+</Danger>
+
+</Step>
+
+<Step>
+
+### Room types
+
+One row per category you sell, for example:
+
+| Code | Name | Price per night |
+| --- | --- | --- |
+| `STD` | Standard | ₦45,000 |
+| `DLX` | Deluxe | ₦85,000 |
+| `EXS` | Executive Suite | ₦150,000 |
+
+Prices are what the guest pays before VAT. Lodgiva adds VAT as its own line
+on the bill.
+
+Leave the tax percent empty unless a room type is taxed differently. Empty
+means "use the property's standard rate", which is what you want.
+
+</Step>
+
+<Step>
+
+### Rooms
+
+List the room numbers in each type, such as `101, 102, 103` for Deluxe. You
+can add floors later.
+
+<Tip>
+Use the numbers on the doors. Staff search by them all day.
+</Tip>
+
+</Step>
+
+<Step>
+
+### Finish
+
+Lodgiva creates everything and opens the Front Desk. You can change any of it
+afterwards under **Settings**.
+
+</Step>
+
+</Steps>
+
+## After setup
+
+| Task | Where |
+| --- | --- |
+| Photos and descriptions for your booking page | [Your booking page](/docs/property/booking-page) |
+| Seasonal or weekend pricing | [Prices and seasons](/docs/property/rates) |
+| Check-in and check-out times, deposits, cancellation rules | [Policies](/docs/property/policies) |
+| Staff accounts | [Staff and roles](/docs/administration/staff-and-roles) |
+| Your TIN on invoices | [Nigerian settings](/docs/administration/nigeria) |

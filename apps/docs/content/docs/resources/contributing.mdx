@@ -1,0 +1,52 @@
+---
+title: "Contributing"
+description: "Report a bug, ask for a feature, or improve these documents."
+---
+
+## Report a bug
+
+Open an issue on the repository the problem belongs to:
+
+| Problem | Repository |
+| --- | --- |
+| The PMS: bookings, billing, housekeeping | [`lodgiva-pms`](https://github.com/Obiajulu-gif/lodgiva-pms/issues) |
+| Naira, VAT, TIN, tenders, money controls | [`lodgiva-nigeria`](https://github.com/Obiajulu-gif/lodgiva-nigeria/issues) |
+| Website, installer, these documents | [`lodgiva`](https://github.com/Obiajulu-gif/lodgiva/issues) |
+
+Include what you did, what you expected, what happened, and the exact message.
+
+<Warning>
+Never paste guest names, phone numbers, ID documents, payment references or
+connection strings into an issue. Redact them first; issues are public.
+</Warning>
+
+## Improve these documents
+
+Every page has an **Edit this page** link at the bottom, which opens the file
+on GitHub. Corrections are welcome, especially:
+
+- something described here that does not match the product;
+- a step that is missing or in the wrong order;
+- a message a member of staff met that is not explained anywhere.
+
+The documents live in `apps/docs/content/docs` in the `lodgiva` repository.
+
+## Writing style
+
+- Write for the person doing the job, not for the system.
+- Say what something does, not that it is powerful.
+- Never document something that is not built. Label it with
+  `<Status type="planned" />` instead.
+- Use real figures and real messages, copied from the running product.
+
+## Running the documentation locally
+
+```bash
+pnpm install
+```
+
+```bash
+pnpm docs
+```
+
+Then open `http://localhost:3001`.

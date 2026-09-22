@@ -1,0 +1,99 @@
+---
+title: "Install on a server"
+description: "One command on a fresh Ubuntu machine gives you Lodgiva behind HTTPS in about forty minutes."
+---
+
+## Before you start
+
+A fresh Ubuntu 22.04 or 24.04 server with at least 4 GB of RAM, a public IP,
+and ports 80 and 443 open. See [What you need](/docs/install/requirements).
+
+## Install
+
+<Steps>
+
+<Step>
+
+### Connect to the server
+
+```bash
+ssh root@YOUR_SERVER_IP
+```
+
+</Step>
+
+<Step>
+
+### Download the installer
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Obiajulu-gif/lodgiva/main/deploy/oracle/setup.sh -o setup.sh
+```
+
+<Tip>
+Read it before you run it. It is a plain shell script, and running an
+unexamined script as root on your own server is a habit worth not forming.
+</Tip>
+
+</Step>
+
+<Step>
+
+### Run it
+
+With a free address derived from your server's IP:
+
+```bash
+sudo bash setup.sh
+```
+
+Or with your own domain, pointed at the server first:
+
+```bash
+sudo LODGIVA_DOMAIN=hotel.example.com bash setup.sh
+```
+
+To include a sample Lagos hotel to look around:
+
+```bash
+sudo DEMO_HOTEL=1 bash setup.sh
+```
+
+</Step>
+
+<Step>
+
+### Wait
+
+About forty minutes. The script prints each step as it goes, and re-running it
+is safe: finished steps are skipped.
+
+</Step>
+
+<Step>
+
+### Sign in
+
+Open `https://your-address/lodgiva` and sign in as `Administrator` with the
+password the installer shows at the end.
+
+<Warning>
+Change that password immediately, and store it somewhere only the owner can
+reach.
+</Warning>
+
+</Step>
+
+</Steps>
+
+## After installing
+
+1. Create your hotel: [Create your hotel](/docs/getting-started/create-your-hotel).
+2. Add your staff: [Staff and roles](/docs/administration/staff-and-roles).
+3. Set up backups: [Backups and updates](/docs/install/operations).
+
+## If it fails part way
+
+Run it again. The script is written to be re-run, and picks up where it
+stopped. If it keeps failing at the same step, see
+[Troubleshooting](/docs/resources/troubleshooting).

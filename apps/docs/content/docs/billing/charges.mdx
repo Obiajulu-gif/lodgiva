@@ -1,0 +1,61 @@
+---
+title: "Charges"
+description: "The twelve charge types, how VAT is applied, and how to post something to a room."
+---
+
+## The charge types
+
+| Type | Used for |
+| --- | --- |
+| `Room` | The nightly room charge, posted by the night audit |
+| `Meal Plan` | Breakfast or board included in a rate plan |
+| `Food & Beverage` | Restaurant and bar |
+| `Minibar` | In-room consumption |
+| `Laundry` | Guest laundry |
+| `Spa` | Spa and treatments |
+| `Early Check-in` | Arriving before check-in time |
+| `Late Checkout` | Leaving after check-out time |
+| `Cleaning Fee` | Extra cleaning, damage-free |
+| `Discount` | A reduction agreed at the time |
+| `Allowance` | A reduction given afterwards, usually to fix a problem |
+| `Misc` | Anything that fits nowhere else |
+
+<Tip>
+Use `Misc` sparingly. A month of `Misc` lines is a month you cannot analyse.
+</Tip>
+
+## Post a charge
+
+From the guest's bill, select **Add charge**, choose the type, write a
+description the guest will recognise, and enter the amount before VAT.
+
+## VAT
+
+VAT is calculated from the charge type and the property's tax settings, and
+posted as **its own line**, not folded into the price. That is what lets the
+invoice show the tax separately, as a VAT invoice must.
+
+The Nigerian default is **7.5%**. See [Nigerian settings](/docs/administration/nigeria).
+
+## Discounts and allowances
+
+Both reduce what the guest pays, but they mean different things:
+
+- A **discount** is agreed before or at the time: a corporate rate, a long-stay
+  reduction.
+- An **allowance** is given afterwards to put something right: the air
+  conditioner failed, so a night is reduced.
+
+Keeping them apart lets a manager see how much revenue is being given away to
+fix problems, which is a different number from what is being negotiated away.
+
+<Note>
+Allowances are reported on their own, alongside voided charges, so that
+patterns are visible. Repeated allowances on the same room usually mean the
+room, not the guest, is the problem.
+</Note>
+
+## Posting from the restaurant
+
+Orders taken in the POS can be sent straight to a guest's room bill, so the
+desk does not re-key them and the guest signs once.

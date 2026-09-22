@@ -1,0 +1,45 @@
+---
+title: "Room status"
+description: "The five housekeeping statuses, who changes them, and why the front desk depends on them."
+---
+
+Every room carries a housekeeping status and an occupancy status, and they are
+independent: an occupied room can be clean or dirty.
+
+## The statuses
+
+| Status | Meaning | Sellable |
+| --- | --- | --- |
+| `Dirty` | Needs cleaning, usually after a departure | No |
+| `Clean` | Cleaned, not yet inspected | Depends on your policy |
+| `Inspected` | Checked by a supervisor | Yes |
+| `Ready` | Ready to sell | Yes |
+| `Out of Order` | Cannot be used: maintenance | No |
+
+Occupancy — `Vacant` or `Occupied` — is set by Lodgiva from check-ins and
+check-outs. Nobody sets it by hand.
+
+## The board
+
+The room board shows every room, colour-coded. At a glance: what is dirty,
+what is ready, what is occupied, what is out of order.
+
+## How a room moves round the cycle
+
+```text
+Guest checks out  →  Dirty
+Cleaned           →  Clean
+Inspected         →  Inspected / Ready
+Guest checks in   →  Occupied
+```
+
+## Why it matters to the desk
+
+Check-in only offers rooms that are free **and** ready. A room cleaned an hour
+ago but never marked clean is a room you cannot sell, and a guest standing in
+reception while a supervisor is telephoned.
+
+<Tip>
+Have floor staff update the status as they leave each room, on their phone.
+The board is only as useful as it is current.
+</Tip>

@@ -1,0 +1,64 @@
+---
+title: "Architecture"
+description: "Three repositories, two runtimes, and the seam that keeps the Nigerian layer separate from the core."
+---
+
+## The repositories
+
+| Repository | Contents |
+| --- | --- |
+| [`lodgiva-pms`](https://github.com/Obiajulu-gif/lodgiva-pms) | The PMS: a fork of Kamra PMS, rebranded, on Frappe |
+| [`lodgiva-nigeria`](https://github.com/Obiajulu-gif/lodgiva-nigeria) | The Nigerian country pack: naira, VAT, TIN, tenders, money controls |
+| [`lodgiva`](https://github.com/Obiajulu-gif/lodgiva) | Marketing site, this documentation, the installer and deployment config |
+
+## The stack
+
+**PMS.** Python on [Frappe](https://frappe.io) v16, MariaDB, Redis, and a
+React single-page front end. Frappe supplies the document model, permissions,
+scheduler and REST layer; the PMS supplies hotel behaviour.
+
+**Marketing site and docs.** Next.js and TypeScript on Vercel. The
+documentation you are reading is a Fumadocs app in `apps/docs`.
+
+## How a request is served
+
+A single reverse proxy puts everything on one address:
+
+```text
+https://hotel.example.com/          → the landing page
+https://hotel.example.com/lodgiva   → the PMS (staff)
+https://hotel.example.com/book      → the booking page (guests)
+https://hotel.example.com/hk        → housekeeping on a phone
+https://hotel.example.com/api/…     → the Frappe API
+```
+
+One certificate, one address, no cross-origin problems.
+
+## The country-pack seam
+
+`lodgiva_nigeria` is a separate Frappe app. It does not modify the PMS. It
+attaches through:
+
+- **Property Setters**, which change field defaults and options — currency,
+  payment tenders, ID types, tax labels — without touching the doctype.
+- **`doc_events` hooks**, which run validation before a document is saved.
+  This is where the money controls live: no unpaid departure, no duplicate
+  payment reference.
+
+The practical consequence is that the PMS can be updated from upstream without
+the Nigerian changes being lost or re-applied by hand. See
+[Country packs](/docs/developers/country-packs).
+
+## Data model, briefly
+
+```text
+Property ─┬─ Room Type ── Room
+          ├─ Reservation ── Folio ─┬─ Folio Charge
+          │                        └─ Folio Payment
+          ├─ Guest
+          ├─ Cashier Session ── Cashier Transaction
+          └─ Night Audit Run
+```
+
+Everything is a Frappe DocType, so each is also a REST resource and carries
+Frappe's permission model.

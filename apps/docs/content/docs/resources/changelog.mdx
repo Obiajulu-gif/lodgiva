@@ -1,0 +1,40 @@
+---
+title: "Changelog"
+description: "What changed in Lodgiva, newest first."
+---
+
+Notable changes, newest first, in the style of
+[Keep a Changelog](https://keepachangelog.com).
+
+## 2026-09
+
+### Added
+
+- This documentation site: setup, front desk, billing, housekeeping,
+  administration, installation and a hand-written API reference.
+- A one-command installer that works on any Ubuntu 22.04 or 24.04 server, with
+  automatic HTTPS and a single address for the landing page, the PMS and the
+  booking page.
+- The Nigerian country pack: naira, 7.5% VAT on its own line, TIN on invoices,
+  bank transfer and POS terminal tenders, NIN as a guest ID type, Africa/Lagos
+  time.
+- Real photographs on the guest booking page.
+
+### Fixed
+
+- **Unpaid departures.** A reservation can no longer reach `Checked Out` while
+  its folio owes money, unless the property explicitly allows it.
+- **Duplicate payment references.** A non-cash payment now requires a
+  reference, and the same reference cannot be recorded twice on one folio.
+- **Invoices against unpaid bills.** A folio with a balance can no longer be
+  closed into an invoice.
+
+### Changed
+
+- The product is Lodgiva throughout the interface. The underlying Frappe app
+  keeps its upstream name so improvements can still be merged from it.
+
+<Note>
+This page covers the PMS and its Nigerian layer. Changes to the marketing site
+and the platform behind it are recorded in the repository's own `CHANGELOG.md`.
+</Note>

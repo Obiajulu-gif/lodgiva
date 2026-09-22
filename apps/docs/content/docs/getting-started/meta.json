@@ -1,0 +1,12 @@
+{
+  "title": "Getting started",
+  "icon": "BookOpen",
+  "pages": [
+    "index",
+    "what-is-lodgiva",
+    "core-concepts",
+    "quick-start",
+    "create-your-hotel",
+    "front-desk-tour"
+  ]
+}

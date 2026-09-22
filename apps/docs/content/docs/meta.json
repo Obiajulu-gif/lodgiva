@@ -1,0 +1,18 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "index",
+    "---Use Lodgiva---",
+    "getting-started",
+    "property",
+    "front-desk",
+    "guests",
+    "billing",
+    "housekeeping",
+    "administration",
+    "---Run and build---",
+    "install",
+    "developers",
+    "resources"
+  ]
+}

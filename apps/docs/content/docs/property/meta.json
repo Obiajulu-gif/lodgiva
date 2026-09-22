@@ -1,0 +1,5 @@
+{
+  "title": "Rooms and rates",
+  "icon": "BedDouble",
+  "pages": ["index", "room-types", "rooms", "rates", "policies", "booking-page"]
+}

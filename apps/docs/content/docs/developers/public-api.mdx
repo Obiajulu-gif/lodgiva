@@ -1,0 +1,105 @@
+---
+title: "Guest API"
+description: "The unauthenticated endpoints behind the booking page: catalogue, availability, booking and pre-check-in."
+---
+
+These are the methods the guest booking page uses. They are whitelisted with
+`allow_guest=True`, so they need no sign-in, and they are deliberately narrow:
+a guest can search and book, and can only touch their own booking, through a
+token.
+
+```text
+POST /api/method/kamra.public_api.<method>
+```
+
+## Catalogue
+
+```text
+site_info()
+default_property()
+resolve_slug(slug: str)
+catalog_index()
+showcase(property: str, listing_slug: str | None = None, ...)
+```
+
+`showcase` returns the property, its room types, photos and policies: what the
+booking page renders before a date is chosen.
+
+## Availability and price
+
+### `search_stay`
+
+```text
+search_stay(property, check_in_date, check_out_date,
+            adults=2, children=0, listing_slug=None, location_slug=None)
+```
+
+Returns one row per room type: `room_type`, `rooms_left`, and a `quote` with
+the real price for those dates, taxes included.
+
+Two rules are enforced here:
+
+- check-out must be after check-in;
+- stays longer than 30 nights are refused and referred to the hotel.
+
+## Booking
+
+### `book`
+
+Rate-limited to **10 calls an hour** per client.
+
+<TypeTable
+  type={{
+    property: { type: 'string', required: true },
+    room_type: { type: 'string', required: true },
+    check_in_date: { type: 'string', required: true },
+    check_out_date: { type: 'string', required: true },
+    guest_name: { type: 'string', required: true },
+    phone: { type: 'string', description: 'The guest identity; staff verify at check-in', required: true },
+    email: { type: 'string' },
+    adults: { type: 'number', default: '2' },
+    children: { type: 'number', default: '0' },
+    meal_plan: { type: 'string' },
+    special_requests: { type: 'string' },
+    addons: { type: 'array', description: 'Experiences the property publishes; the hotel sets the price' },
+    voucher_code: { type: 'string' },
+    idempotency_key: { type: 'string', description: 'Send one: it stops a double-tap creating two bookings' },
+  }}
+/>
+
+The resulting status depends on the property's booking mode and payment
+policy: `Confirmed` when nothing is due now, `Pending Payment` with a hold
+window when a deposit is owed, or `Requested` where the hotel approves
+bookings by hand.
+
+<Note title="Two things the guest cannot control">
+Add-ons are filtered to experiences the property actually publishes, and
+priced by the hotel — the guest controls only the quantity. The advance owed
+is computed from the property's policy and snapshotted onto the booking.
+</Note>
+
+## Pre-check-in
+
+Each of these takes a **token** that identifies one booking. There is no way
+to enumerate bookings.
+
+```text
+precheckin_info(token: str)
+precheckin_submit(token: str, id_type: str, id_number: str, ...)
+precheckin_upload_id(token: str, data: str)
+```
+
+<Warning>
+`precheckin_upload_id` receives identity documents. Treat the token as a
+secret: anyone holding it can see that booking.
+</Warning>
+
+## Other guest endpoints
+
+```text
+laundry_info(token: str)
+request_guest_laundry(token: str, notes: str = "", express: int = 0)
+check_voucher(property: str, code: str, nights: int = 1)
+qr_menu(outlet: str)
+qr_order(outlet: str, items, room: str | None = None, ...)
+```

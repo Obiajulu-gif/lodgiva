@@ -1,0 +1,16 @@
+{
+  "title": "Billing and money",
+  "icon": "Receipt",
+  "pages": [
+    "index",
+    "folios",
+    "charges",
+    "payments",
+    "invoices",
+    "split-bills",
+    "refunds",
+    "cashier",
+    "night-audit",
+    "reports"
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "title": "Developers",
+  "icon": "Code",
+  "pages": ["index", "architecture", "local-development", "api", "public-api", "extending", "country-packs"]
+}

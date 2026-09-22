@@ -1,0 +1,93 @@
+---
+title: "Quick start"
+description: "Sign in, create a hotel, add rooms and take your first booking, in about fifteen minutes."
+---
+
+This page takes an empty Lodgiva installation to a guest checked into a room.
+
+<Steps>
+
+<Step>
+
+## Sign in
+
+Open your Lodgiva address and add `/lodgiva`, for example
+`https://hotel.example.com/lodgiva`.
+
+Sign in as **`Administrator`** with the password from your installation. If
+someone else installed Lodgiva, ask them for it.
+
+<Note>
+`Administrator` is a username, not an email address. Once you are in, add
+real staff accounts with their own names; see
+[Staff and roles](/docs/administration/staff-and-roles).
+</Note>
+
+</Step>
+
+<Step>
+
+## Create your hotel
+
+If no property exists, Lodgiva opens the setup wizard at `/lodgiva/setup`.
+Fill in:
+
+- the hotel's name and city;
+- **country: Nigeria** — this one field decides the tax and currency;
+- your room types, with a nightly price;
+- the room numbers for each type.
+
+Full detail: [Create your hotel](/docs/getting-started/create-your-hotel).
+
+</Step>
+
+<Step>
+
+## Take a booking
+
+From **Front Desk → New booking**, enter the guest's name and phone number,
+the arrival and departure dates, and the room type. Lodgiva prices the stay,
+including VAT, and reserves a room.
+
+See [Take a booking](/docs/front-desk/create-a-booking).
+
+</Step>
+
+<Step>
+
+## Check the guest in
+
+On the day of arrival the booking appears under **Arrivals** on the Front Desk
+screen. Select **Check in**. Lodgiva assigns a room if one is not already
+chosen, and marks it occupied.
+
+See [Check in](/docs/front-desk/check-in).
+
+</Step>
+
+<Step>
+
+## Take payment and check out
+
+Open the guest's bill, record the payment, then check them out.
+
+Cash, bank transfer and POS terminal are all supported. Non-cash payments need
+a reference: the bank narration or the terminal slip number.
+
+<Warning>
+Lodgiva refuses to check out a guest who still owes money, and refuses to
+issue an invoice for an unpaid bill. That is deliberate. See
+[Payments](/docs/billing/payments).
+</Warning>
+
+</Step>
+
+</Steps>
+
+## What next
+
+<Cards>
+  <Card title="Set your prices" href="/docs/property/rates" description="Seasons, weekend pricing and overbooking limits." />
+  <Card title="Open your booking page" href="/docs/property/booking-page" description="Take direct bookings with no commission." />
+  <Card title="Run the night audit" href="/docs/billing/night-audit" description="Close the day so room charges post." />
+</Cards>

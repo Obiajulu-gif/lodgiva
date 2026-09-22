@@ -1,0 +1,15 @@
+{
+  "title": "Front desk",
+  "icon": "ConciergeBell",
+  "pages": [
+    "index",
+    "create-a-booking",
+    "tape-chart",
+    "check-in",
+    "in-house",
+    "check-out",
+    "room-moves",
+    "cancellations",
+    "group-bookings"
+  ]
+}

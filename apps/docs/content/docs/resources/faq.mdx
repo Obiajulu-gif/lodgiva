@@ -1,0 +1,88 @@
+---
+title: "Frequently asked questions"
+description: "Cost, hosting, data, offline use, and the questions hotels ask before committing."
+---
+
+<Accordions type="single">
+
+<Accordion title="What does Lodgiva cost?">
+
+The software is open source. What you pay is hosting: from about €4–5 a month
+for a server that comfortably runs a small hotel. See
+[Where to host](/docs/install/hosting).
+
+</Accordion>
+
+<Accordion title="Can it run on a laptop?">
+
+For a demonstration, yes. For a hotel, no: the laptop must stay awake and
+online, the address changes, and nothing is backed up. See
+[Laptop demo](/docs/install/laptop-demo).
+
+</Accordion>
+
+<Accordion title="Does it work offline?">
+
+<Status type="planned" /> Not today. Staff screens need a working connection
+to the server. If your connection is unreliable, budget for a backup
+connection before the hotel depends on it.
+
+</Accordion>
+
+<Accordion title="Can guests pay by card online?">
+
+<Status type="planned" /> Paystack and Flutterwave integration is not built.
+Cards are taken on your own POS terminal and recorded with the slip number,
+which is how most Nigerian hotels already work. See
+[Payments](/docs/billing/payments).
+
+</Accordion>
+
+<Accordion title="Can it connect to Booking.com or Expedia?">
+
+<Status type="planned" /> There is no live channel-manager integration.
+Bookings from channels are entered like any other. Your own
+[booking page](/docs/property/booking-page) takes direct bookings with no
+commission today.
+
+</Accordion>
+
+<Accordion title="Who owns the data?">
+
+You do. It is your server and your database. You can back it up, export it, or
+move it elsewhere. There is no lock-in, because there is no vendor holding it.
+
+</Accordion>
+
+<Accordion title="Can I run more than one hotel?">
+
+Yes. Lodgiva supports multiple properties on one installation, each with its
+own rooms, rates, business date and night audit.
+
+</Accordion>
+
+<Accordion title="What happens if the night audit does not run?">
+
+Room charges for that night do not post, so every in-house bill is short.
+Run it late rather than not at all; it can be run for a past date. See
+[Night audit](/docs/billing/night-audit).
+
+</Accordion>
+
+<Accordion title="Is it really 7.5% VAT?">
+
+7.5% is the standard Nigerian rate at the time of writing, and it is a
+configurable default rather than tax advice. Confirm your own position with
+your accountant, and change the rate if your circumstances differ.
+
+</Accordion>
+
+<Accordion title="Why is the underlying app called Kamra?">
+
+Lodgiva is built on the open-source Kamra PMS. The interface is Lodgiva
+throughout; the internal app name and the `Kamra Agent` role keep their
+upstream names so that improvements from upstream can still be merged.
+
+</Accordion>
+
+</Accordions>

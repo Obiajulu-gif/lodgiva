@@ -1,0 +1,51 @@
+---
+title: "Backups and updates"
+description: "Keep Lodgiva running: backups you have actually restored, updates, and the scheduler that must never stop."
+---
+
+## Backups
+
+Frappe takes backups of the database and the uploaded files. Two rules make
+them worth having:
+
+1. **Keep a copy off the server.** A backup on the machine that dies is not a
+   backup.
+2. **Restore one.** A backup nobody has ever restored is a hope, not a plan.
+   Restore into a spare machine once, and write down what you did.
+
+<Warning>
+Backups contain guest names, phone numbers, ID documents and payment
+references. Store them somewhere private, not a shared folder.
+</Warning>
+
+## The scheduler
+
+Frappe's scheduler is what runs the [night audit](/docs/billing/night-audit)
+and other timed work. If it stops, room charges stop posting and nobody is
+told.
+
+Check that it is enabled after any restart or upgrade, and check the Night
+Audit Run records show one per night per property.
+
+## Updates
+
+Update in a quiet hour, never during check-out. Take a backup first. Read the
+[changelog](/docs/resources/changelog) before updating, so you know what is
+changing.
+
+## Restarting
+
+The installer sets everything up as system services, so the server can be
+rebooted and Lodgiva comes back. Verify that yourself once, shortly after
+installing, rather than discovering it during a power cut.
+
+## Monitoring
+
+At minimum, someone should notice if:
+
+- the site stops answering;
+- the night audit did not run;
+- the disk is filling up.
+
+A daily glance at the manager's flash catches most of it: a day with no
+revenue and no occupancy is usually a system problem, not a quiet Tuesday.

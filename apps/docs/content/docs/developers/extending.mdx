@@ -1,0 +1,85 @@
+---
+title: "Extending Lodgiva"
+description: "Add behaviour with a Frappe app and hooks, instead of editing the PMS and inheriting a merge problem."
+---
+
+The rule: **do not edit the PMS**. Put your changes in your own Frappe app.
+Everything Lodgiva's own Nigerian layer does, it does this way.
+
+## Create an app
+
+```bash
+bench new-app my_hotel_extras
+```
+
+```bash
+bench --site lodgiva.local install-app my_hotel_extras
+```
+
+## React to documents
+
+`hooks.py` lets you run code when a document is saved:
+
+```python
+doc_events = {
+    "Reservation": {
+        "before_save": "my_hotel_extras.controls.reservation_before_save",
+    },
+    "Folio": {
+        "before_save": "my_hotel_extras.controls.folio_before_save",
+    },
+}
+```
+
+This is exactly how the money guards work: a `before_save` that refuses the
+save with a plain-English message when it would let money go missing.
+
+```python
+def folio_before_save(doc, method=None):
+    for payment in doc.payments:
+        if payment.mode != "Cash" and not (payment.reference or "").strip():
+            frappe.throw(
+                f"{payment.mode} payments need a reference "
+                "(the bank narration or transaction ID)."
+            )
+```
+
+<Tip>
+Write the message for the receptionist who will meet it at 7 a.m., not for
+yourself. "Bank Transfer payments need a reference" is a message someone can
+act on; "ValidationError" is not.
+</Tip>
+
+## Change defaults and options
+
+Use **Property Setters** rather than editing a doctype. They change a field's
+default, label or options for your installation, and survive an upgrade of the
+app that owns the field.
+
+That is how naira, the Nigerian tender list and NIN are applied.
+
+## Add your own documents
+
+New DocTypes belong to your app. They get permissions, an API and a UI from
+Frappe for nothing.
+
+## Scheduled work
+
+```python
+scheduler_events = {
+    "daily": ["my_hotel_extras.tasks.send_arrival_reminders"],
+}
+```
+
+<Warning>
+Scheduled jobs run without a user and without a request. Anything that assumes
+`frappe.session.user` or a language being set will behave differently at 3
+a.m. than it did in your terminal.
+</Warning>
+
+## Staying upgradable
+
+- Never edit files in the PMS app.
+- Never change a core doctype's JSON; use a Property Setter.
+- Keep your app in its own repository with its own tests.
+- Pin the Frappe branch you build against.

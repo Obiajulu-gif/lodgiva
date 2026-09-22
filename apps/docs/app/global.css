@@ -1,0 +1,53 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+/**
+ * Lodgiva brand tokens.
+ *
+ * The same values the marketing site uses (apps/marketing-web/app/globals.css)
+ * so the documentation reads as part of the product, not a separate site.
+ * Fumadocs' own variables (--color-fd-*) are re-pointed at them rather than
+ * replaced, so every built-in component follows the brand automatically.
+ */
+@theme {
+  --color-lodgiva-brand: #124434; /* brand-800, the house green */
+  --color-lodgiva-brand-600: #1f6b50;
+  --color-lodgiva-brand-400: #58a385;
+  --color-lodgiva-gold: #cda95c;
+  --color-lodgiva-cream: #faf9f6;
+
+  --font-display: var(--font-playfair), Georgia, serif;
+}
+
+:root {
+  --color-fd-primary: var(--color-lodgiva-brand);
+  --color-fd-accent: color-mix(in srgb, var(--color-lodgiva-brand) 8%, white);
+  --color-fd-accent-foreground: var(--color-lodgiva-brand);
+  --color-fd-ring: var(--color-lodgiva-brand-400);
+  --color-fd-background: #ffffff;
+  --color-fd-card: var(--color-lodgiva-cream);
+}
+
+.dark {
+  /* Light green on dark: the flat brand green fails contrast on dark panels. */
+  --color-fd-primary: #7fc4a5;
+  --color-fd-accent: color-mix(in srgb, #7fc4a5 12%, #0c1512);
+  --color-fd-accent-foreground: #d7efe4;
+  --color-fd-ring: #58a385;
+  --color-fd-background: #0b1310;
+  --color-fd-card: #101a16;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}

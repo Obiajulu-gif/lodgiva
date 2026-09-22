@@ -1,0 +1,31 @@
+---
+title: "Billing and money"
+description: "Guest bills, charges, payments in naira, VAT invoices, the cash drawer and the nightly close."
+---
+
+Everything about money: what the guest owes, how they paid, what you owe the
+tax authority, and how the day is closed.
+
+<Cards>
+  <Card title="Bills (folios)" href="/docs/billing/folios" description="How a guest's bill works and why it is never edited." />
+  <Card title="Charges" href="/docs/billing/charges" description="Room nights, food, laundry, discounts and allowances." />
+  <Card title="Payments" href="/docs/billing/payments" description="Cash, bank transfer and POS terminal, each with a reference." />
+  <Card title="VAT invoices" href="/docs/billing/invoices" description="Issue an invoice with your TIN and 7.5% VAT." />
+  <Card title="Split bills" href="/docs/billing/split-bills" description="Company pays the room, guest pays the bar." />
+  <Card title="Refunds and corrections" href="/docs/billing/refunds" description="Fix mistakes without deleting history." />
+  <Card title="Cashier and cash drawer" href="/docs/billing/cashier" description="Open a shift, count the drawer, hand over." />
+  <Card title="Night audit" href="/docs/billing/night-audit" description="Close the day and move the business date." />
+  <Card title="Reports" href="/docs/billing/reports" description="Occupancy, revenue, ADR and RevPAR." />
+</Cards>
+
+## The money rules Lodgiva enforces
+
+These are not suggestions; the system refuses to break them.
+
+| Rule | Why |
+| --- | --- |
+| A guest with a balance cannot be checked out | Stops unpaid departures |
+| A bill with a balance cannot be closed into an invoice | An invoice states the stay was paid |
+| A non-cash payment must carry a reference | Untraceable money is missing money |
+| The same reference cannot be used twice on one bill | Stops a transfer being counted twice |
+| A charge is never deleted, only reversed | The history stays auditable |

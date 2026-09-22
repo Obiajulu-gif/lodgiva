@@ -1,0 +1,63 @@
+---
+title: "What is Lodgiva?"
+description: "Lodgiva is hotel management software for Nigerian hotels: front desk, guest bills, housekeeping and the nightly close, with naira and VAT built in."
+---
+
+Lodgiva runs the daily operation of a hotel. One system holds the bookings,
+the rooms, the guests and the money, so the front desk, housekeeping and the
+owner all work from the same information.
+
+## What it does today
+
+| Area | What you can do |
+| --- | --- |
+| **Front desk** | See today's arrivals and departures, take bookings, check guests in and out, move rooms, read the tape chart |
+| **Rooms and rates** | Room types, rooms, prices, seasonal pricing, overbooking limits |
+| **Guest bills** | Charges, payments, VAT invoices in naira, split bills, credit notes |
+| **Payments** | Cash, bank transfer and POS terminal, each recorded with a reference |
+| **Cash control** | Cashier drawers that must balance before they close |
+| **Nightly close** | Night audit: posts room charges, flags no-shows, moves the business date on |
+| **Housekeeping** | Room status board, tasks, and a phone-sized screen for the floor |
+| **Direct bookings** | Your own booking page, with live prices in naira and no commission |
+| **Restaurant and bar** | POS with orders posted to a room bill or settled at the till |
+
+## Who it is for
+
+- **Hotel owners** want to know last night's revenue, and that nobody left
+  without paying. See [Reports](/docs/billing/reports) and
+  [Night audit](/docs/billing/night-audit).
+- **Managers** set prices and room types, approve refunds and cash variances,
+  and add staff. See [Rooms and rates](/docs/property) and
+  [Administration](/docs/administration).
+- **Front-desk staff** spend the shift on arrivals, departures and bills. See
+  [Front desk](/docs/front-desk).
+- **Housekeeping** work from the room board on a phone. See
+  [Housekeeping](/docs/housekeeping).
+- **Developers and partners** integrate with the API. See
+  [Developers](/docs/developers).
+
+## What makes it Nigerian
+
+Most hotel software assumes another country's tax and payment habits. Lodgiva
+ships a Nigerian layer:
+
+- Prices, bills and reports in **naira (₦)**, stored to the kobo.
+- **VAT at 7.5%** on its own invoice line, and a **TIN** on the invoice. The
+  rate is a configurable default, not tax advice.
+- **Bank transfer** and **POS terminal** as first-class payment methods, each
+  needing a reference, because that is how Nigerian hotels are actually paid.
+- **Africa/Lagos** time, Nigerian guest nationality, and **NIN** as an ID type.
+
+See [Nigerian settings](/docs/administration/nigeria) for the detail.
+
+## What it does not do yet
+
+Being clear about this saves a wasted evening:
+
+| Feature | Status |
+| --- | --- |
+| Paystack and Flutterwave card payments | <Status type="planned" /> Manual tenders work today |
+| WhatsApp guest messaging | <Status type="beta" /> In the platform, not configured for Nigeria |
+| Channel manager (Booking.com, Expedia) | <Status type="planned" /> Connection points exist, no live integration |
+| Nigerian e-invoicing (FIRS) | <Status type="planned" /> |
+| Offline front desk | <Status type="planned" /> A working connection is needed today |

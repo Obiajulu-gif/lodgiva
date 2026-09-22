@@ -1,0 +1,26 @@
+---
+title: "Install and host"
+description: "Put Lodgiva on a server with one command, pick a provider that works from Nigeria, and keep it running."
+---
+
+<Cards>
+  <Card title="What you need" href="/docs/install/requirements" description="Server size, operating system, ports." />
+  <Card title="Install on a server" href="/docs/install/server" description="One command on a fresh Ubuntu machine." />
+  <Card title="Where to host" href="/docs/install/hosting" description="Providers that work from Nigeria, and what they cost." />
+  <Card title="Domain and HTTPS" href="/docs/install/domain" description="Point a domain at it and get a certificate." />
+  <Card title="Laptop demo" href="/docs/install/laptop-demo" description="Run it locally and show it to someone today." />
+  <Card title="Backups and updates" href="/docs/install/operations" description="Keep it running, keep the data safe." />
+</Cards>
+
+## What gets installed
+
+One command produces a working hotel system behind HTTPS:
+
+| Address | What is there |
+| --- | --- |
+| `/` | The Lodgiva landing page |
+| `/lodgiva` | The PMS staff sign-in |
+| `/book` | The guest booking page |
+
+It also starts Frappe's scheduler, which is what runs the night audit. Without
+it, room charges silently stop posting.

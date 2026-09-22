@@ -1,0 +1,64 @@
+---
+title: "Night audit"
+description: "Close the day: post room charges, flag no-shows, and move the business date forward."
+---
+
+The night audit is the hotel's end of day. It is the single most important
+routine in the system, and it must run every night.
+
+## What it does
+
+Reading the audit step by step, it:
+
+1. Makes sure the property has a business date.
+2. Refuses to run twice for the same date at the same property.
+3. Opens a bill for any in-house guest who somehow has none.
+4. Posts **tonight's room charge** for every guest currently in house.
+5. Flags every `Confirmed` reservation whose arrival date has passed as
+   **`No Show`**, and charges the policy fee where one is set.
+6. Clears waitlist entries more than two days past their requested departure.
+7. Writes a **Night Audit Run** record: charges posted, amount, no-shows,
+   folios opened, and a line-by-line log.
+8. **Advances the business date** to the next day.
+
+## Run it
+
+**Billing → Night audit → Run**. It takes seconds on a small property, and
+reports what it did:
+
+```text
+Night audit for 2026-09-21 complete.
+Room charges posted   14   ₦1,190,000.00
+No-shows flagged       2
+Folios opened          0
+Business date is now  2026-09-22
+```
+
+It can also run on a schedule, so a forgetful night can still be closed.
+
+<Warning title="Run it every night">
+Room charges post during the audit. Skip a night and the following morning
+every in-house bill is short by a night's room charge, and guests check out
+underpaying. Running it late is fine; not running it is not.
+</Warning>
+
+## Running it twice
+
+Running it again for the same date does nothing and says so. That is
+deliberate, so a nervous second attempt cannot double-charge every guest in
+the hotel.
+
+## The business date
+
+The business date is the hotel's working day, and it moves **only** when the
+audit runs. That is what keeps a 2 a.m. arrival attached to the night it
+belongs to.
+
+If revenue reports look a day out, check the business date first.
+
+## Before you run it
+
+- Post the day's restaurant and bar charges.
+- Close cashier sessions and record variances.
+- Check arrivals: anyone who arrived should be checked in, or they become a
+  no-show.
