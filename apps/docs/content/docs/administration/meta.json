@@ -1,0 +1,5 @@
+{
+  "title": "Administration",
+  "icon": "Settings",
+  "pages": ["index", "staff-and-roles", "nigeria", "property-settings", "security"]
+}

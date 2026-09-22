@@ -1,0 +1,54 @@
+---
+title: "Bills (folios)"
+description: "How a guest's bill is built, what it holds, and why lines are reversed rather than deleted."
+---
+
+A **folio** is a guest's bill for one stay. Everything that happens to their
+money lands on it as a line: room nights, restaurant, laundry, VAT, payments
+and refunds.
+
+## The shape of a bill
+
+```text
+Folio F-00123 · Chinedu Okafor · Room 101 · 10–12 Sep
+
+Charges
+  10 Sep  Room night, Deluxe            ₦85,000.00
+  10 Sep  VAT 7.5%                       ₦6,375.00
+  11 Sep  Dinner, table 4                ₦12,500.00
+  11 Sep  Room night, Deluxe            ₦85,000.00
+  11 Sep  VAT 7.5%                       ₦6,375.00
+
+Payments
+  10 Sep  Bank Transfer  REF 8832019     ₦100,000.00
+
+Balance due                              ₦95,250.00
+```
+
+## Why a bill is never edited
+
+A folio line, once posted, is never changed or removed. A mistake is corrected
+by posting a **reversal**: a second line that cancels the first, with a reason.
+
+This is what makes the bill trustworthy. Anyone reading it later — an owner, an
+auditor, the guest — sees what happened, including the correction. A bill you
+can quietly edit is a bill that proves nothing.
+
+## Opening and closing
+
+A folio opens when the guest checks in, or when the
+[night audit](/docs/billing/night-audit) finds an in-house guest without one.
+
+It **closes** when the stay is settled and the invoice is issued. A closed
+folio is final. If something is genuinely wrong afterwards, the invoice is
+cancelled with a reason, which leaves a record, rather than being erased.
+
+<Warning>
+Lodgiva refuses to close a folio that still has a balance. If you meet that
+message, take the payment; do not look for a way around it.
+</Warning>
+
+## More than one bill per stay
+
+A stay can carry several folios: a Guest folio and an Extra folio, or a
+company master. See [Split bills](/docs/billing/split-bills).

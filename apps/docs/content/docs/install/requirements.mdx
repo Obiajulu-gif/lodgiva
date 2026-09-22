@@ -1,0 +1,40 @@
+---
+title: "What you need"
+description: "The server size, operating system and network access Lodgiva requires."
+---
+
+## The server
+
+| | Minimum | Comfortable |
+| --- | --- | --- |
+| RAM | 4 GB | 8 GB |
+| vCPU | 2 | 4 |
+| Disk | 40 GB SSD | 80 GB |
+| OS | Ubuntu 22.04 or 24.04 | Ubuntu 24.04 |
+
+The installer adds 4 GB of swap, because building the front end is
+memory-hungry even on large machines.
+
+## Network
+
+- A **public IPv4 address**.
+- **Ports 80 and 443** open. Some providers (Oracle, AWS) enable a cloud
+  firewall by default and you must open them there; the installer opens the
+  server's own firewall itself.
+
+## What will not work
+
+<Warning>
+Lodgiva's PMS cannot run on serverless or "free web service" platforms.
+Frappe needs long-running processes, a persistent disk, and a scheduler that
+fires at 3 a.m. A platform that sleeps your app when nobody is looking will
+skip your night audit.
+</Warning>
+
+The marketing site is a normal Next.js app and is happy on Vercel. The PMS
+needs a real server.
+
+## What the installer sets up for you
+
+MariaDB, Redis, Node, the Frappe bench, the Lodgiva apps, a Caddy reverse
+proxy with automatic HTTPS, and system services that restart on reboot.

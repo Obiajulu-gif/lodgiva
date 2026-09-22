@@ -1,0 +1,89 @@
+---
+title: "Check out"
+description: "Settle the bill, issue the VAT invoice and release the room to housekeeping."
+---
+
+## Check a guest out
+
+<Steps>
+
+<Step>
+Open **Front Desk → Today → Departures**, and find the guest.
+</Step>
+
+<Step>
+
+### Review the bill
+
+Open the folio and read it through: room nights, restaurant, laundry, VAT,
+and any payments already taken. Fix mistakes now, not after the invoice is
+issued.
+
+</Step>
+
+<Step>
+
+### Take the balance
+
+Record the payment with the tender used. Non-cash tenders need a reference:
+the transfer narration, or the POS slip number.
+
+</Step>
+
+<Step>
+
+### Check out
+
+Select **Check out**. The reservation becomes `Checked Out`, and the room
+becomes `Vacant` and `Dirty` for housekeeping.
+
+</Step>
+
+<Step>
+
+### Issue the invoice
+
+Issue the VAT invoice for the guest's records. It shows your TIN, VAT at
+7.5% on its own line, and the total in naira.
+
+</Step>
+
+</Steps>
+
+![A Lodgiva VAT invoice in naira](/images/docs/vat-invoice.jpg)
+
+## If the guest still owes money
+
+Lodgiva refuses the check-out and says so:
+
+```text
+Reservation RES-00042 still owes ₦96,750.00.
+Settle the folio before checking the guest out.
+```
+
+This is deliberate: it is the control that stops a guest leaving unpaid
+through a moment of inattention. Take the payment, or use the documented
+exception below.
+
+## Company and late-payment accounts
+
+Where a company is genuinely invoiced later, a manager can allow the departure
+without settlement. That permission is a setting on the property
+(`allow_unsettled_departure`), not something the desk can decide alone, and
+the balance stays on the books as owed.
+
+<Warning>
+Turning this on removes the guard for every departure at that property. Treat
+it as a policy decision for accounts-based hotels, not a way around one
+awkward morning.
+</Warning>
+
+## Late check-out
+
+Charge it as its own line on the bill before checking out, so the invoice
+explains itself.
+
+## After check-out
+
+The room appears on the housekeeping board as dirty. Once cleaned and
+inspected it becomes sellable again. See [Housekeeping](/docs/housekeeping).

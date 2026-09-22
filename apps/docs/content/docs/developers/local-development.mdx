@@ -1,0 +1,96 @@
+---
+title: "Local development"
+description: "Run the PMS and the Lodgiva website on your own machine."
+---
+
+## The website and these documents
+
+The `lodgiva` repository is a pnpm monorepo.
+
+```bash
+pnpm install
+```
+
+```bash
+pnpm docs
+```
+
+That serves this documentation at `http://localhost:3000`. Other apps in the
+repository have their own scripts; see the repository README.
+
+## The PMS
+
+The PMS needs a Frappe bench: Python 3.11+, Node 20+, MariaDB and Redis. On
+Windows, use WSL2.
+
+<Steps>
+
+<Step>
+
+### Create a bench
+
+```bash
+bench init --frappe-branch v16.25.0 lodgiva-bench
+```
+
+</Step>
+
+<Step>
+
+### Add the apps
+
+```bash
+bench get-app https://github.com/Obiajulu-gif/lodgiva-pms.git
+```
+
+```bash
+bench get-app https://github.com/Obiajulu-gif/lodgiva-nigeria.git
+```
+
+</Step>
+
+<Step>
+
+### Create a site and install them
+
+```bash
+bench new-site lodgiva.local
+```
+
+```bash
+bench --site lodgiva.local install-app kamra lodgiva_nigeria
+```
+
+<Note>
+The PMS app is still named `kamra` internally. Renaming a Frappe app renames
+every module path and breaks upstream merges; the brand is presented in the
+interface, not in the module name.
+</Note>
+
+</Step>
+
+<Step>
+
+### Run it
+
+```bash
+bench start
+```
+
+The PMS is at `http://lodgiva.local:8000/lodgiva`.
+
+</Step>
+
+</Steps>
+
+## The scheduler
+
+`bench start` runs the scheduler too. If you are running processes
+individually, remember that without it the night audit never fires, and room
+charges never post — which looks like a bug in billing and is not.
+
+## Running the night audit by hand
+
+```bash
+bench --site lodgiva.local execute kamra.api.run_night_audit --kwargs "{'property': 'Your Hotel'}"
+```

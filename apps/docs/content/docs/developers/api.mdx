@@ -1,0 +1,226 @@
+---
+title: "Staff API"
+description: "Authenticated endpoints for bookings, check-in, folios, payments and the night audit."
+---
+
+Lodgiva is a Frappe application, so every whitelisted method is reachable at:
+
+```text
+POST /api/method/kamra.api.<method>
+```
+
+Arguments are sent as JSON or form fields. The response is
+`{"message": <return value>}`.
+
+## Authentication
+
+Two ways, both Frappe's:
+
+**API key and secret**, for integrations:
+
+```bash
+curl -X POST https://hotel.example.com/api/method/kamra.api.available_rooms \
+  -H "Authorization: token API_KEY:API_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"property":"Lodgiva Demo Hotel","room_type":"Lodgiva Demo Hotel-DLX","check_in_date":"2026-10-01","check_out_date":"2026-10-03"}'
+```
+
+**Session cookie**, for the browser front end.
+
+<Warning>
+Keep the API secret out of client-side code and out of version control. A
+secret in a mobile app or a front-end bundle is a published secret.
+</Warning>
+
+## Roles
+
+Every method is guarded by role. The roles are **Front Desk**, **Kamra
+Agent**, **Finance**, **Hotel Admin**, **Revenue Manager**, **Housekeeping**
+and **System Manager**. An integration should have its own user with the
+**Kamra Agent** role, not a person's account. See
+[Staff and roles](/docs/administration/staff-and-roles).
+
+## Availability
+
+### `available_rooms`
+
+Rooms of a type with no overlapping live reservation — the same logic the
+double-booking guard enforces.
+
+<TypeTable
+  type={{
+    property: { type: 'string', description: 'Property name', required: true },
+    room_type: { type: 'string', description: 'Room Type name', required: true },
+    check_in_date: { type: 'string', description: 'YYYY-MM-DD', required: true },
+    check_out_date: { type: 'string', description: 'YYYY-MM-DD', required: true },
+    group_booking: { type: 'string | null', description: 'Book against a group block instead of general sale' },
+  }}
+/>
+
+## Reservations
+
+### `create_booking`
+
+Creates a reservation and prices it.
+
+<TypeTable
+  type={{
+    property: { type: 'string', required: true },
+    room_type: { type: 'string', required: true },
+    check_in_date: { type: 'string', description: 'YYYY-MM-DD', required: true },
+    check_out_date: { type: 'string', description: 'YYYY-MM-DD', required: true },
+    guest_name: { type: 'string', required: true },
+    phone: { type: 'string | null' },
+    adults: { type: 'number', default: '2' },
+    children: { type: 'number', default: '0' },
+    meal_plan: { type: 'string | null' },
+    rate_plan: { type: 'string | null' },
+    voucher_code: { type: 'string | null' },
+    booking_type: { type: 'string', default: "'Individual'" },
+    company: { type: 'string | null' },
+    group_booking: { type: 'string | null' },
+  }}
+/>
+
+### `check_in`
+
+```text
+check_in(reservation: str, room: str | None = None)
+```
+
+Assigns a room if none is given, sets the reservation to `Checked In` and the
+room to `Occupied`.
+
+### `check_out`
+
+```text
+check_out(reservation: str)
+```
+
+Refuses while the folio has a balance, unless the property allows unsettled
+departures.
+
+### `move_reservation`
+
+```text
+move_reservation(reservation: str, new_room: str)
+```
+
+### `cancel_reservation` and `cancellation_preview`
+
+```text
+cancellation_preview(reservation: str)
+cancel_reservation(reservation: str, reason: str = "Guest request")
+```
+
+Preview first: it returns what the policy will charge before anything is
+posted.
+
+## Folios
+
+### `get_folio`
+
+```text
+get_folio(reservation: str)
+```
+
+### `add_folio_charge`
+
+```text
+add_folio_charge(folio: str, charge_type: str, description: str, ...)
+```
+
+`charge_type` is one of `Room`, `Meal Plan`, `Food & Beverage`, `Minibar`,
+`Laundry`, `Spa`, `Early Check-in`, `Late Checkout`, `Cleaning Fee`,
+`Discount`, `Misc`, `Allowance`.
+
+### `add_folio_payment`
+
+<TypeTable
+  type={{
+    folio: { type: 'string', required: true },
+    mode: { type: 'string', description: "'Cash', 'Bank Transfer', 'POS Terminal', 'Card', 'OTA Prepaid', 'Company Credit', 'Payment Link'", required: true },
+    amount: { type: 'number', required: true },
+    reference: { type: 'string | null', description: 'Required for every tender except Cash' },
+    pin: { type: 'string | null', description: 'Cashier PIN, where the property requires one' },
+    kind: { type: 'string', default: "'Payment'", description: "'Payment', 'Advance' or 'Security Deposit'" },
+  }}
+/>
+
+Refuses a non-cash payment with no reference, and refuses a reference already
+recorded on that folio.
+
+Refunds are deliberately **not** this endpoint: use `refund_folio_payment`, so
+a refund can never be entered by accident.
+
+### `void_folio_charge`
+
+```text
+void_folio_charge(folio: str, charge_row: str, reason: str = "")
+```
+
+Posts a reversal. Nothing is deleted.
+
+### `close_folio` and `folio_invoice`
+
+```text
+close_folio(folio: str, pin: str | None = None)
+folio_invoice(folio: str)
+```
+
+`close_folio` refuses while a balance remains.
+
+### Splitting
+
+```text
+split_folio(reservation: str, folio_type: str = "Extra")
+transfer_folio_charge(from_folio: str, charge_row: str, to_folio: str)
+transfer_folio_charges(from_folio: str, charge_rows, to_folio: str)
+split_folio_charge(from_folio: str, charge_row: str, to_folio: str, ...)
+```
+
+## Night audit
+
+### `run_night_audit`
+
+```text
+run_night_audit(property: str, business_date: str | None = None)
+```
+
+Idempotent per property per date: a second call for the same date returns
+`{"already_ran": true, …}` and changes nothing.
+
+Returns the audit name, room charges posted, amount posted, no-shows flagged,
+folios opened, and the next business date.
+
+## Housekeeping
+
+```text
+set_housekeeping_status(room: str, status: str)
+hk_assign_task(task: str, user: str)
+hk_claim_task(task: str)
+hk_accept_task(task: str)
+hk_reject_task(task: str, reason: str = "")
+hk_update_task(task: str, status: str)
+```
+
+## Guests
+
+```text
+guest_search(q: str)
+guests_with_stats(search: str | None = None)
+guest_journey(guest: str)
+merge_guests(source: str, target: str)
+anonymize_guest(guest: str)
+```
+
+<Warning>
+`merge_guests` and `anonymize_guest` cannot be undone. Confirm with a human
+before calling either from an automation.
+</Warning>
+
+## Errors
+
+Frappe returns its own error shape, with the message in `exception` or
+`_server_messages`. The money guards return their reason in plain English —
+they are written to be read by staff, and are equally useful in a log.

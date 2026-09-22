@@ -1,0 +1,68 @@
+---
+title: "Country packs"
+description: "How the Nigerian layer is built, and what writing one for another country would involve."
+---
+
+`lodgiva_nigeria` is a country pack: a small Frappe app that makes the PMS
+behave correctly in one country, without modifying it.
+
+## What it contains
+
+| Piece | What it does |
+| --- | --- |
+| `install.py` | Property Setters: currency, tax label, payment tenders, guest ID types, nationality |
+| `controls.py` | `doc_events` money guards: no unpaid departure, no duplicate payment reference |
+| `branding.py` | Names and marks shown in the interface |
+| `demo.py` | An optional sample Lagos hotel for demonstrations |
+
+## The Nigerian defaults
+
+Currency NGN, time zone Africa/Lagos, VAT at 7.5% on its own line, TIN on
+invoices, **Bank Transfer** and **POS Terminal** as first-class tenders, NIN
+among the ID types. See [Nigerian settings](/docs/administration/nigeria).
+
+## The money guards
+
+Two `before_save` hooks, each refusing a save that would let money go missing:
+
+1. A reservation cannot reach `Checked Out` while its folio owes money, unless
+   the property sets `allow_unsettled_departure`.
+2. A non-cash payment must carry a reference, and the same reference cannot
+   appear twice on one folio.
+
+They are deliberately at document level rather than in the user interface: a
+guard that only exists in a screen is not a guard, because the API bypasses
+it.
+
+## Writing another pack
+
+The shape would be the same:
+
+<Steps>
+
+<Step>
+Create a Frappe app, and install it alongside the PMS.
+</Step>
+
+<Step>
+In `install.py`, set the currency, tax rate and label, tenders and ID types
+for that country, using Property Setters.
+</Step>
+
+<Step>
+In `controls.py`, add any rules that country's practice requires, as
+`doc_events`.
+</Step>
+
+<Step>
+Test against a real property, and check the invoice: the tax line, the
+identifier, the currency and the wording are what an accountant there expects.
+</Step>
+
+</Steps>
+
+<Note>
+Nothing about the seam is Nigeria-specific. The country pack exists precisely
+so that "which country is this hotel in?" is answered in one small app instead
+of scattered through the product.
+</Note>

@@ -1,0 +1,5 @@
+{
+  "title": "Resources",
+  "icon": "LifeBuoy",
+  "pages": ["index", "faq", "troubleshooting", "feature-status", "changelog", "contributing"]
+}

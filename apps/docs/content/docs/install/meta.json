@@ -1,0 +1,5 @@
+{
+  "title": "Install and host",
+  "icon": "Server",
+  "pages": ["index", "requirements", "server", "hosting", "domain", "laptop-demo", "operations"]
+}

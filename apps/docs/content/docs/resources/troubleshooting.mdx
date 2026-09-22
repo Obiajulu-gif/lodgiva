@@ -1,0 +1,79 @@
+---
+title: "Troubleshooting"
+description: "What to check when sign-in fails, charges are missing, a room cannot be sold or the site will not load."
+---
+
+## "Wrong email, username, or password"
+
+Usually the account does not exist rather than the password being wrong. The
+first account is **`Administrator`**, a username, not an email address. Staff
+accounts must be created before they can sign in; see
+[Staff and roles](/docs/administration/staff-and-roles).
+
+## Room charges are missing
+
+The [night audit](/docs/billing/night-audit) posts room charges. Check:
+
+1. Has the audit run for that date? Look at the Night Audit Run records.
+2. Is the business date what you expect?
+3. Is Frappe's scheduler running? Without it, nothing fires at 3 a.m.
+
+## A room will not appear at check-in
+
+Check-in offers only rooms that are free **and** ready. Check the room's
+housekeeping status: `Dirty` and `Out of Order` rooms are not offered. See
+[Room status](/docs/housekeeping/room-status).
+
+## "Sold out" when rooms look free
+
+Lodgiva counts a room as sold for the whole night. A room occupied by a guest
+leaving tomorrow is not available tonight. If the overbooking allowance is
+zero — the default and the right setting — nothing may be sold beyond the room
+count.
+
+## A guest cannot be checked out
+
+They owe money. Take the payment. If your hotel genuinely invoices companies
+after the stay, see the departure setting in
+[Property settings](/docs/administration/property-settings), and understand
+that it applies to every departure.
+
+## A payment will not save
+
+Non-cash tenders need a reference, and the same reference cannot be used twice
+on one bill. Both messages say exactly which rule was hit. See
+[Payments](/docs/billing/payments).
+
+## The site will not load
+
+<Steps>
+
+<Step>
+Can you reach the server at all? `ping` it, then `ssh` to it.
+</Step>
+
+<Step>
+Are the services running? On the server, check the Frappe and proxy services.
+</Step>
+
+<Step>
+Is the disk full? A full disk stops MariaDB, which looks like everything
+breaking at once.
+</Step>
+
+<Step>
+Has the certificate expired? The installer renews automatically, but a server
+that was off for weeks may need a moment to catch up.
+</Step>
+
+</Steps>
+
+## After an update something broke
+
+Restore the backup you took before updating, and report the problem with the
+version you moved from and to. See [Contributing](/docs/resources/contributing).
+
+## Still stuck
+
+Open an issue with: what you did, what you expected, what happened, and the
+exact message. A screenshot of the message is worth a paragraph describing it.

@@ -1,0 +1,5 @@
+{
+  "title": "Guests",
+  "icon": "Users",
+  "pages": ["index", "profiles", "history", "privacy"]
+}

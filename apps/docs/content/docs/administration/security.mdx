@@ -1,0 +1,46 @@
+---
+title: "Security"
+description: "Passwords, sessions, cashier PINs, and the practical habits that keep a hotel system safe."
+---
+
+## Accounts
+
+- One account per person, always. See
+  [Staff and roles](/docs/administration/staff-and-roles).
+- Disable accounts the day someone leaves.
+- Give the least access that lets someone do their job.
+
+## Passwords
+
+Staff set their own on first sign-in. Do not set a memorable password and hand
+it round; within a month everyone at the desk will know it.
+
+Change the `Administrator` password from whatever the installation created,
+and keep it somewhere only the owner can reach.
+
+<Warning title="Demo installations">
+An installation seeded with demo data carries known demo passwords. Change
+them before it holds anything real, and before the address is shared.
+</Warning>
+
+## Sessions
+
+Signing out ends the session on the server, not only in the browser. A shared
+desk computer should be signed out at the end of each shift; that is what
+makes the audit trail mean anything.
+
+## Cashier PINs
+
+Closing a bill into an invoice and cancelling an invoice can require a cashier
+PIN, separate from the password. Managers can reset a PIN; nobody can read
+one. See [Cashier](/docs/billing/cashier).
+
+## HTTPS
+
+Run Lodgiva over HTTPS, always. The installer sets up a certificate
+automatically; see [Install on a server](/docs/install/server).
+
+## Backups
+
+A system nobody can restore is not backed up. See
+[Backups and updates](/docs/install/operations).

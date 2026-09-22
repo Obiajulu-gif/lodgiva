@@ -1,0 +1,63 @@
+---
+title: "Nigerian settings"
+description: "What the Nigerian layer changes: naira, 7.5% VAT, TIN, NIN, local payment tenders and Lagos time."
+---
+
+Lodgiva ships a Nigerian layer over the underlying PMS. It is applied when the
+`lodgiva_nigeria` app is installed, and it changes defaults rather than
+rewriting the product.
+
+## What it sets
+
+| Setting | Nigerian default |
+| --- | --- |
+| Country | Nigeria |
+| Currency | **NGN**, shown as ₦, stored to the kobo |
+| Time zone | **Africa/Lagos** |
+| Tax | **VAT at 7.5%**, on its own invoice line |
+| Tax identifier | **TIN**, shown on invoices |
+| Payment tenders | Cash, **Bank Transfer**, **POS Terminal**, Card, OTA Prepaid, Company Credit, Payment Link |
+| Guest nationality | Defaults to Nigerian |
+| Guest ID types | Include **NIN** alongside passport and driver's licence |
+
+<Warning title="The country field drives the tax">
+Set the property's country to Nigeria. Left unset, the underlying platform
+falls back to Indian tax behaviour — the codebase upstream is written for GST —
+and your invoices will be wrong in a way nobody notices until an audit.
+</Warning>
+
+## VAT
+
+7.5% is the standard Nigerian VAT rate at the time of writing, and it is a
+**configurable default, not tax advice**. If your hotel's circumstances differ,
+or the rate changes, set it in the property's tax settings.
+
+VAT is posted as its own folio line so it can be shown separately on the
+invoice, which is what a VAT invoice requires.
+
+## TIN
+
+Enter your hotel's TIN in the property settings; it is printed on every
+invoice. For company guests, put their TIN on the guest profile so it appears
+on theirs.
+
+## Payment tenders
+
+Bank transfer and POS terminal are first-class, because that is how Nigerian
+hotels are actually paid. Both require a reference — the narration, or the
+terminal slip number — and the same reference cannot be recorded twice on one
+bill. See [Payments](/docs/billing/payments).
+
+## What is not included
+
+| | |
+| --- | --- |
+| Paystack / Flutterwave card collection | <Status type="planned" /> |
+| FIRS e-invoicing submission | <Status type="planned" /> |
+| Nigerian bank statement import and auto-matching | <Status type="planned" /> |
+
+## Other countries
+
+The Nigerian layer is a country pack: it attaches to the PMS through the same
+hooks any country pack would use. A Ghanaian or Kenyan pack would follow the
+same shape, and none of them modify the core.

@@ -1,0 +1,57 @@
+---
+title: "Rooms"
+description: "Add the physical rooms guests sleep in, give them numbers and floors, and understand room status."
+---
+
+A room is a real room with a number. Each belongs to one
+[room type](/docs/property/room-types).
+
+## Add rooms
+
+<Steps>
+
+<Step>
+Go to **Settings → Rooms** and select **New**.
+</Step>
+
+<Step>
+Enter the **room number** exactly as it appears on the door, choose its
+**room type**, and set the **floor**.
+</Step>
+
+<Step>
+Save. The room joins the room board and the tape chart immediately, and can be
+sold from now on.
+</Step>
+
+</Steps>
+
+<Tip>
+Adding several rooms at once is quicker in the setup wizard, which takes a
+list like `201, 202, 203` for a room type.
+</Tip>
+
+## Room status
+
+Every room carries two independent statuses.
+
+**Housekeeping status** — is it ready for a guest?
+
+| Status | Meaning |
+| --- | --- |
+| `Clean` | Cleaned, not yet inspected |
+| `Inspected` | Checked by a supervisor |
+| `Ready` | Ready to sell |
+| `Dirty` | Needs cleaning, typically after a departure |
+| `Out of Order` | Cannot be sold: maintenance, repairs |
+
+**Occupancy status** — is someone in it? Either `Vacant` or `Occupied`.
+Lodgiva sets this from check-ins and check-outs; you do not set it by hand.
+
+## Taking a room out of service
+
+Set it to **Out of Order**. It stops being sellable at once, including on your
+booking page, so nobody can book a room with a broken air conditioner.
+
+Remember to set it back when the work is done, or you are quietly losing
+revenue.

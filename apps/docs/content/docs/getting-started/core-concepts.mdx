@@ -1,0 +1,83 @@
+---
+title: "Core concepts"
+description: "The seven ideas the rest of Lodgiva is built on: property, room type, room, rate, reservation, folio and business date."
+---
+
+Learn these seven words and every other page makes sense.
+
+## Property
+
+One hotel. It holds the address, the currency, the time zone, check-in and
+check-out times, and the tax settings. Lodgiva can run more than one property
+on the same installation.
+
+## Room type
+
+A category of room you sell, such as Standard, Deluxe or Executive Suite. The
+room type carries the **price**, how many adults it sleeps, and its photos.
+Guests book a room type, not a specific room.
+
+## Room
+
+A physical room with a number, such as 101. Each room belongs to one room
+type, sits on a floor, and has a housekeeping status.
+
+<Note>
+Rooms and room types are separate for a reason: a guest books "a Deluxe", and
+the front desk decides which Deluxe. That is what lets you move a guest
+without touching their booking.
+</Note>
+
+## Rate
+
+What a room type costs per night. The room type has a base price, and you can
+vary it by season or day of week. See [Prices and seasons](/docs/property/rates).
+
+## Reservation
+
+One guest's stay: who is coming, which room type, arrival and departure dates,
+and its status. A reservation moves through these states:
+
+| Status | Meaning |
+| --- | --- |
+| `Inquiry`, `Quoted`, `Requested` | Being discussed; holds no room |
+| `Held` | Room held briefly while the guest decides |
+| `Pending Payment` | Awaiting a deposit |
+| `Confirmed` | On the books, room reserved |
+| `Checked In` | Guest is in the hotel |
+| `Checked Out` | Stay finished |
+| `Cancelled` | Called off before arrival |
+| `No Show` | Never arrived; flagged by the night audit |
+| `Waitlist` | No room available, kept in case one frees up |
+
+## Folio
+
+The guest's bill. Every room night, restaurant order and payment lands on the
+folio as a separate line. A folio is never edited: a mistake is corrected with
+a **reversal** line, so the history stays intact.
+
+One stay can have more than one folio, which is how you split a bill between a
+company and a guest.
+
+## Business date
+
+The hotel's own working day, which is **not** the clock date. It moves forward
+only when the [night audit](/docs/billing/night-audit) runs. This is why a
+3 a.m. arrival still belongs to the previous night's business.
+
+<Tip>
+If room charges look missing, check the business date before anything else.
+The night audit posts the night's room charges as it closes the day.
+</Tip>
+
+## How they fit together
+
+```text
+Property
+ └── Room type  (Deluxe, ₦85,000)
+      └── Room  (101, 102, 103)
+
+Guest ──► Reservation ──► assigned a Room
+                   │
+                   └────► Folio ──► charges + payments ──► Invoice
+```

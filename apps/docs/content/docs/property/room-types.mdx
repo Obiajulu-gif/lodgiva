@@ -1,0 +1,60 @@
+---
+title: "Room types"
+description: "Create and edit the categories of room you sell, set their price, and control how many guests each holds."
+---
+
+A room type is a category you sell, such as Standard or Deluxe. It carries the
+price, the occupancy and the photos guests see.
+
+## Create a room type
+
+<Steps>
+
+<Step>
+Go to **Settings → Room types** and select **New**.
+</Step>
+
+<Step>
+Fill in:
+
+| Field | Meaning |
+| --- | --- |
+| **Code** | A short code, such as `DLX`. Appears on reports and in room numbers like `Deluxe-101` |
+| **Name** | What guests see: "Deluxe" |
+| **Base price** | The nightly price **before VAT**, in naira |
+| **Base occupancy** | How many guests the price covers, usually 2 |
+| **Extra adult price** | Charged per extra adult above base occupancy |
+| **Adults / children capacity** | The most the room can hold |
+| **Tax percent** | Leave empty to use the property's standard VAT rate |
+
+</Step>
+
+<Step>
+Save. The room type is now sellable, once it has rooms.
+</Step>
+
+</Steps>
+
+<Warning title="Leave tax percent empty unless you mean it">
+Empty means "use the standard rate for this property", currently 7.5% VAT for
+Nigeria. Typing a number here overrides that for this room type only, on every
+future booking.
+</Warning>
+
+## Prices that change with the date
+
+The base price applies every night unless a season says otherwise. For
+weekend or peak pricing see [Prices and seasons](/docs/property/rates).
+
+## Photos and descriptions
+
+Photos belong to the room type and appear on your booking page. Add them under
+**Settings → Booking page**; see [Your booking page](/docs/property/booking-page).
+
+## Editing and removing
+
+Editing a price changes **future** bookings only. Bills already issued keep
+the price they were sold at, which is what makes old invoices trustworthy.
+
+To stop selling a type, mark it disabled rather than deleting it. Deleting
+would break the history of stays that used it.

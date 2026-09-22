@@ -1,0 +1,35 @@
+---
+title: "Laptop demo"
+description: "Run Lodgiva on your own machine and show it to someone today, without a server."
+---
+
+You can run the whole system on a laptop and give someone a temporary public
+link. This is right for a demo, and wrong for a hotel.
+
+## What you need
+
+- Linux, or Windows with WSL2.
+- 8 GB of RAM.
+- About an hour the first time.
+
+## How it works
+
+Frappe runs locally, a small reverse proxy puts the landing page, the PMS and
+the booking page on one address, and a tunnel gives that address a public
+name for as long as the laptop is on.
+
+## Its limits
+
+<Warning>
+- The laptop must stay awake and online.
+- A quick tunnel's address changes every time it restarts.
+- Nothing is backed up.
+
+Fine for a scheduled demonstration. Never for a hotel taking real bookings.
+</Warning>
+
+## For anything real
+
+Install on a server instead: one command, about forty minutes, from €4 a
+month. See [Install on a server](/docs/install/server) and
+[Where to host](/docs/install/hosting).

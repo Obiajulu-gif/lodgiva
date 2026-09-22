@@ -1,0 +1,5 @@
+{
+  "title": "Housekeeping",
+  "icon": "Sparkles",
+  "pages": ["index", "room-status", "tasks", "on-a-phone", "maintenance"]
+}
