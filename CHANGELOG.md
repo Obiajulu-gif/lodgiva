@@ -32,6 +32,9 @@ than this repository. They're recorded here so the product has one history.
   pull-request checklist that keeps them up to date.
 - [deploy/README.md](deploy/README.md): hosting options compared for
   sign-ups from Nigeria, including which providers take PayPal.
+- The README now shows how to start every local server: the PMS demo
+  (database, PMS, router, optional public tunnel) and the landing page, with
+  sign-in and troubleshooting steps.
 
 ### Security
 - Row-level security stays strict for anonymous routes. Three narrow

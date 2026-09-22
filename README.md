@@ -81,11 +81,94 @@ the script tells you where the generated password is.
 all work. There's a comparison, including which ones take PayPal when a
 Nigerian card is declined, in **[`deploy/README.md`](deploy/README.md)**.
 
-### Demo from a laptop, free
+### Start the local servers (Windows + WSL)
 
-The PMS also runs in WSL on Windows and can be shared through a free
-Cloudflare Tunnel. See
+The PMS demo runs in WSL on Windows: distro `Ubuntu-24.04`, user `frappe`,
+already installed on the development machine. It's four processes, each in
+its **own Windows PowerShell window**, started in this order. Leave the
+windows open; closing one stops that part.
+
+> Use **Windows PowerShell** (Start menu → *PowerShell*), not a Linux
+> terminal. The `wsl` command only works from Windows.
+
+**1. Database** (MariaDB, port 3307)
+
+```powershell
+wsl -d Ubuntu-24.04 -u frappe -- bash /home/frappe/kamra-mariadb.sh --foreground
+```
+
+**2. The PMS** (Frappe on port 8002, plus live updates on 9001). Wait for
+`Running on …:8002`.
+
+```powershell
+wsl -d Ubuntu-24.04 -u frappe -- bash /home/frappe/kamra-serve.sh
+```
+
+**3. The router** (port 8001). It puts the landing page at `/` and the PMS
+behind it.
+
+```powershell
+wsl -d Ubuntu-24.04 -u frappe -- bash -c "cd ~/lodgiva-router && FRAPPE_UPSTREAM=127.0.0.1:8002 ./caddy run --config Caddyfile.local --adapter caddyfile"
+```
+
+Then open:
+
+| Page | Address |
+|---|---|
+| Landing page | http://localhost:8001/ |
+| Staff PMS | http://localhost:8001/lodgiva |
+| Guest booking page | http://localhost:8001/book |
+
+**4. Optional: a public link** to share with others, through a free
+Cloudflare Tunnel.
+
+```powershell
+wsl -d Ubuntu-24.04 -u frappe -- /home/frappe/cloudflared tunnel --no-autoupdate --url http://localhost:8001
+```
+
+It prints a new `https://….trycloudflare.com` address **each time it
+starts**. Tell the PMS its new address, replacing the example URL:
+
+```powershell
+wsl -d Ubuntu-24.04 -u frappe -- bash -lc "cd ~/kamra-bench && bench --site kamra.localhost set-config host_name https://YOUR-NEW-URL.trycloudflare.com"
+```
+
+**Sign in** as `Administrator`, not an email address. The password was
+generated at install and never printed; read it with:
+
+```powershell
+wsl -d Ubuntu-24.04 -u frappe -- cat /home/frappe/.kamra-slice-credentials
+```
+
+**Stop everything** by closing the windows, or run:
+
+```powershell
+wsl -d Ubuntu-24.04 --shutdown
+```
+
+| If you see | It means | Do this |
+|---|---|---|
+| `address already in use` | That part is still running from before | `wsl -d Ubuntu-24.04 --shutdown`, then start again from step 1 |
+| `wsl: command not found` or `Unknown command: -d` | You're in a Linux terminal | Use Windows PowerShell |
+| `Wrong email, username, or password` | You signed in with an email | Use `Administrator` |
+| The tunnel link won't load at first | Its DNS takes a few seconds | Wait 15–30 seconds and reload |
+
+More detail, and a demo script to rehearse, are in
 [`docs/LODGIVA_PMS_DEPLOYMENT.md`](docs/LODGIVA_PMS_DEPLOYMENT.md).
+
+### Start the landing page and original API
+
+From PowerShell in the project folder:
+
+```powershell
+cd C:\Users\googl\Desktop\lodgiva
+pnpm install
+pnpm marketing        # landing page → http://localhost:3000
+```
+
+`pnpm api` starts the original API on http://localhost:4000/api/v1. It needs
+`DATABASE_URL` and `DIRECT_URL` first; see [The original stack](#the-original-stack)
+and [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
 
 ---
 
