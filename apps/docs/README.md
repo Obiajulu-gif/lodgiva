@@ -1,45 +1,98 @@
-# docs
+# Lodgiva documentation
 
-This is a Next.js application generated with
-[Create Fumadocs](https://github.com/fuma-nama/fumadocs).
+The documentation site for the Lodgiva PMS, at
+[`apps/docs`](.) in the `lodgiva` monorepo. Built with
+[Next.js](https://nextjs.org) and [Fumadocs](https://fumadocs.dev); content is
+MDX under [`content/docs`](content/docs).
 
-Run development server:
+## Run it
+
+From the repository root:
 
 ```bash
-npm run dev
-# or
-pnpm dev
-# or
-yarn dev
+pnpm install
 ```
 
-Open http://localhost:3000 with your browser to see the result.
+```bash
+pnpm docs
+```
 
-## Explore
+Then open <http://localhost:3001>.
 
-In the project, you can see:
+## Scripts
 
-- `lib/source.ts`: Code for content source adapter, [`loader()`](https://fumadocs.dev/docs/headless/source-api) provides the interface to access your content.
-- `lib/layout.shared.tsx`: Shared options for layouts, optional but preferred to keep.
+| Command | What it does |
+| --- | --- |
+| `pnpm dev` | Development server with hot reload |
+| `pnpm build` | Production build, including every static page |
+| `pnpm start` | Serve a production build |
+| `pnpm lint` | ESLint |
+| `pnpm typecheck` | `next typegen` then `tsc --noEmit` |
 
-| Route                     | Description                                            |
-| ------------------------- | ------------------------------------------------------ |
-| `app/(home)`              | The route group for your landing page and other pages. |
-| `app/docs`                | The documentation layout and pages.                    |
-| `app/api/search/route.ts` | The Route Handler for search.                          |
+## Where things live
 
-### Fumadocs MDX
+```text
+app/
+  (home)/page.tsx     the landing page
+  docs/[[...slug]]/   every documentation page
+  og/                 generated social images
+  sitemap.ts          derived from the content tree
+components/
+  mdx.tsx             which components MDX can use
+  status.tsx          <Status type="available | beta | planned | …" />
+content/docs/         the documentation itself, in MDX
+  meta.json           section order in the sidebar
+lib/
+  shared.ts           site name, origin, GitHub edit links
+  layout.shared.tsx   the navigation bar
+public/images/docs/   screenshots
+```
 
-Collections are defined with the [Macro API](https://fumadocs.dev/docs/mdx/macro) in `lib/source.ts`.
+## Writing a page
 
-Read the [Introduction](https://fumadocs.dev/docs/mdx) for further details.
+Create an `.mdx` file under `content/docs`, and add its name to the
+`meta.json` in the same folder to place it in the sidebar.
 
-## Learn More
+```mdx
+---
+title: "Take a booking"
+description: "Turn an enquiry into a confirmed reservation."
+---
 
-To learn more about Next.js and Fumadocs, take a look at the following
-resources:
+Body text.
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js
-  features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [Fumadocs](https://fumadocs.dev) - learn about Fumadocs
+**Quote `title` and `description`.** An unquoted YAML value containing `: `
+is a parse error, and descriptions naturally contain colons.
+
+### Components available in MDX
+
+`Note`, `Tip`, `Warning`, `Danger`, `Cards`/`Card`, `Steps`/`Step`,
+`Tabs`/`Tab`, `Accordions`/`Accordion`, `Files`/`File`/`Folder`, `TypeTable`,
+and `Status`.
+
+### The rule about unbuilt features
+
+Never describe something that does not exist as if it works. Label it:
+
+```mdx
+Card payments through Paystack <Status type="planned" /> are not built.
+```
+
+[Feature status](content/docs/resources/feature-status.mdx) is the index of
+what is real, and is updated with the product.
+
+## Checks before opening a pull request
+
+```bash
+pnpm lint && pnpm typecheck && pnpm build
+```
+
+The build compiles every MDX file, so a broken page fails it rather than
+reaching the site.
+
+## Deployment
+
+Deployed to Vercel as its own project with the repository root as the Vercel
+root directory and `apps/docs` as the app — see
+[`docs/deploy-docs.md`](../../docs/deploy-docs.md).
