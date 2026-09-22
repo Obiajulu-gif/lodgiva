@@ -347,6 +347,7 @@ Next.js then proxies `/api/v1/*` to that server. Only one mode is ever active.
 | `503 STORAGE_NOT_CONFIGURED` | `STORAGE_ADAPTER=disabled` | Expected. Configure R2 to enable files |
 | `501 SSE_UNAVAILABLE` | SSE on serverless | Expected; see above |
 | A Preview URL redirects to a Vercel login | Deployment Protection on previews | Expected for previews; Production is public |
+| Build fails with ``An error occurred in `next/font` `` and `TypeError: Cannot read properties of null (reading '1')` | Next.js couldn't fetch Google Fonts during the build. It's a transient network problem on the build server, not your code (seen 2026-09-22 on PR #5) | Redeploy. `npx vercel redeploy <deployment-url> --target preview` built cleanly on the first retry |
 | `/api/v1/auth/refresh` → 401 on the landing page | Visitor not signed in | Expected: the page checks for a session |
 
 ---
