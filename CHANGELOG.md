@@ -33,6 +33,15 @@ than this repository. They're recorded here so the product has one history.
 - [deploy/README.md](deploy/README.md): hosting options compared for
   sign-ups from Nigeria, including which providers take PayPal.
 
+### Security
+- Row-level security stays strict for anonymous routes. Three narrow
+  `SECURITY DEFINER` resolvers, callable only by the app role, answer
+  "which tenant owns this?" and nothing else, and only when the answer is
+  unambiguous. All real work then runs under that tenant's RLS. Migration
+  `20260922000000_public_entry_point_resolvers`, additive only.
+- Verified that the API needs **no owner database credentials** at runtime:
+  the full suite passes with `DIRECT_URL` set to the restricted role. (L-25)
+
 ### Changed
 - The README now describes the product as it is: three repositories that
   deploy as one.
@@ -44,6 +53,33 @@ than this repository. They're recorded here so the product has one history.
   host, not only Oracle.
 
 ### Fixed
+- **Payment webhooks failed with a 500** when the API ran as its restricted
+  database role, as production should. Every Paystack and Flutterwave
+  confirmation was refused by row-level security. Money that no hotel can be
+  matched to is now recorded for finance review instead of being written under
+  a made-up tenant id. (L-31)
+- **The public booking engine couldn't find any hotel** under the restricted
+  role, and when it could, it might have picked the wrong one: two companies
+  may use the same property slug. Quotes now resolve a hotel only when the slug
+  is unambiguous. (L-31)
+- **New staff couldn't accept their invitations**: acceptance rolled back with
+  a database error. (L-32)
+- **Live updates never reached any screen.** The poller now reads each
+  connected hotel's events in that hotel's own context. (L-33)
+- **Exports never finished, on every deployment**, and request metrics were
+  never saved. Background work was reusing a request's closed database
+  transaction. (L-34)
+- A quarantined upload (HTML disguised as an image) left **no audit trail**:
+  the quarantine was rolled back by its own error response. Nothing was ever
+  served. (L-35)
+- `db:reset` failed to parse and couldn't run at all. It's now covered by a
+  test. (L-29)
+- The test database script granted rights in an order PostgreSQL 16 ignores,
+  so every query was refused. (L-30)
+- The integration and end-to-end suites had drifted from the API and **had
+  never run against PostgreSQL row-level security**. They now pass in full,
+  under the production login rate limit, as the restricted role only:
+  242/242 integration, 144/144 end-to-end, 156/156 unit. (L-36)
 - The installer aborted on providers whose firewall starts empty (Hetzner,
   DigitalOcean): it inserted a rule at a fixed position. It now inserts at the
   top, and opens `ufw` if that's active.

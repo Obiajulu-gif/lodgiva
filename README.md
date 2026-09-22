@@ -132,7 +132,7 @@ isn't a local database whose name ends in `_test`.
 ### Tests
 
 ```bash
-pnpm test:unit      # 150 tests, no database needed
+pnpm test:unit      # 156 tests, no database needed
 ```
 
 These cover permissions (including a scan that fails the build if any route
@@ -140,9 +140,20 @@ is missing its permission check), tax maths (inclusive and exclusive VAT),
 the reservation state machine, POS settlement, payment providers, TOTP and
 secret encryption.
 
-The end-to-end suite (`pnpm --filter @lodgiva/api test`) runs the full stay
-lifecycle against a disposable PostgreSQL database; see
-[`docs/LOCAL_DATABASE_SETUP.md`](docs/LOCAL_DATABASE_SETUP.md).
+Two more suites run against a **disposable** PostgreSQL database named
+`*_test`, with the API connected as the restricted role so row-level
+security is really exercised (see
+[`docs/LOCAL_DATABASE_SETUP.md`](docs/LOCAL_DATABASE_SETUP.md) and
+`scripts/test-db-up.sh`):
+
+- `pnpm test:integration`: **242 tests** covering booking, the stay
+  lifecycle, money invariants, gateway webhooks, night audit, files, POS and
+  hardening.
+- `node test/e2e.mjs`: **144 checks** walking one stay from login to night
+  audit.
+
+All three suites passed in full on 2026-09-22, under the production login
+rate limit.
 
 The PMS side has its own tests in `lodgiva-nigeria`: unit tests for the
 country pack, plus a live-site test that replays the four money defects and

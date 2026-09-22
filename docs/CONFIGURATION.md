@@ -20,7 +20,7 @@ always · **—** optional
 | Variable | Required | Default | Read in | Notes |
 |---|---|---|---|---|
 | `DATABASE_URL` | **Yes** | — | `app-factory.ts`, Prisma | The runtime connection. In production, the **`lodgiva_app`** role on the pooled host, so row-level security applies. Must start `postgres://` or `postgresql://` |
-| `DIRECT_URL` | **Yes** | — | `app-factory.ts`, `schema.prisma` | Used by Prisma Migrate. The API refuses to start without it, but never queries through it. Prefer the unpooled `lodgiva_app` URL at runtime; keep the owner URL for migrations (L-25) |
+| `DIRECT_URL` | **Yes** | — | `app-factory.ts`, `schema.prisma` | Used by Prisma Migrate. The API refuses to start without it, but never queries through it. **At runtime, set it to the unpooled `lodgiva_app` URL**, verified 2026-09-22 with the full suite. Use the owner URL only when migrating (L-25) |
 | `DB_TX_TIMEOUT_MS` | — | `20000` | `prisma.service.ts` | Longest a request's transaction may run |
 | `DB_TX_MAX_WAIT_MS` | — | `15000` | `prisma.service.ts` | Longest to wait for a pooled connection |
 | `DB_TX_RETRIES` | — | `5` | `prisma.service.ts` | Retries on serialisation conflicts |

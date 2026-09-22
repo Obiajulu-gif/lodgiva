@@ -171,10 +171,10 @@ file, a chat or a document.
 Prisma Migrate does. Prisma Client just needs the variable to exist, because
 the schema declares `directUrl`. Putting the **owner** URL here places
 credentials that bypass row-level security in your serverless environment. The
-least-privilege option is the **unpooled `lodgiva_app`** URL. That's a
-recommendation, not yet a tested fact, so run the smoke test in Step 7 after
-changing it. Tracked as **L-25** in the
-[issue register](LODGIVA_ISSUE_REGISTER.md).
+least-privilege option is the **unpooled `lodgiva_app`** URL. **Verified
+2026-09-22:** the full test suite, signup included, passes with no owner
+credentials anywhere in the API's environment. Use the owner URL only when
+running migrations (L-25 in the [issue register](LODGIVA_ISSUE_REGISTER.md)).
 
 ### Only with R2 storage
 
@@ -284,14 +284,14 @@ node scripts/smoke-serverless-api.mjs --base https://lodgiva.vercel.app
 | Change | What to do |
 |---|---|
 | Code only | Merge to `main`. Vercel deploys Production automatically |
-| **Database schema** | Run `pnpm db:migrate` against Production **before** merging (with `DIRECT_URL`). Keep migrations additive so the running code and the new schema coexist during the rollout |
+| **Database schema** | Run `pnpm db:migrate` against Production **before** merging (with the owner `DIRECT_URL`). Keep migrations additive so the running code and the new schema coexist during the rollout. Code that calls a new database function **fails until its migration has run**. `20260922000000_public_entry_point_resolvers` is one: webhooks and the public booking quote depend on it |
 | An environment variable | Change it in Vercel, then **Redeploy** |
 | Roll back | **Deployments** → pick the last good one → **Promote to Production**. This doesn't undo a migration, which is why migrations must be additive |
 
 Before merging, run the checks CI would run:
 
 ```bash
-pnpm test:unit            # 150 tests
+pnpm test:unit            # 156 tests
 pnpm --filter lodgiva lint
 pnpm check:migrations
 ```

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Living document. Update it in the same pull request as any change it describes (see [docs/README.md](README.md#keeping-these-documents-true)) |
-| **Last verified against code** | 2026-09-21, `main` at `c712f52` + PR #4 |
+| **Last verified against code** | 2026-09-22. Full suite passing: 156 unit, 242 integration, 144 end-to-end |
 | **Audience** | Engineers joining the project, operators deploying it, reviewers checking a change |
 
 This document explains what Lodgiva is made of, how a request travels through
@@ -285,7 +285,42 @@ Two identities, two URLs (see [CONFIGURATION.md](CONFIGURATION.md)):
 | Variable | Role | Used by |
 |---|---|---|
 | `DATABASE_URL` | `lodgiva_app`, pooled | The running API and worker. **Subject to RLS** |
-| `DIRECT_URL` | Owner, unpooled | Prisma Migrate. **Bypasses RLS**; see L-25 in the [issue register](LODGIVA_ISSUE_REGISTER.md) |
+| `DIRECT_URL` | **Migrations:** owner, unpooled. **Runtime:** `lodgiva_app`, unpooled | Prisma Migrate uses it; Prisma Client only requires it to exist. Verified 2026-09-22: the full suite passes with no owner credentials in the API's environment (L-25) |
+
+### Anonymous routes: finding the tenant first
+
+Some routes run with **no signed-in user**, and so no tenant context: payment
+webhooks, the public booking quote, and the local storage adapter's
+upload and download. Under RLS they'd see nothing. Before 2026-09-22 they
+failed exactly that way (L-31).
+
+They now start by asking one narrow question of a **`SECURITY DEFINER`**
+function (migration `20260922000000_public_entry_point_resolvers`):
+
+| Function | Answers | Refuses when |
+|---|---|---|
+| `lodgiva_tenant_for_payment_reference(ref)` | The tenant that owns a payment reference | It's unknown, or claimed by two tenants |
+| `lodgiva_active_property_by_slug(slug)` | The tenant and property behind a public booking slug | No active property, or **more than one** (slugs are unique per tenant only) |
+| `lodgiva_tenant_for_file_object(bucket, key)` | The tenant that owns a stored object | It's unknown |
+
+Only `lodgiva_app` may call them, not `PUBLIC`. The route then runs **all** of
+its real work inside that tenant with `runWithTenant`, under normal RLS.
+`WebhookEvent`, a platform inbox that belongs to no tenant until matched and is
+read by no tenant route, is exempt from tenant RLS, like the auth tables.
+
+Anonymous routes that know their tenant from their own data use it directly.
+For example, invitation acceptance uses the invitation's tenant.
+
+### Background work and the request transaction
+
+Each request runs in one transaction, carried by AsyncLocalStorage. Anything
+that **outlives the response**, such as an un-awaited export or a timer, would
+inherit that transaction after it has closed. Such work must leave it:
+
+| Need | Use |
+|---|---|
+| Tenant data, committed on its own (exports, a quarantine that's followed by an error response, stayed nights before a refused checkout) | `PrismaService.runInNewTenantTransaction(tenantId, op)` |
+| Non-tenant data from a timer (request metrics) | `PrismaService.detached(op)` |
 
 Work that must survive a request's rollback, such as posting stayed nights
 before a checkout that may then be refused, uses
@@ -367,7 +402,10 @@ until a worker runs (`pnpm worker`, on any long-running host).
 
 ### Live updates
 
-`events` streams Server-Sent Events. On Vercel, `inject()` buffers whole
+`events` streams Server-Sent Events. Its poller reads the outbox **once per
+tenant with a connected client, inside that tenant's context**, with a
+per-tenant high-water mark. A single cross-tenant query is invisible under
+RLS (L-33). On Vercel, `inject()` buffers whole
 responses, so `/events/*` deliberately returns **`501 SSE_UNAVAILABLE`**
 instead of hanging. The Next dashboard polls instead; the Vite PWA needs the
 standalone API for live updates.
@@ -450,8 +488,8 @@ questions: [LODGIVA_GAP_MATRIX.md](LODGIVA_GAP_MATRIX.md).
 
 ## 14. Data model
 
-**55 Prisma models** (`packages/database/prisma/schema.prisma`), **2
-migrations** (PostgreSQL baseline, then RLS). Almost every table carries
+**55 Prisma models** (`packages/database/prisma/schema.prisma`), **3
+migrations** (PostgreSQL baseline, RLS, and the public-route resolvers). Almost every table carries
 `tenantId`.
 
 | Area | Models |
@@ -507,7 +545,7 @@ Stated plainly so no one discovers them in front of a customer.
 | **Rate-limit counters are per instance**, in memory | The auth budget multiplies by warm instances; per-account lockout still holds | deploy-vercel.md |
 | **Behind the Caddy router**, API calls reach Vercel from one IP | Requests routed through a PMS server may share one rate-limit bucket | L-27 |
 | **File storage is `disabled`** in production | Uploads, PDFs and exports return 503 until R2 is configured | deploy-vercel.md |
-| The owner database URL (`DIRECT_URL`) is present in the runtime | Credentials that bypass RLS live in the serverless environment | L-25 |
+| Production's `DIRECT_URL` may still be the owner URL | Verified unnecessary (L-25); switch it to the unpooled `lodgiva_app` URL | L-25 |
 | The PMS doesn't yet match every original-stack control | See gap matrix §8 and the PMS README | [gap matrix](LODGIVA_GAP_MATRIX.md) |
 
 ---

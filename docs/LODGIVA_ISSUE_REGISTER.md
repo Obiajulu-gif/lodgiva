@@ -286,7 +286,114 @@ The seed is upsert-only and touched no pre-existing tenant, but demo logins
 with the password `Password123!` should not remain in a production database.
 **Awaiting a decision** on whether to remove them; nothing has been deleted.
 
-### L-25 · Owner database credentials live in the serverless runtime — **Hypothesis (fix untested)**
+## Fixed 2026-09-22 — the first run against real PostgreSQL RLS
+
+Until 2026-09-22 the integration suite had never run against PostgreSQL row-level
+security. It ran against a disposable local `lodgiva_test`, with the API connected
+**only** as the restricted role: `DATABASE_URL` and `DIRECT_URL` both set to
+`lodgiva_test_app`, the same way production is meant to run. The first result was
+11 passes out of 241. Everything below came out of getting that to a full pass.
+
+### L-29 · `db:reset` couldn't run at all — **Fixed**
+
+A `"\n"` in `packages/database/src/reset.js` had been written as a literal line
+break on 2026-09-17, so the file failed to parse (`SyntaxError`). The reset, and
+the e2e suite that calls it, didn't work for five days, and nothing noticed
+because nothing ran it. **Fix:** the escape is restored.
+`test/unit/reset-guard.test.mjs` now runs the script against six URLs it must
+refuse (Neon, Supabase, a remote `*_test` host, a local database not named
+`*_test`, MySQL) and checks that a refused URL's password is never printed. That
+test fails on the old file.
+
+### L-31 · Public entry points were broken under row-level security — **Fixed (needs the new migration in production)**
+
+Four routes run with no signed-in user, so no tenant context exists, and RLS
+correctly showed them nothing:
+
+| Route | Symptom |
+|---|---|
+| `POST /gateway/webhooks/:provider` | **500**. The `WebhookEvent` insert was refused, so **no Paystack or Flutterwave payment could be confirmed by webhook** |
+| `POST /booking/public/quotes` | **404** for every hotel. The public booking engine couldn't find anything |
+| `POST /files/upload`, `GET /files/download` | 404 (local storage adapter only; R2 uploads don't pass through here) |
+
+It was also **ambiguous**: property slugs and payment references are unique per
+tenant, not globally, and the old code took whichever row matched first. That
+could quote, and book, the wrong hotel.
+
+**Fix:** migration `20260922000000_public_entry_point_resolvers`.
+`WebhookEvent`, a platform inbox that no tenant route reads, leaves tenant RLS,
+as the auth tables already do. Three narrow `SECURITY DEFINER` resolvers
+(`lodgiva_tenant_for_payment_reference`, `lodgiva_active_property_by_slug`,
+`lodgiva_tenant_for_file_object`) each answer only "which tenant owns this?",
+and **only when the answer is unambiguous**. They're executable by `lodgiva_app`
+only, not `PUBLIC`. The API then does all real work inside that tenant under
+normal RLS. Unmatched webhook money is now recorded on the inbox as
+`UNMATCHED` instead of as a `ReconciliationException` under the made-up tenant
+id `"unknown"`, which RLS refused and no hotel could ever have seen.
+
+### L-32 · Staff couldn't accept invitations — **Fixed**
+
+`POST /admin/onboarding/invitations/accept` is anonymous. Its transaction wrote
+an `AuditEvent` with no tenant context set, RLS refused it, and the whole
+acceptance rolled back with `DATABASE_ERROR`. **Fix:** the transaction runs in
+the invitation's own tenant.
+
+### L-33 · Live updates never fired — **Fixed**
+
+The SSE poller read `OutboxEvent` across all tenants in one query with no
+tenant context, so RLS returned nothing and no stream ever received an event.
+**Fix:** it polls once per tenant with a connected client, inside that tenant's
+context, with a per-tenant high-water mark.
+
+### L-34 · Exports never finished; request metrics were never saved — **Fixed**
+
+Both were background work started during a request. AsyncLocalStorage carried
+the request's transaction into it, but that transaction closes when the request
+commits, so every later query failed. Exports stayed `QUEUED` forever, and the
+metrics flush failed silently inside its `catch`. This was independent of RLS:
+**broken on every deployment**. **Fix:** exports run each step in its own tenant
+transaction, after waiting for the creating request to commit. The metrics flush
+runs through the new `PrismaService.detached()`, outside any request.
+
+### L-35 · A quarantined upload wasn't recorded — **Fixed**
+
+`files.complete()` caught HTML disguised as a JPEG, marked the file
+`QUARANTINED`, wrote an audit event, then threw a 409. The throw rolled the
+request's transaction back, so the file stayed `UPLOADED` and the stored-XSS
+attempt **left no audit trace**. Nothing was served, because only `CLEAN` files
+download. **Fix:** the quarantine commits in its own transaction before the 409.
+
+### L-36 · The integration suite was stale and had never run against RLS — **Fixed**
+
+Beyond the defects above, the suite itself had drifted from the API:
+
+- **Money** is serialised as strings (BigInt-safe), but tests did arithmetic on
+  it, so `+` concatenated. A shared `test/integration/lib/api.mjs` now reads
+  `…Minor` fields back as numbers; every fixture is far below 2⁵³.
+- **Refresh** tokens moved to an HttpOnly cookie. The test still posted one in
+  the body, and now exercises the cookie contract instead.
+- **Reversals and voids** need `folio.reverse_entry` (GM or Finance) since L-01.
+  Tests reversed as front desk; they now use the seeded manager, and expect
+  **403** when front desk tries.
+- **Cash settlement** needs a `shiftId`. The POS suite now opens a drawer, and
+  closes it balanced at the end so it can't block the night audit.
+- **Login rate limit**: about 35 sign-ins shared one 30-per-minute budget, so
+  whole files failed with 429. All suites now wait a 429 out, as
+  `hardening.test.mjs` already did, rather than raising a production limit.
+
+`scripts/test-db-up.sh` also granted the test role in an order that PostgreSQL
+16 doesn't honour (L-30), so every query was `permission denied`. It now
+grants `WITH INHERIT TRUE` and explains why.
+
+### L-25 · Owner database credentials live in the serverless runtime — **Verified locally (production change pending)**
+
+**Update 2026-09-22:** the full integration suite passes with `DIRECT_URL` set to
+the **restricted** role and no owner credentials anywhere in the API's
+environment. That includes signup, the case the `app-factory.ts` comment worried
+about. The owner URL is only needed for `prisma migrate`. **Production still
+needs the change:** set Vercel's `DIRECT_URL` to the unpooled `lodgiva_app` URL.
+
+**Original entry:**
 
 Found 2026-09-21 while writing [ARCHITECTURE.md](ARCHITECTURE.md).
 `app-factory.ts` refuses to start without `DIRECT_URL`, and the deploy guides
