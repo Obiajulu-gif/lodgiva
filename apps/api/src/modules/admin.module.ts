@@ -367,7 +367,10 @@ export class AdminService {
     }
 
     const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
-    return this.prisma.$transaction(async (tx) => {
+    // Accepting is anonymous, so no tenant context exists; the invitation
+    // itself names the tenant. Without it, the audit row below was refused by
+    // row-level security and the whole acceptance rolled back.
+    return this.prisma.runWithTenant(invitation.tenantId, () => this.prisma.$transaction(async (tx) => {
       let user = await tx.user.findUnique({ where: { email: invitation.email } });
       if (!user) {
         user = await tx.user.create({
@@ -404,7 +407,7 @@ export class AdminService {
         },
       });
       return { userId: user.id, role: membership.role, tenantId: membership.tenantId };
-    });
+    }));
   }
 
   async updateMembership(auth: AuthContext, id: string, body: unknown) {

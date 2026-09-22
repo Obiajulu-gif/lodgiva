@@ -377,39 +377,50 @@ export class GatewayService {
       return { received: true, ignored: true, eventType: parsed?.eventType ?? "unparseable" };
     }
 
-    const intent = parsed.reference
-      ? await this.prisma.paymentIntent.findFirst({ where: { reference: parsed.reference } })
+    // A webhook is anonymous, so no tenant context exists yet and row-level
+    // security hides every tenant's intents. A narrow SECURITY DEFINER
+    // resolver answers only "which tenant owns this reference?" (and only
+    // when that is unambiguous); everything that moves money then runs
+    // inside that tenant, under the same RLS as any signed-in request.
+    const delivery = parsed;
+    const tenantId = delivery.reference
+      ? await this.tenantForPaymentReference(delivery.reference)
+      : null;
+    const outcome = tenantId
+      ? await this.prisma.runWithTenant(tenantId, async () => {
+          const intent = await this.prisma.paymentIntent.findFirst({
+            where: { tenantId, reference: delivery.reference },
+          });
+          if (!intent) return null;
+          const payment = await this.confirmIntent(intent.id, {
+            providerRef: delivery.providerRef,
+            amountMinor: delivery.amountMinor,
+            feeMinor: delivery.feeMinor,
+            source: "webhook",
+          });
+          return { intent, payment };
+        })
       : null;
 
-    if (!intent) {
-      // Money arrived that we cannot attribute. That is a finance problem,
-      // not a reason to fail the webhook.
-      await this.prisma.$transaction(async (tx) => {
-        await tx.webhookEvent.update({
-          where: { id: event.id },
-          data: { status: "PROCESSED", processedAt: new Date() },
-        });
-        await tx.reconciliationException.create({
-          data: {
-            tenantId: "unknown",
-            propertyId: "unknown",
-            kind: "UNKNOWN_IN_SETTLEMENT",
-            severity: "CRITICAL",
-            providerRef: parsed.providerRef,
-            actualMinor: parsed.amountMinor,
-            detail: `${provider.name} reported a successful payment for reference "${parsed.reference}" which matches no payment intent.`,
-          },
-        });
+    if (!outcome) {
+      // Money arrived that no hotel can be matched to. It belongs to no
+      // tenant, so it is recorded on the platform inbox for finance review
+      // rather than as a tenant exception under a made-up tenant id, which
+      // RLS rightly refuses and no hotel's screen could ever show.
+      await this.prisma.webhookEvent.update({
+        where: { id: event.id },
+        data: {
+          status: "UNMATCHED",
+          processedAt: new Date(),
+          rejectReason:
+            `Successful payment for reference "${delivery.reference ?? ""}" matches no payment intent ` +
+            `(amount ${delivery.amountMinor ?? "unknown"} minor units, provider ref ${delivery.providerRef ?? "none"}).`,
+        },
       });
-      return { received: true, unmatched: true, note: "No matching intent; exception raised." };
+      return { received: true, unmatched: true, note: "No matching intent; recorded for finance review." };
     }
 
-    const payment = await this.confirmIntent(intent.id, {
-      providerRef: parsed.providerRef,
-      amountMinor: parsed.amountMinor,
-      feeMinor: parsed.feeMinor,
-      source: "webhook",
-    });
+    const { intent, payment } = outcome;
     await this.prisma.webhookEvent.update({
       where: { id: event.id },
       data: {
@@ -425,6 +436,13 @@ export class GatewayService {
       paymentId: payment?.id ?? null,
       alreadyConfirmed: payment === null,
     };
+  }
+
+  /** The tenant that owns a payment reference, or null if none or ambiguous. */
+  private async tenantForPaymentReference(reference: string): Promise<string | null> {
+    const rows = await this.prisma.$queryRaw<{ tenant: string | null }[]>`
+      SELECT public.lodgiva_tenant_for_payment_reference(${reference}) AS tenant`;
+    return rows[0]?.tenant ?? null;
   }
 
   // ── Refunds ────────────────────────────────────────────────────────────

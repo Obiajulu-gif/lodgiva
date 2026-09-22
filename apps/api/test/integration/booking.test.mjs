@@ -9,11 +9,12 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
+import { parseApiJson, fetchWithLoginBackoff } from "./lib/api.mjs";
 
 const BASE = process.env.API_BASE ?? "http://localhost:4000/api/v1";
 
 async function call(path, { method = "GET", body, token } = {}) {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetchWithLoginBackoff(`${BASE}${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -22,7 +23,7 @@ async function call(path, { method = "GET", body, token } = {}) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
-  return { status: res.status, data: text ? JSON.parse(text) : {} };
+  return { status: res.status, data: text ? parseApiJson(text) : {} };
 }
 
 const uniq = () => Math.random().toString(36).slice(2, 7);

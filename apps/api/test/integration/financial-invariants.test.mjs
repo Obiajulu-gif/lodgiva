@@ -10,11 +10,12 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
+import { parseApiJson, fetchWithLoginBackoff } from "./lib/api.mjs";
 
 const BASE = process.env.API_BASE ?? "http://localhost:4000/api/v1";
 
 async function call(path, { method = "GET", body, token } = {}) {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetchWithLoginBackoff(`${BASE}${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -23,7 +24,7 @@ async function call(path, { method = "GET", body, token } = {}) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
-  return { status: res.status, data: text ? JSON.parse(text) : {} };
+  return { status: res.status, data: text ? parseApiJson(text) : {} };
 }
 
 const uniq = () => Math.random().toString(36).slice(2, 7);
@@ -35,6 +36,8 @@ const addDays = (iso, n) => {
 
 let token;
 let financeToken;
+// Reversals and voids need folio.reverse_entry: GENERAL_MANAGER or FINANCE.
+let managerToken;
 let property;
 let businessDate;
 let typeId;
@@ -75,6 +78,13 @@ test("setup", async () => {
     await call("/auth/login", {
       method: "POST",
       body: { email: "owner@grandpalm.demo", password: "Password123!" },
+    })
+  ).data.accessToken;
+
+  managerToken = (
+    await call("/auth/login", {
+      method: "POST",
+      body: { email: "manager@grandpalm.demo", password: "Password123!" },
     })
   ).data.accessToken;
 
@@ -150,9 +160,11 @@ test("INVARIANT a reversal is the exact negation and the original survives", asy
   });
   const before = await call(`/folios/${folioId}`, { token });
 
+  // The person who posts a charge cannot quietly reverse it: reversal is a
+  // manager's or finance's permission (folio.reverse_entry).
   const rev = await call(`/folios/${folioId}/entries/${charge.data.id}/reverse`, {
     method: "POST",
-    token,
+    token: managerToken,
     body: { reason: "Posted to the wrong room" },
   });
   assert.equal(rev.status, 201);
@@ -182,11 +194,11 @@ test("INVARIANT an entry cannot be reversed twice", async () => {
     body: { type: "POS_CHARGE", description: "Once only", amountMinor: 100000, applyTaxes: false },
   });
   const first = await call(`/folios/${folioId}/entries/${charge.data.id}/reverse`, {
-    method: "POST", token, body: { reason: "First reversal" },
+    method: "POST", token: managerToken, body: { reason: "First reversal" },
   });
   assert.equal(first.status, 201);
   const second = await call(`/folios/${folioId}/entries/${charge.data.id}/reverse`, {
-    method: "POST", token, body: { reason: "Second attempt" },
+    method: "POST", token: managerToken, body: { reason: "Second attempt" },
   });
   assert.equal(second.status, 400);
   assert.equal(second.data.error.code, "ALREADY_REVERSED");
@@ -413,12 +425,12 @@ test("INVARIANT voiding issues a credit note and keeps the original number", asy
   const forbidden = await call(`/invoices/${inv.data.id}/void`, {
     method: "POST", token, body: { reason: "Trying without authority" },
   });
-  assert.equal(forbidden.status, 409);
-  assert.equal(forbidden.data.error.code, "FORBIDDEN_ROLE");
+  assert.equal(forbidden.status, 403);
+  assert.equal(forbidden.data.error.code, "PERMISSION_DENIED");
 
   const voided = await call(`/invoices/${inv.data.id}/void`, {
     method: "POST",
-    token: financeToken,
+    token: managerToken,
     body: { reason: "Charged to the wrong company" },
   });
   assert.equal(voided.status, 201, JSON.stringify(voided.data));
@@ -436,7 +448,7 @@ test("INVARIANT voiding issues a credit note and keeps the original number", asy
   assert.equal(original.data.totalMinor, inv.data.totalMinor);
 
   const again = await call(`/invoices/${inv.data.id}/void`, {
-    method: "POST", token: financeToken, body: { reason: "Twice" },
+    method: "POST", token: managerToken, body: { reason: "Twice" },
   });
   assert.equal(again.status, 409);
   assert.equal(again.data.error.code, "ALREADY_VOID");

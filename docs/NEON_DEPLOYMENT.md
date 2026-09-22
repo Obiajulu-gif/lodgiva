@@ -65,14 +65,23 @@ Do not seed production with the demo hotel or documented demo passwords.
 
 ## 5. Configure deployment
 
-Set `DATABASE_URL` on both the NestJS API and worker. Keep `DIRECT_URL` only in CI/migration jobs. The dashboard and marketing site do not need database credentials.
+Set `DATABASE_URL` (the `lodgiva_app` pooled URL) wherever the API or worker runs.
 
-Recommended topology:
+**`DIRECT_URL` must also be set on the API's runtime:** it refuses to start
+without it, because the Prisma schema declares `directUrl`. The runtime never
+queries through it, only Prisma Migrate does. So prefer the **unpooled
+`lodgiva_app`** URL there, and keep the **owner** URL for migration jobs only
+(issue L-25; verify with the smoke test before relying on it).
 
-- Vercel: `apps/marketing-web` and the static build from `apps/dashboard-web`.
-- A long-running Node host (Railway, Render, Fly.io, or a VM): `apps/api` and one or more `apps/worker` processes.
-- Neon: PostgreSQL.
-- Cloudflare R2: uploaded files and generated exports.
+Current topology (see [deploy-vercel.md](deploy-vercel.md)):
+
+- **Vercel:** `apps/marketing-web`, which also runs the whole API in-process
+  at `/api/v1`. One project.
+- **Neon:** PostgreSQL.
+- **Cloudflare R2:** uploaded files and generated exports, once enabled.
+- **Not on Vercel:** `apps/worker` needs any always-on host. Alternatively,
+  run the API standalone ([deploy-render.md](deploy-render.md)) and set
+  `LODGIVA_API_ORIGIN`.
 
 Before releasing, run:
 

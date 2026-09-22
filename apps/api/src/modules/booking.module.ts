@@ -327,14 +327,32 @@ export class BookingService {
     const dto = publicQuoteSchema.parse(body);
     this.assertRange(dto.arrivalDate, dto.departureDate);
 
-    const property = await this.prisma.property.findFirst({
-      where: { slug: dto.propertySlug, status: "ACTIVE" },
-    });
-    if (!property) {
+    // Anonymous request: no tenant context, and RLS hides every tenant's
+    // properties. The resolver names the property only when exactly one
+    // active property carries this slug. Slugs are unique per tenant, not
+    // globally, and quoting whichever matched first could book the wrong
+    // hotel. The quote itself then runs inside that tenant.
+    const matches = await this.prisma.$queryRaw<{ tenantId: string; propertyId: string }[]>`
+      SELECT "tenantId", "propertyId" FROM public.lodgiva_active_property_by_slug(${dto.propertySlug})`;
+    if (matches.length !== 1) {
       throw new NotFoundException({
         error: { code: "PROPERTY_NOT_FOUND", message: "No such property." },
       });
     }
+    const { tenantId, propertyId } = matches[0];
+    return this.prisma.runWithTenant(tenantId, () =>
+      this.publicQuoteFor(dto, tenantId, propertyId)
+    );
+  }
+
+  private async publicQuoteFor(
+    dto: z.infer<typeof publicQuoteSchema>,
+    tenantId: string,
+    propertyId: string
+  ) {
+    const property = await this.prisma.property.findFirstOrThrow({
+      where: { id: propertyId, tenantId, status: "ACTIVE" },
+    });
     await this.inventory.expireStaleHolds(property.tenantId);
 
     const plans = await this.prisma.ratePlan.findMany({

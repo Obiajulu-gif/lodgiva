@@ -10,12 +10,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
+import { parseApiJson, fetchWithLoginBackoff } from "./lib/api.mjs";
 
 const BASE = process.env.API_BASE ?? "http://localhost:4000/api/v1";
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY ?? "sk_test_lodgiva_e2e";
 
 async function call(path, { method = "GET", body, token } = {}) {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetchWithLoginBackoff(`${BASE}${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -24,7 +25,7 @@ async function call(path, { method = "GET", body, token } = {}) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
-  return { status: res.status, data: text ? JSON.parse(text) : {} };
+  return { status: res.status, data: text ? parseApiJson(text) : {} };
 }
 
 /** Posts a webhook exactly as a provider would: raw bytes plus a signature. */
@@ -39,7 +40,7 @@ async function postWebhook(provider, payload, { signature, secret } = {}) {
     body: raw,
   });
   const text = await res.text();
-  return { status: res.status, data: text ? JSON.parse(text) : {} };
+  return { status: res.status, data: text ? parseApiJson(text) : {} };
 }
 
 const uniq = () => Math.random().toString(36).slice(2, 8);

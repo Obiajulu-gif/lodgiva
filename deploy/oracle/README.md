@@ -1,5 +1,10 @@
 # Lodgiva on Oracle Cloud Always Free
 
+> **Oracle won't accept your sign-up?** That's common, especially with
+> Nigerian cards. The same installer runs unchanged on Hetzner,
+> DigitalOcean, Contabo and others, several of which take PayPal. See
+> **[../README.md](../README.md)**.
+
 The result: one HTTPS address. It serves your landing page at `/`, the
 staff PMS at `/lodgiva` and the guest booking page at `/book`. It stays up
 without your laptop, and it costs nothing.

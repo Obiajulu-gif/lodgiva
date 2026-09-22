@@ -5,6 +5,8 @@
  *
  * Run: node test/e2e.mjs  (API must be running on :4000)
  */
+import { parseApiJson } from "./integration/lib/api.mjs";
+
 const BASE = "http://localhost:4000/api/v1";
 let failures = 0;
 
@@ -25,7 +27,9 @@ async function call(path, { method = "GET", body, token } = {}) {
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  const data = await res.json().catch(() => ({}));
+  const text = await res.text();
+  let data = {};
+  try { data = text ? parseApiJson(text) : {}; } catch { data = {}; }
   return { status: res.status, data };
 }
 
@@ -243,13 +247,13 @@ assert(taxLine?.amountMinor === 78750, "7.5% VAT on (base+service) is a separate
 // Ledger immutability: reversal, not edit
 const rev = await call(`/folios/${folioId}/entries/${charge.data.id}/reverse`, {
   method: "POST",
-  token,
+  token: mgrToken, // reversal is a manager's permission, not the poster's
   body: { reason: "Posting error test" },
 });
 assert(rev.status === 201, "reversal entry created");
 const rev2 = await call(`/folios/${folioId}/entries/${charge.data.id}/reverse`, {
   method: "POST",
-  token,
+  token: mgrToken, // reversal is a manager's permission, not the poster's
   body: { reason: "Double reversal attempt" },
 });
 assert(rev2.status === 400, "double reversal rejected");
@@ -854,7 +858,7 @@ assert(pre.status === 200 && typeof pre.data.canRun === "boolean",
 if (pre.data.warnings.length > 0) {
   // Deliberately omits acknowledgeWarnings — that is the point of the check.
   const unacked = await call("/night-audit/run", {
-    method: "POST", token, body: { propertyId: property.id },
+    method: "POST", token: mgrToken, body: { propertyId: property.id },
   });
   assert(unacked.status === 409 && unacked.data.error.code === "NIGHT_AUDIT_WARNINGS",
     "unacknowledged warnings block the night audit");
@@ -862,7 +866,7 @@ if (pre.data.warnings.length > 0) {
 
 const audit1 = await call("/night-audit/run", {
   method: "POST",
-  token,
+  token: mgrToken, // night_audit.run belongs to management
   body: { propertyId: property.id, acknowledgeWarnings: true },
 });
 assert(audit1.status === 201, "night audit runs", JSON.stringify(audit1.data));
@@ -872,7 +876,7 @@ assert(audit1.data.newBusinessDate === addDays(businessDate, 1), "business date 
 
 const audit2 = await call("/night-audit/run", {
   method: "POST",
-  token,
+  token: mgrToken,
   body: { propertyId: property.id, acknowledgeWarnings: true },
 });
 // Second run is for the NEW business date, so it should succeed;
@@ -962,7 +966,7 @@ console.log("9. Tenant isolation (§6.2 rule 8)");
 const foreign = await call(`/folios/does-not-exist-id`, { token });
 assert(foreign.status === 404, "cross-tenant/unknown folio returns 404, not data");
 
-const audit = await call(`/reports/audit-trail?propertyId=${property.id}`, { token });
+const audit = await call(`/reports/audit-trail?propertyId=${property.id}`, { token: mgrToken });
 const actions = audit.data.map((a) => a.action);
 assert(actions.includes("frontdesk.check_in"), "check-in audit event recorded");
 assert(actions.includes("payment.confirmed"), "payment audit event recorded");
