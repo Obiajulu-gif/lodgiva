@@ -8,7 +8,7 @@ booking page. It's designed around how Nigerian hotels actually run: bank
 transfers and POS terminals as first-class payments, 7.5% VAT on its own line,
 TIN on the invoice, and a ledger that nobody can quietly edit.
 
-**Landing page:** [lodgiva.vercel.app](https://lodgiva.vercel.app)
+**Landing page:** [lodgiva.vercel.app](https://lodgiva.vercel.app) · **Documentation:** [lodgiva-docs.vercel.app](https://lodgiva-docs.vercel.app)
 
 ---
 

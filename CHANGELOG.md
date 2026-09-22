@@ -25,6 +25,14 @@ than this repository. They're recorded here so the product has one history.
 ## [Unreleased]
 
 ### Added
+- **The documentation site.** Sixty-six pages covering the PMS as it actually
+  works — getting started, rooms and rates, front desk, guests, billing,
+  housekeeping, administration, installation, a hand-written API reference and
+  resources — at [apps/docs](apps/docs), live at
+  <https://lodgiva-docs.vercel.app>. Every claim was checked against the
+  running product, and anything not built carries a status label rather than
+  being described as available. Deployment steps in
+  [docs/deploy-docs.md](docs/deploy-docs.md).
 - A documentation home organised by task ([docs/README.md](docs/README.md)),
   an end-to-end architecture reference ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)),
   a reference for every environment variable
