@@ -24,7 +24,8 @@
     "restore:drill": "node scripts/restore.mjs --drill",
     "check:migrations": "node scripts/check-migrations.mjs --strict",
     "load-test": "node scripts/load-test.mjs",
-    "seed:demo": "node packages/database/src/seed-demo.js --reset"
+    "seed:demo": "node packages/database/src/seed-demo.js --reset",
+    "docs": "pnpm --filter @lodgiva/docs dev"
   },
   "devDependencies": {
     "turbo": "^2.5.4"
