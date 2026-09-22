@@ -540,7 +540,7 @@ model WebhookEvent {
   rawBody       String
   signature     String?
   signatureValid Boolean  @default(false)
-  status        String    @default("RECEIVED") // RECEIVED | PROCESSED | REJECTED | IGNORED
+  status        String    @default("RECEIVED") // RECEIVED | PROCESSED | REJECTED | IGNORED | UNMATCHED
   rejectReason  String?
   tenantId      String?
   intentId      String?

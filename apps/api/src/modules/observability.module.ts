@@ -82,7 +82,10 @@ export class MetricsService {
     this.samples.set(route, s);
 
     if (!this.timer) {
-      this.timer = setTimeout(() => void this.flush(), 10_000);
+      // detached(): this timer is created inside a request and would otherwise
+      // inherit that request's transaction, closed long before it fires, so
+      // every metric write failed silently.
+      this.timer = setTimeout(() => void this.prisma.detached(() => this.flush()), 10_000);
       // A metrics flush must never hold the process open at shutdown.
       this.timer.unref?.();
     }

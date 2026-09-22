@@ -175,8 +175,28 @@ export class FilesService {
       });
     }
 
+    // The signed URL is anonymous, so resolve the owning tenant first; RLS
+    // hides the file row until that tenant's context is set.
+    const tenantId = await this.tenantForObject(bucket, key);
+    if (!tenantId) {
+      throw new NotFoundException({
+        error: { code: "FILE_NOT_FOUND", message: "No upload intent matches this key." },
+      });
+    }
+    return this.prisma.runWithTenant(tenantId, () =>
+      this.storeUpload(tenantId, bucket, key, body, contentType)
+    );
+  }
+
+  private async storeUpload(
+    tenantId: string,
+    bucket: string,
+    key: string,
+    body: Buffer,
+    contentType: string | undefined
+  ) {
     const file = await this.prisma.fileObject.findFirst({
-      where: { bucket, objectKey: key },
+      where: { tenantId, bucket, objectKey: key },
     });
     if (!file) {
       throw new NotFoundException({
@@ -305,7 +325,11 @@ export class FilesService {
   }
 
   private async quarantineInternal(auth: AuthContext, fileId: string, reason: string) {
-    const file = await this.prisma.$transaction(async (tx) => {
+    // Committed on its own, before the 409 below is thrown. Inside the
+    // request's transaction, that throw rolled the quarantine and its audit
+    // record back: the file stayed "UPLOADED" and the attempt left no trace.
+    const file = await this.prisma.runInNewTenantTransaction(auth.tenantId, () =>
+      this.prisma.$transaction(async (tx) => {
       const q = await tx.fileObject.update({
         where: { id: fileId },
         data: { status: "QUARANTINED", quarantineReason: reason },
@@ -318,7 +342,7 @@ export class FilesService {
         summary: { reason },
       });
       return q;
-    });
+    }));
     throw new ConflictException({
       error: {
         code: "FILE_QUARANTINED",
@@ -484,9 +508,14 @@ export class FilesService {
         error: { code: "INVALID_DOWNLOAD_URL", message: check.reason ?? "Rejected." },
       });
     }
-    const file = await this.prisma.fileObject.findFirst({
-      where: { bucket, objectKey: key },
-    });
+    // Anonymous signed URL: resolve the owning tenant, then read the row
+    // under that tenant's RLS.
+    const tenantId = await this.tenantForObject(bucket, key);
+    const file = tenantId
+      ? await this.prisma.runWithTenant(tenantId, () =>
+          this.prisma.fileObject.findFirst({ where: { tenantId, bucket, objectKey: key } })
+        )
+      : null;
     // A signature alone is not enough: the row is still the authority on
     // whether these bytes may be served.
     if (!file || file.status !== "CLEAN" || file.deletedAt) {
@@ -501,6 +530,13 @@ export class FilesService {
       });
     }
     return { bytes, contentType: file.contentType, originalName: file.originalName };
+  }
+
+  /** The tenant that owns a stored object; (bucket, objectKey) is globally unique. */
+  private async tenantForObject(bucket: string, key: string): Promise<string | null> {
+    const rows = await this.prisma.$queryRaw<{ tenant: string | null }[]>`
+      SELECT public.lodgiva_tenant_for_file_object(${bucket}, ${key}) AS tenant`;
+    return rows[0]?.tenant ?? null;
   }
 
   async list(auth: AuthContext, entityType?: string, entityId?: string, status?: string) {

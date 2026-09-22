@@ -39,6 +39,8 @@ export class EventsService {
   private nextId = 1;
   private timer: NodeJS.Timeout | null = null;
   private lastSeen = new Date();
+  /** Per-tenant high-water mark, so one busy tenant never skips another's events. */
+  private lastSeenByTenant = new Map<string, Date>();
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -69,26 +71,34 @@ export class EventsService {
   private ensurePolling() {
     if (this.timer) return;
     this.timer = setInterval(async () => {
-      try {
-        const since = this.lastSeen;
-        const events = await this.prisma.outboxEvent.findMany({
-          where: { occurredAt: { gt: since } },
-          orderBy: { occurredAt: "asc" },
-          take: 50,
-        });
-        if (events.length === 0) return;
-        this.lastSeen = events[events.length - 1].occurredAt;
+      // Poll once per tenant that has a connected client, inside that
+      // tenant's context. A single cross-tenant query ran with no tenant set,
+      // so row-level security hid every event and no stream ever fired.
+      const tenants = new Set([...this.clients.values()].map((c) => c.tenantId));
+      for (const tenantId of tenants) {
+        try {
+          const since = this.lastSeenByTenant.get(tenantId) ?? this.lastSeen;
+          const events = await this.prisma.runWithTenant(tenantId, () =>
+            this.prisma.outboxEvent.findMany({
+              where: { tenantId, occurredAt: { gt: since } },
+              orderBy: { occurredAt: "asc" },
+              take: 50,
+            })
+          );
+          if (events.length === 0) continue;
+          this.lastSeenByTenant.set(tenantId, events[events.length - 1].occurredAt);
 
-        for (const e of events) {
-          this.broadcast(e.tenantId, {
-            type: e.eventType,
-            aggregateType: e.aggregateType,
-            aggregateId: e.aggregateId,
-            occurredAt: e.occurredAt.toISOString(),
-          });
+          for (const e of events) {
+            this.broadcast(e.tenantId, {
+              type: e.eventType,
+              aggregateType: e.aggregateType,
+              aggregateId: e.aggregateId,
+              occurredAt: e.occurredAt.toISOString(),
+            });
+          }
+        } catch {
+          // A failed poll must never kill the stream; the next tick retries.
         }
-      } catch {
-        // A failed poll must never kill the stream; the next tick retries.
       }
     }, 3000);
   }

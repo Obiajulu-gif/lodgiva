@@ -95,6 +95,19 @@ export class PrismaService
     );
   }
 
+  /**
+   * Runs work outside any request's transaction, with no tenant context.
+   *
+   * For background work started during a request - a timer, a deferred
+   * flush. AsyncLocalStorage carries the request's transaction into those
+   * callbacks, but by the time they fire that transaction has closed, so
+   * every query in them fails. Only for data that isn't tenant-scoped (RLS
+   * would hide tenant rows here); tenant work uses runInNewTenantTransaction.
+   */
+  detached<T>(operation: () => Promise<T>): Promise<T> {
+    return PrismaService.tenantTransaction.exit(operation);
+  }
+
   async runWithTenant<T>(tenantId: string, operation: () => Promise<T>): Promise<T> {
     return this.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;

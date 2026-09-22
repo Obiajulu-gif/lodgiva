@@ -493,31 +493,50 @@ export class AnalyticsService {
   }
 
   async runExport(auth: AuthContext, jobId: string) {
-    const job = await this.prisma.exportJob.findFirst({
-      where: { id: jobId, tenantId: auth.tenantId },
-    });
+    // This runs after the response has been sent. It must NOT use the
+    // request's transaction: AsyncLocalStorage carries that transaction into
+    // this un-awaited call, but it is closed once the request commits, so
+    // every later query failed and no export ever finished. Each step opens
+    // its own short tenant transaction instead.
+    const inTenant = <T>(op: () => Promise<T>) =>
+      this.prisma.runInNewTenantTransaction(auth.tenantId, op);
+
+    // The job row becomes visible to a new transaction only once the request
+    // that created it commits, a moment after the response. Wait for it.
+    let job = null;
+    for (let attempt = 0; attempt < 50 && !job; attempt++) {
+      job = await inTenant(() =>
+        this.prisma.exportJob.findFirst({ where: { id: jobId, tenantId: auth.tenantId } })
+      );
+      if (!job) await new Promise((r) => setTimeout(r, 100));
+    }
     if (!job) return;
     if (job.status !== "QUEUED") return;
+    const jobRow = job;
 
-    await this.prisma.exportJob.update({
-      where: { id: job.id },
-      data: { status: "RUNNING", startedAt: new Date() },
-    });
+    await inTenant(() =>
+      this.prisma.exportJob.update({
+        where: { id: jobRow.id },
+        data: { status: "RUNNING", startedAt: new Date() },
+      })
+    );
 
     try {
       const { from, to } = JSON.parse(job.params) as {
         from: string;
         to: string;
       };
-      const rows = await this.rowsFor(auth, job.type, job.propertyId, from, to);
+      const rows = await inTenant(() => this.rowsFor(auth, jobRow.type, jobRow.propertyId, from, to));
       const isPdf = job.format === "PDF";
 
       let bytes: Buffer;
       if (isPdf) {
-        const property = await this.prisma.property.findUniqueOrThrow({
-          where: { id: job.propertyId },
-          select: { name: true, code: true },
-        });
+        const property = await inTenant(() =>
+          this.prisma.property.findUniqueOrThrow({
+            where: { id: jobRow.propertyId },
+            select: { name: true, code: true },
+          })
+        );
         // Columns come from the first row, so a CSV and a PDF of the same
         // report always carry the same fields — one file cannot quietly hold
         // less than the other.
@@ -541,34 +560,40 @@ export class AnalyticsService {
         );
       }
 
-      const file = await this.files.storeGenerated(auth, {
-        propertyId: job.propertyId,
-        purpose: "EXPORT",
-        contentType: isPdf ? "application/pdf" : "text/csv",
-        originalName: `${job.type.toLowerCase()}-${from}_to_${to}.${isPdf ? "pdf" : "csv"}`,
-        bytes,
-        entityType: "export_job",
-        entityId: job.id,
-      });
+      const file = await inTenant(() =>
+        this.files.storeGenerated(auth, {
+          propertyId: jobRow.propertyId,
+          purpose: "EXPORT",
+          contentType: isPdf ? "application/pdf" : "text/csv",
+          originalName: `${jobRow.type.toLowerCase()}-${from}_to_${to}.${isPdf ? "pdf" : "csv"}`,
+          bytes,
+          entityType: "export_job",
+          entityId: jobRow.id,
+        })
+      );
 
-      await this.prisma.exportJob.update({
-        where: { id: job.id },
-        data: {
-          status: "COMPLETE",
-          fileId: file.id,
-          rowCount: rows.length,
-          completedAt: new Date(),
-        },
-      });
+      await inTenant(() =>
+        this.prisma.exportJob.update({
+          where: { id: jobRow.id },
+          data: {
+            status: "COMPLETE",
+            fileId: file.id,
+            rowCount: rows.length,
+            completedAt: new Date(),
+          },
+        })
+      );
     } catch (err) {
-      await this.prisma.exportJob.update({
-        where: { id: job.id },
-        data: {
-          status: "FAILED",
-          error: err instanceof Error ? err.message : "Export failed.",
-          completedAt: new Date(),
-        },
-      });
+      await inTenant(() =>
+        this.prisma.exportJob.update({
+          where: { id: jobRow.id },
+          data: {
+            status: "FAILED",
+            error: err instanceof Error ? err.message : "Export failed.",
+            completedAt: new Date(),
+          },
+        })
+      );
     }
   }
 
