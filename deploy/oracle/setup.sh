@@ -34,7 +34,12 @@ LODGIVA_DOMAIN="${LODGIVA_DOMAIN:-${PUBLIC_IP//./-}.sslip.io}"
 # Optional: Let's Encrypt uses it only for expiry warnings. None is invented -
 # a made-up address can get the certificate request refused.
 ACME_EMAIL="${ACME_EMAIL:-}"
+# Customer environments are created as <customer>.$LODGIVA_APEX. Defaults to the
+# public domain, so hotels live under the same name as the landing page. Set
+# after LODGIVA_DOMAIN above, which it falls back to.
+LODGIVA_APEX="${LODGIVA_APEX:-$LODGIVA_DOMAIN}"
 log "Public address: https://${LODGIVA_DOMAIN}"
+log "Customer environments: https://<customer>.${LODGIVA_APEX}"
 
 # ── 1. Swap: the SPA build is memory-hungry even on 24 GB shapes ─────────
 if ! swapon --show | grep -q /swapfile; then
@@ -163,21 +168,32 @@ log "Starting Caddy for https://${LODGIVA_DOMAIN}"
 mkdir -p caddy
 curl -fsSL "$REPO_RAW/Caddyfile" -o caddy/Caddyfile
 curl -fsSL "$REPO_RAW/Caddyfile.routes" -o caddy/Caddyfile.routes
-if [ -n "$ACME_EMAIL" ]; then
-  # Caddy's global block must come first in the file.
-  printf '{\n\temail %s\n}\n\n' "$ACME_EMAIL" | cat - caddy/Caddyfile > caddy/Caddyfile.tmp
-  mv caddy/Caddyfile.tmp caddy/Caddyfile
-fi
+# Caddy's global block must come first in the file, and there may only be one,
+# so the optional email and the on-demand gate are written together.
+#
+# The gate is not optional. Customer subdomains get their certificates issued on
+# first request, and without `ask` any hostname pointed at this server would
+# trigger an issuance - enough of them exhausts the Let's Encrypt limit of 50
+# certificates per registered domain per week and takes real customers offline.
+{
+  printf '{\n'
+  [ -n "$ACME_EMAIL" ] && printf '\temail %s\n' "$ACME_EMAIL"
+  printf '\ton_demand_tls {\n\t\task http://127.0.0.1:8080/api/method/lodgiva_control.api.allow_host\n\t}\n'
+  printf '}\n\n'
+  cat caddy/Caddyfile
+} > caddy/Caddyfile.tmp
+mv caddy/Caddyfile.tmp caddy/Caddyfile
 docker rm -f lodgiva-caddy >/dev/null 2>&1 || true
 docker run -d --name lodgiva-caddy --restart unless-stopped --network host \
   -e LODGIVA_DOMAIN="$LODGIVA_DOMAIN" \
+  -e LODGIVA_APEX="$LODGIVA_APEX" \
   -e FRAPPE_UPSTREAM=127.0.0.1:8080 \
   -v "$WORK/caddy:/etc/caddy" -v lodgiva_caddy_data:/data \
   caddy:2 caddy run --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
 
 # ── 9. Nightly backup (inside the stack's volume - copy it off the server) ─
 cat > /etc/cron.d/lodgiva-backup <<EOF
-30 2 * * * root docker compose -p lodgiva -f $WORK/lodgiva-stack.yaml exec -T backend bench --site $SITE backup --with-files >/dev/null 2>&1
+30 2 * * * root docker compose -p lodgiva -f $WORK/lodgiva-stack.yaml exec -T backend bench --site all backup --with-files >/dev/null 2>&1
 EOF
 
 cat <<EOF

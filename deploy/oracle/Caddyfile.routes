@@ -16,6 +16,13 @@
 	redir /dashboard /lodgiva 302
 	redir /dashboard/* /lodgiva 302
 
+	# Staff-facing provisioning console (lodgiva_control). A redirect rather
+	# than a path prefix: Desk owns /app, /api and /assets at the root, so a
+	# second Frappe surface cannot be mounted under /admin without those calls
+	# landing on the wrong site.
+	redir /admin /app/hotel-environment 302
+	redir /admin/* /app/hotel-environment 302
+
 	@pms path /lodgiva /lodgiva/* /kamra /kamra/* \
 		/book /book/* /stay /stay/* /hk /hk/* /checkin/* \
 		/app /app/* /apps /login /logout /update-password* /me /message \
