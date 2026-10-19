@@ -56,7 +56,7 @@
  "owner": "Administrator",
  "permissions": [
   {"role": "Lodgiva Operator", "read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 0, "delete": 0, "report": 1, "export": 0, "share": 0},
-  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 0, "delete": 0, "report": 1, "export": 0, "share": 0}
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "delete": 1, "report": 1, "export": 0, "share": 0}
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
