@@ -51,10 +51,23 @@ def make_environment(subdomain):
     return doc
 
 
-def make_subscription(hotel_environment=None, plan=PLAN_CODE, **kwargs):
+def make_subscription(hotel_environment=None, plan=PLAN_CODE, replace=True, **kwargs):
+    """A subscription in a known state.
+
+    Frappe does not roll these tests back, so a fixture that simply inserted
+    would collide with its own previous run. `replace` drops any existing
+    record first, which makes every test deterministic whether or not the
+    suite has run before. `replace=False` is for the test that wants the
+    collision.
+    """
     make_plan(plan)
     if hotel_environment is None:
         hotel_environment = make_environment(frappe.generate_hash(length=8).lower()).name
+
+    if replace and frappe.db.exists("Hotel Subscription", hotel_environment):
+        frappe.delete_doc("Hotel Subscription", hotel_environment,
+                          force=True, ignore_permissions=True)
+
     doc = frappe.get_doc({
         "doctype": "Hotel Subscription",
         "hotel_environment": hotel_environment,
@@ -76,7 +89,7 @@ class TestSubscriptionModel(unittest.TestCase):
         env = make_environment("dupe")
         make_subscription(hotel_environment=env.name)
         with self.assertRaises(frappe.exceptions.DuplicateEntryError):
-            make_subscription(hotel_environment=env.name)
+            make_subscription(hotel_environment=env.name, replace=False)
 
     def test_exactly_one_plan_is_free(self):
         make_plan("TEST-FREE1", is_free=1)
