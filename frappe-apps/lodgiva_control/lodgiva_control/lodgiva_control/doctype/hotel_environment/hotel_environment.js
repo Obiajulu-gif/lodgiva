@@ -9,6 +9,7 @@ frappe.ui.form.on("Hotel Environment", {
   refresh(frm) {
     frm.trigger("lodgiva_banner");
     frm.trigger("lodgiva_buttons");
+    frm.trigger("lodgiva_sync_room_codes");
 
     // A provision takes minutes, so the page would otherwise sit on a stale
     // status until someone reloaded it.
@@ -43,9 +44,16 @@ frappe.ui.form.on("Hotel Environment", {
           "Provisioning failed. The half-created site is left on disk on purpose — read the log below, remove it by hand, then submit again."
         )
       );
+    } else if (frm.doc.status === "Active" && frm.doc.public_url) {
+      frm.dashboard.set_headline(
+        __("Live at {0}", [`<a href="${frm.doc.public_url}" target="_blank">${frm.doc.public_url}</a>`])
+      );
     } else if (frm.doc.status === "Active" && frm.doc.site_name) {
       frm.dashboard.set_headline(
-        __("Live at {0}", [`<a href="https://${frm.doc.site_name}" target="_blank">${frm.doc.site_name}</a>`])
+        __(
+          "Provisioned as {0}. On this bench that name only resolves locally - use Publish public link to reach it from outside.",
+          [frm.doc.site_name]
+        )
       );
     }
   },
@@ -54,9 +62,43 @@ frappe.ui.form.on("Hotel Environment", {
     frm.page.clear_secondary_action();
 
     if (frm.doc.status === "Active" && frm.doc.site_name) {
+      // Prefer the tunnel when one is published: on a laptop the site name is
+      // only resolvable on this machine.
       frm.add_custom_button(__("Open site"), () => {
-        window.open(`https://${frm.doc.site_name}`, "_blank");
+        window.open(frm.doc.public_url || `https://${frm.doc.site_name}`, "_blank");
       });
+
+      frm.add_custom_button(
+        frm.doc.public_url ? __("Restart public link") : __("Publish public link"),
+        () => {
+          frappe.call({
+            method: "lodgiva_control.tunnel.start_for_environment",
+            args: { docname: frm.doc.name },
+            freeze: true,
+            freeze_message: __("Starting tunnel; this takes up to a minute..."),
+            callback(r) {
+              if (r.message) {
+                frappe.show_alert({ message: __("Published at {0}", [r.message]), indicator: "green" });
+                frm.reload_doc();
+              }
+            },
+          });
+        }
+      );
+
+      if (frm.doc.public_url) {
+        frm.add_custom_button(__("Stop public link"), () => {
+          frappe.call({
+            method: "lodgiva_control.tunnel.stop_for_environment",
+            args: { docname: frm.doc.name },
+            freeze: true,
+            callback() {
+              frappe.show_alert({ message: __("Public link stopped"), indicator: "orange" });
+              frm.reload_doc();
+            },
+          });
+        });
+      }
 
       frm.add_custom_button(__("Copy sign-in details"), () => {
         // The generated password is shown once here so the operator can hand it
@@ -79,9 +121,44 @@ frappe.ui.form.on("Hotel Environment", {
       });
     }
 
-    if (frm.doc.status === "Draft" && !frm.is_new()) {
+    if (frm.doc.status === "Draft" && !frm.is_new() && frm.doc.docstatus === 0) {
       frm.page.set_secondary_action(__("Submit to provision"), () => frm.savesubmit());
     }
+
+    // A failed record is already submitted, so it cannot be submitted again.
+    // Without this the operator would have to delete it and retype everything.
+    if (frm.doc.status === "Failed") {
+      frm.add_custom_button(__("Retry provisioning"), () => {
+        frappe.call({
+          method: "lodgiva_control.lodgiva_control.doctype.hotel_environment.hotel_environment.retry",
+          args: { docname: frm.doc.name },
+          freeze: true,
+          freeze_message: __("Queueing..."),
+          callback() {
+            frappe.show_alert({ message: __("Provisioning queued"), indicator: "blue" });
+            frm.reload_doc();
+          },
+        });
+      }).addClass("btn-primary");
+    }
+  },
+
+  room_types_on_form_rendered(frm) {
+    frm.trigger("lodgiva_sync_room_codes");
+  },
+
+  lodgiva_sync_room_codes(frm) {
+    // Offer the codes actually entered above, so a room *number* cannot be
+    // typed into the room *type* field. The server validates regardless.
+    const codes = (frm.doc.room_types || [])
+      .map((r) => (r.code || "").trim())
+      .filter(Boolean);
+    frm.fields_dict.room_blocks.grid.update_docfield_property(
+      "room_type_code",
+      "options",
+      [""].concat(codes).join("\n")
+    );
+    frm.fields_dict.room_blocks.grid.refresh();
   },
 
   subdomain(frm) {

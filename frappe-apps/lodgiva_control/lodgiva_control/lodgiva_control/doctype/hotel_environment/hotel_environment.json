@@ -21,6 +21,7 @@
   "room_types",
   "room_blocks",
   "result_section",
+  "public_url",
   "admin_password",
   "provision_log"
  ],
@@ -43,6 +44,7 @@
   {"fieldname": "room_blocks", "fieldtype": "Table", "label": "Room Numbers", "options": "Hotel Environment Room Block"},
 
   {"fieldname": "result_section", "fieldtype": "Section Break", "label": "Result"},
+  {"fieldname": "public_url", "fieldtype": "Data", "label": "Public URL", "read_only": 1, "in_list_view": 1, "description": "Development benches only. On a server the hotel is reached at its own subdomain and needs no tunnel."},
   {"fieldname": "admin_password", "fieldtype": "Password", "label": "Administrator Password", "read_only": 1, "description": "Generated during provisioning. Hand to the customer, then they change it."},
   {"fieldname": "provision_log", "fieldtype": "Code", "label": "Provision Log", "read_only": 1, "options": "Text"}
  ],

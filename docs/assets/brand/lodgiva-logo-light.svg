@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 268 64" width="268" height="64" role="img" aria-label="Lodgiva">
+  <title>Lodgiva logo, for dark backgrounds</title>
+  <rect width="64" height="64" rx="21.33" fill="#ffffff" fill-opacity="0.08"/>
+  <g transform="translate(14.22 14.22) scale(1.4815)" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 20V9.5L12 4l8 5.5V20" stroke="#cda95c"/>
+    <path d="M9.5 20v-5.5a2.5 2.5 0 0 1 5 0V20" stroke="#ffffff"/>
+  </g>
+  <text x="82" y="44"
+        font-family="'Playfair Display', Georgia, 'Times New Roman', serif"
+        font-size="42.7" font-weight="600" letter-spacing="-1"
+        fill="#ffffff">Lodgiva</text>
+</svg>
