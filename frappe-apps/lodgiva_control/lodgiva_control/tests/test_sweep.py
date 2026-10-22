@@ -65,8 +65,18 @@ def writes_recorded():
 
 class TestSweep(unittest.TestCase):
     def test_hotel_without_subscription_is_skipped_not_restricted(self):
-        # Review Focus 1: hotels predating this feature must survive untouched.
+        # Review Focus 1: a hotel with no subscription must survive untouched.
+        #
+        # Still a live scenario after the backfill patch: that patch runs on
+        # migrate, so a hotel provisioned afterwards has a Hotel Environment
+        # and no subscription until one is created. Clear any the backfill
+        # already made, so the test exercises that gap rather than the patch.
         env = make_environment("nosub")
+        if frappe.db.exists("Hotel Subscription", env.name):
+            frappe.delete_doc("Hotel Subscription", env.name,
+                              force=True, ignore_permissions=True)
+            frappe.db.commit()
+
         with writes_recorded() as seen:
             result = evaluate_subscriptions()
         self.assertNotIn(env.site_name, result["failed"])
