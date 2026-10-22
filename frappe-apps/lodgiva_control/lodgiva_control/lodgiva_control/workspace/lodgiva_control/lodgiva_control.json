@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"hdr\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Customer Environments</b></span>\",\"col\":12}},{\"id\":\"sc1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Hotel Environment\",\"col\":4}},{\"id\":\"crd\",\"type\":\"card\",\"data\":{\"card_name\":\"Provisioning\",\"col\":4}}]",
+ "content": "[{\"id\": \"hdr\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Customer Environments</b></span>\", \"col\": 12}}, {\"id\": \"sc1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Hotel Environment\", \"col\": 4}}, {\"id\": \"crd\", \"type\": \"card\", \"data\": {\"card_name\": \"Provisioning\", \"col\": 4}}, {\"id\": \"sc2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Subscriptions\", \"col\": 4}}]",
  "creation": "2026-10-08 00:00:00",
  "docstatus": 0,
  "doctype": "Workspace",
@@ -29,6 +29,16 @@
    "link_type": "DocType",
    "onboard": 1,
    "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Hotel Subscription",
+   "link_count": 0,
+   "link_to": "Hotel Subscription",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
   }
  ],
  "modified": "2026-10-08 00:00:00",
@@ -48,6 +58,13 @@
    "doc_view": "List",
    "label": "Hotel Environment",
    "link_to": "Hotel Environment",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Subscriptions",
+   "link_to": "Hotel Subscription",
    "type": "DocType"
   }
  ],

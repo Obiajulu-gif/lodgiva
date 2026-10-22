@@ -92,6 +92,9 @@ class TestSubscriptionModel(unittest.TestCase):
             make_subscription(hotel_environment=env.name, replace=False)
 
     def test_exactly_one_plan_is_free(self):
-        make_plan("TEST-FREE1", is_free=1)
+        # The seed patch creates FREE on every migrate, so a free plan may
+        # already exist. Either way, exactly one is the invariant.
+        if not frappe.db.exists("Subscription Plan", {"is_free": 1}):
+            make_plan("TEST-FREE1", is_free=1)
         with self.assertRaises(frappe.ValidationError):
             make_plan("TEST-FREE2", is_free=1)
