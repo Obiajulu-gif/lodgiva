@@ -1,0 +1,48 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:hotel_environment",
+ "creation": "2026-10-22 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "hotel_environment",
+  "plan",
+  "state",
+  "access_mode",
+  "dates_section",
+  "trial_ends_on",
+  "grace_ends_on",
+  "suspend_notice_sent_on",
+  "log_section",
+  "state_log"
+ ],
+ "fields": [
+  {"fieldname": "hotel_environment", "fieldtype": "Link", "options": "Hotel Environment", "label": "Hotel", "reqd": 1, "unique": 1, "in_list_view": 1},
+  {"fieldname": "plan", "fieldtype": "Link", "options": "Subscription Plan", "label": "Plan", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "state", "fieldtype": "Select", "label": "State", "options": "trialing\nactive\npast_due\nunpaid\nfree\ncancelled\npaused", "default": "trialing", "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "access_mode", "fieldtype": "Select", "label": "Access Mode", "options": "full\nread_only", "default": "full", "read_only": 1, "in_list_view": 1, "description": "Computed. Written into the hotel site's config by the daily sweep."},
+
+  {"fieldname": "dates_section", "fieldtype": "Section Break", "label": "Dates"},
+  {"fieldname": "trial_ends_on", "fieldtype": "Date", "label": "Trial Ends On", "read_only": 1},
+  {"fieldname": "grace_ends_on", "fieldtype": "Date", "label": "Grace Ends On", "read_only": 1},
+  {"fieldname": "suspend_notice_sent_on", "fieldtype": "Datetime", "label": "Suspension Notice Sent On", "read_only": 1, "description": "Restriction requires this to be at least 72 hours old."},
+
+  {"fieldname": "log_section", "fieldtype": "Section Break", "label": "History"},
+  {"fieldname": "state_log", "fieldtype": "Code", "label": "State Log", "read_only": 1, "options": "Text"}
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-22 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Lodgiva Control",
+ "name": "Hotel Subscription",
+ "owner": "Administrator",
+ "permissions": [
+  {"role": "Lodgiva Operator", "read": 1, "write": 1, "create": 1, "report": 1},
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "cancel": 1, "report": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

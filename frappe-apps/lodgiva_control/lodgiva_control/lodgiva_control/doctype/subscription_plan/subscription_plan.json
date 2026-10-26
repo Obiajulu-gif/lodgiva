@@ -1,0 +1,47 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:plan_code",
+ "creation": "2026-10-22 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "plan_code",
+  "plan_name",
+  "monthly_price",
+  "is_free",
+  "disabled",
+  "limits_section",
+  "max_users",
+  "max_rooms",
+  "allowed_modules",
+  "booking_engine"
+ ],
+ "fields": [
+  {"fieldname": "plan_code", "fieldtype": "Data", "label": "Plan Code", "reqd": 1, "unique": 1, "in_list_view": 1, "description": "Short uppercase code, e.g. FREE, STARTER, GROWTH."},
+  {"fieldname": "plan_name", "fieldtype": "Data", "label": "Plan Name", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "monthly_price", "fieldtype": "Currency", "label": "Monthly Price", "in_list_view": 1},
+  {"fieldname": "is_free", "fieldtype": "Check", "label": "Is Free Tier", "description": "Exactly one plan may carry this. Trials fall back to it."},
+  {"fieldname": "disabled", "fieldtype": "Check", "label": "Disabled", "description": "Hidden from operators. Used for plans whose price is not yet decided."},
+
+  {"fieldname": "limits_section", "fieldtype": "Section Break", "label": "Limits"},
+  {"fieldname": "max_users", "fieldtype": "Int", "label": "Max Users", "description": "0 means unlimited."},
+  {"fieldname": "max_rooms", "fieldtype": "Int", "label": "Max Rooms", "description": "0 means unlimited."},
+  {"fieldname": "allowed_modules", "fieldtype": "Small Text", "label": "Allowed Modules", "description": "Comma-separated module ids from the PMS launcher. Empty means all."},
+  {"fieldname": "booking_engine", "fieldtype": "Check", "label": "Booking Engine", "default": "1"}
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-22 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Lodgiva Control",
+ "name": "Subscription Plan",
+ "owner": "Administrator",
+ "permissions": [
+  {"role": "Lodgiva Operator", "read": 1, "write": 1, "create": 1, "report": 1},
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1, "report": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

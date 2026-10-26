@@ -1,0 +1,66 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:subdomain",
+ "creation": "2026-10-08 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "customer_name",
+  "subdomain",
+  "site_name",
+  "owner_email",
+  "status",
+  "property_section",
+  "property_name",
+  "city",
+  "state",
+  "country",
+  "currency",
+  "rooms_section",
+  "room_types",
+  "room_blocks",
+  "result_section",
+  "public_url",
+  "admin_password",
+  "provision_log"
+ ],
+ "fields": [
+  {"fieldname": "customer_name", "fieldtype": "Data", "label": "Customer Name", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "subdomain", "fieldtype": "Data", "label": "Subdomain", "reqd": 1, "unique": 1, "in_list_view": 1, "description": "3-32 lowercase letters, digits or hyphens. Becomes the hostname and cannot be changed later."},
+  {"fieldname": "site_name", "fieldtype": "Data", "label": "Site", "read_only": 1, "in_list_view": 1},
+  {"fieldname": "owner_email", "fieldtype": "Data", "options": "Email", "label": "Owner Email", "reqd": 1},
+  {"fieldname": "status", "fieldtype": "Select", "label": "Status", "options": "Draft\nProvisioning\nActive\nFailed", "default": "Draft", "read_only": 1, "in_list_view": 1},
+
+  {"fieldname": "property_section", "fieldtype": "Section Break", "label": "Hotel"},
+  {"fieldname": "property_name", "fieldtype": "Data", "label": "Property Name", "reqd": 1},
+  {"fieldname": "city", "fieldtype": "Data", "label": "City", "reqd": 1},
+  {"fieldname": "state", "fieldtype": "Data", "label": "State"},
+  {"fieldname": "country", "fieldtype": "Data", "label": "Country", "default": "Nigeria"},
+  {"fieldname": "currency", "fieldtype": "Data", "label": "Currency", "default": "NGN"},
+
+  {"fieldname": "rooms_section", "fieldtype": "Section Break", "label": "Rooms"},
+  {"fieldname": "room_types", "fieldtype": "Table", "label": "Room Types", "options": "Hotel Environment Room Type"},
+  {"fieldname": "room_blocks", "fieldtype": "Table", "label": "Room Numbers", "options": "Hotel Environment Room Block"},
+
+  {"fieldname": "result_section", "fieldtype": "Section Break", "label": "Result"},
+  {"fieldname": "public_url", "fieldtype": "Data", "label": "Public URL", "read_only": 1, "in_list_view": 1, "description": "Development benches only. On a server the hotel is reached at its own subdomain and needs no tunnel."},
+  {"fieldname": "admin_password", "fieldtype": "Password", "label": "Administrator Password", "read_only": 1, "description": "Generated during provisioning. Hand to the customer, then they change it."},
+  {"fieldname": "provision_log", "fieldtype": "Code", "label": "Provision Log", "read_only": 1, "options": "Text"}
+ ],
+ "index_web_pages_for_search": 0,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-10-08 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Lodgiva Control",
+ "name": "Hotel Environment",
+ "owner": "Administrator",
+ "permissions": [
+  {"role": "Lodgiva Operator", "read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 0, "delete": 0, "report": 1, "export": 0, "share": 0},
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "delete": 1, "report": 1, "export": 0, "share": 0}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

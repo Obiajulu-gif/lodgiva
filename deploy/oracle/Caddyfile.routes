@@ -16,6 +16,22 @@
 	redir /dashboard /lodgiva 302
 	redir /dashboard/* /lodgiva 302
 
+	# Staff-facing provisioning console (lodgiva_control), which lives on its
+	# own site so the billing console is never restricted by the billing state
+	# it enforces.
+	#
+	# Host rewrite rather than a path prefix: Desk owns /app, /api and /assets
+	# at the root, so a second Frappe surface cannot be mounted under /admin
+	# without those calls landing on the wrong site. Rewriting Host is the same
+	# mechanism tunnel.py uses to give each hotel its own link.
+	@admin path /admin /admin/*
+	handle @admin {
+		uri replace /admin /app/hotel-environment
+		reverse_proxy {$FRAPPE_UPSTREAM} {
+			header_up Host {$LODGIVA_CONTROL_SITE}
+		}
+	}
+
 	@pms path /lodgiva /lodgiva/* /kamra /kamra/* \
 		/book /book/* /stay /stay/* /hk /hk/* /checkin/* \
 		/app /app/* /apps /login /logout /update-password* /me /message \

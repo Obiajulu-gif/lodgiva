@@ -25,6 +25,40 @@ than this repository. They're recorded here so the product has one history.
 ## [Unreleased]
 
 ### Added
+- **Customer environment provisioning.** A new Frappe app,
+  [frappe-apps/lodgiva_control](frappe-apps/lodgiva_control), creates one
+  Lodgiva site per hotel customer. An operator fills a form in Frappe Desk
+  (customer, subdomain, owner, hotel, room types and rooms) and a background
+  job runs `bench new-site` and seeds the property through
+  `kamra.api.setup_property`. v1 does create and list only; suspend, backup,
+  restore and delete stay manual `bench` commands on purpose. Design and
+  rationale in the app's
+  [README](frappe-apps/lodgiva_control/README.md).
+- **Customer subdomains on the server.** `deploy/oracle/Caddyfile` gains a
+  `*.$LODGIVA_APEX` block, and `setup.sh` exports `LODGIVA_APEX` (defaulting to
+  the public domain) so hotels live under the same name as the landing page.
+- **A `/admin` route** to the provisioning console, in
+  [deploy/oracle/Caddyfile.routes](deploy/oracle/Caddyfile.routes). A redirect
+  rather than a path prefix: Frappe Desk owns `/app`, `/api` and `/assets` at
+  the root, so a second Frappe surface cannot be mounted beneath `/admin`
+  without those calls reaching the wrong site.
+- **A PMS demo walkthrough**
+  ([docs/LODGIVA_PMS_WALKTHROUGH.md](docs/LODGIVA_PMS_WALKTHROUGH.md)) — what to
+  say for each of the ten `/lodgiva` sections, drawn from the app's own launcher
+  definitions.
+
+### Changed
+- The nightly backup cron in `setup.sh` now runs `bench --site all backup`
+  instead of naming one site, so customers created later are included. Pinned to
+  a single site, every new environment would have gone unbacked.
+
+### Security
+- Customer certificates are issued on demand and gated by
+  `lodgiva_control.api.allow_host`, which answers only for hostnames that exist
+  as site directories. Without the gate, anyone pointing a DNS record at the
+  server could force certificate issuance and exhaust the Let's Encrypt limit of
+  50 per registered domain per week, taking live customers offline.
+
 - **The documentation site.** Sixty-six pages covering the PMS as it actually
   works — getting started, rooms and rates, front desk, guests, billing,
   housekeeping, administration, installation, a hand-written API reference and
