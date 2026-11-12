@@ -20,13 +20,30 @@ set -euo pipefail
 SITE="lodgiva.local"          # internal Frappe site name; the public host is separate
 WORK="/opt/lodgiva"
 SECRETS="$WORK/secrets.env"   # generated once, 0600, never printed
-FRAPPE_BRANCH="v16.25.0"
 # Which branch of Obiajulu-gif/lodgiva to take the router config from.
 LODGIVA_REF="${LODGIVA_REF:-main}"
 REPO_RAW="https://raw.githubusercontent.com/Obiajulu-gif/lodgiva/${LODGIVA_REF}/deploy/oracle"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
 mkdir -p "$WORK"; cd "$WORK"
+
+# ── Release pins: every app is built from the SHA in release.lock ─────────
+curl -fsSL "$REPO_RAW/release.lock" -o release.lock
+# shellcheck disable=SC1091
+. ./release.lock
+pin() {  # pin <repo url> <ref> <sha>: refuse a ref that has moved
+  local got; got="$(git ls-remote "$1" "$2" | awk 'NR==1{print $1}')"
+  if [ "$got" != "$3" ]; then
+    echo "release.lock is stale: $1 $2 is ${got:-missing}, lock says $3." >&2
+    echo "Bump release.lock deliberately, or set LODGIVA_REF to a release branch." >&2
+    exit 1
+  fi
+}
+pin https://github.com/frappe/frappe "refs/tags/$FRAPPE_BRANCH" "$FRAPPE_SHA"
+pin https://github.com/frappe/payments "refs/heads/$PAYMENTS_REF" "$PAYMENTS_SHA"
+pin https://github.com/Obiajulu-gif/lodgiva-pms "refs/heads/$PMS_REF" "$PMS_SHA"
+pin https://github.com/Obiajulu-gif/lodgiva-nigeria "refs/heads/$NIGERIA_REF" "$NIGERIA_SHA"
+RELEASE="pms-${PMS_SHA:0:7}.ng-${NIGERIA_SHA:0:7}.frappe-${FRAPPE_BRANCH}"
 
 # ── 0. Address ────────────────────────────────────────────────────────────
 PUBLIC_IP="$(curl -fsS https://api.ipify.org || curl -fsS https://ifconfig.me)"
@@ -87,24 +104,30 @@ fi
 
 # ── 5. Build the image: Frappe + payments + Lodgiva PMS + Nigeria pack ───
 if [ ! -d frappe_docker ]; then
-  git clone --depth 1 https://github.com/frappe/frappe_docker
+  git init -q frappe_docker
+  git -C frappe_docker remote add origin https://github.com/frappe/frappe_docker
 fi
-cat > apps.json <<'EOF'
+git -C frappe_docker fetch -q --depth 1 origin "$FRAPPE_DOCKER_SHA"
+git -C frappe_docker checkout -q --force FETCH_HEAD
+cat > apps.json <<EOF
 [
-  { "url": "https://github.com/frappe/payments", "branch": "develop" },
-  { "url": "https://github.com/Obiajulu-gif/lodgiva-pms", "branch": "main" },
-  { "url": "https://github.com/Obiajulu-gif/lodgiva-nigeria", "branch": "main" }
+  { "url": "https://github.com/frappe/payments", "branch": "${PAYMENTS_REF}" },
+  { "url": "https://github.com/Obiajulu-gif/lodgiva-pms", "branch": "${PMS_REF}" },
+  { "url": "https://github.com/Obiajulu-gif/lodgiva-nigeria", "branch": "${NIGERIA_REF}" }
 ]
 EOF
-if ! docker image inspect lodgiva-pms:latest >/dev/null 2>&1 || [ "${REBUILD:-0}" = 1 ]; then
-  log "Building the Lodgiva image (20-40 minutes on the first run)"
+built="$(docker image inspect lodgiva-pms:latest --format '{{ index .Config.Labels "lodgiva.release" }}' 2>/dev/null || true)"
+if [ "$built" != "$RELEASE" ] || [ "${REBUILD:-0}" = 1 ]; then
+  log "Building the Lodgiva image $RELEASE (20-40 minutes on the first run)"
   docker build \
     --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
     --build-arg=FRAPPE_BRANCH="$FRAPPE_BRANCH" \
     --build-arg=APPS_JSON_BASE64="$(base64 -w 0 apps.json)" \
-    --tag=lodgiva-pms:latest \
+    --label=lodgiva.release="$RELEASE" \
+    --tag=lodgiva-pms:latest --tag=lodgiva-pms:"$RELEASE" \
     --file=frappe_docker/images/layered/Containerfile frappe_docker
 fi
+echo "$RELEASE" > "$WORK/release.txt"
 
 # ── 6. The Frappe stack ───────────────────────────────────────────────────
 log "Starting the Frappe stack"
@@ -113,8 +136,12 @@ CUSTOM_IMAGE=lodgiva-pms
 CUSTOM_TAG=latest
 PULL_POLICY=never
 DB_PASSWORD=${DB_PASSWORD}
-# Every request is for this one site, whatever Host the browser sent.
-FRAPPE_SITE_NAME_HEADER=${SITE}
+# Pass on Caddy's X-Frappe-Site-Name when it sets one (the landing domain,
+# whose internal site is $SITE); otherwise empty, and Frappe routes by Host -
+# one site per <customer>.<apex>. Forcing \$SITE here sent every customer's
+# hostname to the same hotel.
+# Single quotes: compose would otherwise expand it as a shell variable.
+FRAPPE_SITE_NAME_HEADER='\$http_x_frappe_site_name'
 HTTP_PUBLISH_PORT=8080
 EOF
 chmod 600 frappe.env
@@ -187,6 +214,7 @@ docker rm -f lodgiva-caddy >/dev/null 2>&1 || true
 docker run -d --name lodgiva-caddy --restart unless-stopped --network host \
   -e LODGIVA_DOMAIN="$LODGIVA_DOMAIN" \
   -e LODGIVA_APEX="$LODGIVA_APEX" \
+  -e LODGIVA_PMS_SITE="$SITE" \
   -e FRAPPE_UPSTREAM=127.0.0.1:8080 \
   -v "$WORK/caddy:/etc/caddy" -v lodgiva_caddy_data:/data \
   caddy:2 caddy run --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null

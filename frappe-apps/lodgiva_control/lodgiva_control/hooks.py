@@ -16,4 +16,7 @@ scheduler_events = {
     "daily": [
         "lodgiva_control.scheduler.evaluate_subscriptions",
     ],
+    "hourly": [
+        "lodgiva_control.support.expire_grants",
+    ],
 }

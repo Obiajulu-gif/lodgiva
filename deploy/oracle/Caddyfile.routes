@@ -12,7 +12,9 @@
 	# The landing page's "Log in" and "Get started" buttons lead to the PMS.
 	# Deliberately NOT to the legacy Next.js signup: through this address it
 	# would create tenants in the production Neon database.
-	redir /signup /login 302
+	# Self-serve signup lives on the control site (lodgiva_control/www/signup):
+	# it provisions one Frappe site per hotel once the owner confirms email.
+	redir /signup {$LODGIVA_CONTROL_URL:http://localhost:8011}/signup 302
 	redir /dashboard /lodgiva 302
 	redir /dashboard/* /lodgiva 302
 

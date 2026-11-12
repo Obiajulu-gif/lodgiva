@@ -1,0 +1,36 @@
+{
+ "actions": [],
+ "autoname": "format:SAG-{#####}",
+ "creation": "2026-11-12 12:00:00",
+ "description": "Time-boxed support access to ONE hotel site, with a reason. A dedicated support user is created on that site and disabled when the grant expires or is revoked.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["hotel_environment", "site_name", "granted_to", "reason", "column_break_a", "status", "expires_at", "support_user", "revoked_by", "revoked_at"],
+ "fields": [
+  {"fieldname": "hotel_environment", "fieldtype": "Link", "label": "Hotel", "options": "Hotel Environment", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "site_name", "fieldtype": "Data", "label": "Site", "read_only": 1},
+  {"fieldname": "granted_to", "fieldtype": "Link", "label": "Granted To", "options": "User", "read_only": 1, "in_list_view": 1},
+  {"fieldname": "reason", "fieldtype": "Small Text", "label": "Reason", "reqd": 1},
+  {"fieldname": "column_break_a", "fieldtype": "Column Break"},
+  {"default": "Active", "fieldname": "status", "fieldtype": "Select", "label": "Status", "options": "Active\nExpired\nRevoked", "read_only": 1, "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "expires_at", "fieldtype": "Datetime", "label": "Expires At", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "support_user", "fieldtype": "Data", "label": "Support User on Site", "read_only": 1},
+  {"fieldname": "revoked_by", "fieldtype": "Link", "label": "Revoked By", "options": "User", "read_only": 1},
+  {"fieldname": "revoked_at", "fieldtype": "Datetime", "label": "Revoked At", "read_only": 1}
+ ],
+ "in_create": 1,
+ "modified": "2026-11-12 12:00:00",
+ "modified_by": "Administrator",
+ "module": "Lodgiva Control",
+ "name": "Support Access Grant",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {"role": "Lodgiva Operator", "read": 1, "report": 1},
+  {"role": "System Manager", "read": 1, "report": 1}
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -25,6 +25,85 @@ than this repository. They're recorded here so the product has one history.
 ## [Unreleased]
 
 ### Added
+- **Self-serve signup on the control site.** `/signup` (Frappe page
+  `lodgiva_control/www/signup`) saves a Draft Hotel Environment, emails a
+  confirmation link, and only then submits it to the normal provisioning
+  queue. Rate-limited to 5 per IP per hour. Caddy now sends `/signup` there
+  instead of to `/login`.
+- **Named owner accounts.** Provisioning creates the owner's own user on the
+  new site (Hotel Admin, Front Desk, Housekeeping, Finance, Revenue Manager)
+  and emails a one-time, two-day activation link. The link is never written
+  to the provisioning log. Operators can **Resend activation** from the
+  Hotels Console.
+- **Group Dashboard (PMS `/group`).** (PMS) All Properties (occupancy, room
+  revenue, ADR, RevPAR, arrivals, departures, out-of-service rooms for a date
+  range), Daily Close (business date, close status, open cashiers, blockers
+  with a link to the screen that clears each one) and Finance (cash, bank
+  transfer, POS terminal, Paystack, refunds, outstanding folios, unmatched
+  payments, cashier variances). Numbers come from the same queries as the
+  property reports. Anything not yet through night audit is marked
+  provisional. Clicking a hotel switches to it.
+- **Reconciliation queue (PMS `/reconciliation`).** (PMS) A new `Payment
+  Match` doctype in lodgiva-nigeria. Load bank statement, POS batch or
+  Paystack lines (CSV); each line is matched to a folio, suggested, or left
+  unmatched. Finance resolves with Post / Match / Ignore and a required
+  note, and who did it is recorded. Includes a daily accounting CSV export.
+- **Platform exceptions queue (Hotels Console).** Failed or stuck
+  provisioning, scheduler not running, missed night audits, missing or
+  stale off-server backups, overdue subscriptions, and a subscription access
+  mode the site is not actually applying. Each entry shows the site, what
+  happened, when, and the next action. Each site also shows its deployed
+  version, health-check time, last local backup, last off-server copy, last
+  verified restore and grace end.
+- **Scoped support access.** `Support Access Grant`: one site, a reason, at
+  most 24 hours. Granting creates a dedicated support user on that site only
+  and shows the password once. An hourly job (or Revoke) disables it.
+- **Off-server backups and restore rehearsal.**
+  `lodgiva_control.backups.offsite(site, target)` backs up with files,
+  checksums the copy (rclone remote or another disk), and records counts at
+  backup time. `backups.rehearse(site, dir, "rehearsal-<x>")` restores into
+  a disposable site, verifies reservations, folios, payments and
+  attachments, and records how long it took and how recent the data is.
+- **WhatsApp delivery status and pre-arrival reminders.** (PMS) Meta
+  delivery receipts (sent / delivered / read / failed) update each message,
+  and a late receipt can't move a status backwards. A daily reminder goes
+  to tomorrow's arrivals (template `tpl_prearrival`), once per stay. Setting
+  `lodgiva_whatsapp_test_recipients` in site config limits every send to
+  those numbers, for staging.
+- **Release pins.** `deploy/oracle/release.lock` records the exact Frappe,
+  frappe_docker, payments, PMS and Nigeria revisions. `setup.sh` refuses to
+  build if a ref has moved since, and labels the image with the release.
+- **CI.** (PMS) Integrity checks run under real concurrency
+  (`kamra/scripts/integrity_checks.py`, 8 checks). A new `upgrade` job
+  installs the previous release with data, migrates to the PR, and re-runs
+  the checks.
+
+### Fixed (enterprise foundation)
+- **Every customer hostname reached the same hotel.** `setup.sh` forced
+  `FRAPPE_SITE_NAME_HEADER` to the landing site. It now passes Caddy's
+  header through, and Frappe otherwise routes by Host.
+- **Staff could reach other properties through the API.** (PMS) Most Kamra
+  methods read with `get_all` or SQL, which ignore User Permissions. A new
+  auth hook (`kamra/property_guard.py`) refuses any call whose `property`,
+  reservation, folio, order, room or similar argument belongs to a property
+  outside the user's permissions.
+- **Two unassigned bookings could take the last room.** (PMS) The room-type
+  capacity count was a plain read. It is now a locking read.
+- **Concurrent gateway retries could credit a folio twice, and link
+  payments skipped the ledger.** (PMS) `post_link_payment` now locks the
+  folio, checks the reference with a locking read, and writes the ledger
+  row that a desk payment writes. Paystack retries that lose the lock are
+  retried and answer 200.
+- **Paystack credited any signed charge to the folio named in its
+  metadata.** (PMS) A charge is now posted only if the reference was issued
+  for that folio and the currency matches. Anything else is parked as
+  Unmatched in the reconciliation queue.
+- **Overlapping night audits could post a night twice, and a failed
+  property's half-posted audit was committed by the next property.** (PMS)
+  The audit now takes a property lock, re-checks with a locking read, and
+  rolls back a failed property before moving on.
+- **WhatsApp webhooks were unsigned.** (PMS) When a connection has its Meta
+  app secret, `X-Hub-Signature-256` is now verified.
 - **Customer environment provisioning.** A new Frappe app,
   [frappe-apps/lodgiva_control](frappe-apps/lodgiva_control), creates one
   Lodgiva site per hotel customer. An operator fills a form in Frappe Desk

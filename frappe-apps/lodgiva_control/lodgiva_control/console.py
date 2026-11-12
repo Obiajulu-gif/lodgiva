@@ -37,7 +37,25 @@ out = {
     "errors_7d": db.sql("select count(*) from `tabError Log` where creation > now() - interval 7 day")[0][0],
     "scheduler_off": bool(frappe.utils.scheduler.is_scheduler_disabled()),
     "access_mode": frappe.conf.get("lodgiva_access_mode") or "full",
+    # the scheduler can be "on" with no process running it: the last time it
+    # enqueued anything is the heartbeat (logs are only kept for some jobs)
+    "last_job": str(db.sql("select max(last_execution) from `tabScheduled Job Type`")[0][0] or ""),
 }
+import importlib, os, subprocess
+ver = {"frappe": frappe.__version__}
+for app in ("kamra", "lodgiva_nigeria"):
+    try:
+        mod = importlib.import_module(app)
+        sha = subprocess.run(["git", "-C", os.path.dirname(os.path.dirname(mod.__file__)), "rev-parse", "--short", "HEAD"],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+        ver[app] = getattr(mod, "__version__", "") + (f"+{sha}" if sha else "")
+    except Exception:
+        ver[app] = ""
+out["version"] = ver
+bdir = frappe.get_site_path("private", "backups")
+files = [os.path.join(bdir, f) for f in os.listdir(bdir)] if os.path.isdir(bdir) else []
+import datetime
+out["last_local_backup"] = str(datetime.datetime.fromtimestamp(int(max(os.path.getmtime(f) for f in files)))) if files else ""
 if db.table_exists("Property"):
     props = frappe.get_all("Property", pluck="name")
     out["properties"] = len(props)
@@ -68,25 +86,45 @@ def sites_on_disk() -> list[str]:
     )
 
 
-def site_health(site: str, refresh: bool = False) -> dict:
-    key = f"lodgiva_console_health:{site}"
-    if not refresh and (hit := frappe.cache.get_value(key)):
-        return hit
+def _read_health(bench: str, site: str) -> dict:
+    """One health read. No frappe.local use, so it is safe in a thread."""
+    import json
+
     try:
         result = subprocess.run(
-            [f"{_bench()}/env/bin/python", "-c", HEALTH_SCRIPT, site],
-            cwd=f"{_bench()}/sites", capture_output=True, text=True, timeout=HEALTH_TIMEOUT,
+            [f"{bench}/env/bin/python", "-c", HEALTH_SCRIPT, site],
+            cwd=f"{bench}/sites", capture_output=True, text=True, timeout=HEALTH_TIMEOUT,
         )
         line = next((ln for ln in result.stdout.splitlines() if ln.startswith("HEALTH")), None)
         text = (result.stderr or result.stdout).strip()
-        health = frappe.parse_json(line[6:]) if line else {
+        return json.loads(line[6:]) if line else {
             "error": text.splitlines()[-1][:300] if text else "no output"
         }
     except Exception as e:  # a wedged site must not take the console down
-        health = {"error": str(e)[:300]}
-    health["checked_at"] = str(now_datetime())
-    frappe.cache.set_value(key, health, expires_in_sec=HEALTH_TTL)
-    return health
+        return {"error": str(e)[:300]}
+
+
+def health_for(sites: list[str], refresh: bool = False) -> dict[str, dict]:
+    """Health of many sites: cached reads, the rest 4 at a time.
+
+    ponytail: 4 parallel python processes; past ~50 hotels, have the sweep
+    write health to a table and read that instead."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    key = lambda s: f"lodgiva_console_health:{s}"  # noqa: E731
+    out = {} if refresh else {s: h for s in sites if (h := frappe.cache.get_value(key(s)))}
+    todo = [s for s in sites if s not in out]
+    bench = _bench()
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for site, health in zip(todo, pool.map(lambda s: _read_health(bench, s), todo)):
+            health["checked_at"] = str(now_datetime())
+            frappe.cache.set_value(key(site), health, expires_in_sec=HEALTH_TTL)
+            out[site] = health
+    return out
+
+
+def site_health(site: str, refresh: bool = False) -> dict:
+    return health_for([site], refresh)[site]
 
 
 def hotel_url(site: str, public_url: str | None = None) -> str:
@@ -96,8 +134,7 @@ def hotel_url(site: str, public_url: str | None = None) -> str:
         from lodgiva_control import tunnel
         if not tunnel.running_pid(site):
             public_url = None
-    template = frappe.conf.get("lodgiva_hotel_url") or "https://{site}"
-    return public_url or template.format(site=site)
+    return public_url or provisioning.hotel_base_url(site)
 
 
 def issues_for(row: dict, today: str | None = None) -> list[dict]:
@@ -180,7 +217,72 @@ def issues_for(row: dict, today: str | None = None) -> list[dict]:
                            "See Error Log on the hotel's site.")
 
     rank = {"critical": 0, "warning": 1, "info": 2}
-    return [{"level": lv, "text": tx} for lv, tx in sorted(out, key=lambda x: rank[x[0]])]
+    issues = [{"level": lv, "text": tx} for lv, tx in sorted(out, key=lambda x: rank[x[0]])]
+    return issues
+
+
+def exceptions_for(row: dict, now=None) -> list[dict]:
+    """The platform exception queue entries for one hotel.
+
+    Pure, like issues_for. Each entry says which site, what happened, when,
+    and the next action an operator can take: {site, kind, level, what,
+    when, action}. action = {"act": <console button>, "label"} or
+    {"href", "label"}.
+    """
+    from lodgiva_control.backups import STALE_HOURS
+
+    now = get_datetime(now or now_datetime())
+    site, env = row.get("site_name"), row.get("name")
+    status = row.get("status")
+    sub = row.get("subscription") or {}
+    health = row.get("health") or {}
+    out = []
+
+    def add(kind, level, what, when, action):
+        out.append({"site": site, "hotel": env, "kind": kind, "level": level, "what": what,
+                    "when": str(when or ""), "action": action})
+
+    record = {"href": f"/app/hotel-environment/{env}", "label": "Provisioning history"} if env else None
+    if status == "Failed":
+        add("provisioning", "critical", "Provisioning failed: " + (row.get("last_log") or "see log"),
+            row.get("modified"), {"act": "retry", "name": env, "label": "Retry provisioning"})
+    elif status == "Provisioning" and row.get("modified") and \
+            (now - get_datetime(row["modified"])).total_seconds() > 3600:
+        add("provisioning", "critical", "Provisioning stuck for over an hour", row["modified"], record)
+
+    if status == "Active" and not health.get("error"):
+        if health.get("scheduler_off"):
+            add("jobs", "critical", "Scheduler disabled: night audit and reminders are not running",
+                health.get("last_job"), record)
+        else:
+            last = health.get("last_job")
+            if not last or (now - get_datetime(last)).total_seconds() > 2 * 3600:
+                add("jobs", "critical", "Scheduler has not run a job in 2 hours: the scheduler process is down",
+                    last or "never", record)
+        bd = health.get("business_date")
+        if bd and date_diff(now.date(), getdate(bd)) > 1:
+            add("jobs", "warning", f"Night audit missed: business date {bd}", bd, record)
+
+    if status == "Active":
+        offsite = (row.get("backups") or {}).get("Off-site copy")
+        age = (now - get_datetime(offsite["at"])).total_seconds() / 3600 if offsite else None
+        if age is None or age > STALE_HOURS:
+            add("backup", "critical", "No off-server backup " + (f"for {int(age)} hours" if age else "on record"),
+                offsite["at"] if offsite else "never",
+                {"href": f"/app/backup-event?site_name={site}", "label": "Backup history"})
+
+    state = sub.get("state")
+    if state in ("past_due", "unpaid"):
+        add("subscription", "critical" if state == "unpaid" else "warning",
+            f"Subscription {state.replace('_', ' ')}; grace ends {sub.get('grace_ends_on') or '-'}, "
+            f"access {sub.get('access_mode') or 'full'}",
+            sub.get("grace_ends_on"), {"act": "paid", "name": sub.get("name"), "label": "Mark paid"})
+    applied = health.get("access_mode")
+    if sub and applied and not health.get("error") and applied != (sub.get("access_mode") or "full"):
+        add("subscription", "critical",
+            f"Access mode mismatch: subscription says {sub.get('access_mode')}, site applies {applied}",
+            row.get("checked_at"), {"href": f"/app/hotel-subscription/{sub.get('name')}", "label": "Subscription"})
+    return out
 
 
 @frappe.whitelist()
@@ -215,14 +317,24 @@ def overview(refresh: int = 0) -> dict:
         rows.append({"name": None, "customer_name": site, "site_name": site, "status": "Unregistered",
                      "registered": False, "on_disk": True})
 
+    from lodgiva_control.backups import latest
+    from lodgiva_control.support import active_grants
+
+    healths = health_for([r["site_name"] for r in rows if r["on_disk"]], refresh)
     for r in rows:
-        r["health"] = site_health(r["site_name"], refresh) if r["on_disk"] else None
+        r["health"] = healths.get(r["site_name"]) if r["on_disk"] else None
+        r["checked_at"] = (r["health"] or {}).get("checked_at")
         r["url"] = hotel_url(r["site_name"], r.get("public_url"))
+        r["backups"] = latest(r["site_name"])
+        r["support"] = active_grants(r["name"]) if r.get("name") else []
         r["issues"] = issues_for(r)
+    exceptions = [e for r in rows for e in exceptions_for(r)]
+    exceptions.sort(key=lambda e: ({"critical": 0, "warning": 1}.get(e["level"], 2), e["when"]))
 
     count = lambda pred: sum(1 for r in rows if pred(r))  # noqa: E731
     return {
         "rows": rows,
+        "exceptions": exceptions,
         "summary": {
             "hotels": len(rows),
             "active": count(lambda r: r.get("status") == "Active"),
