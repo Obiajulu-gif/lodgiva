@@ -123,6 +123,13 @@ than this repository. They're recorded here so the product has one history.
   comment on the record.
 
 ### Security
+- The control site's setup script no longer falls back to a fixed
+  Administrator password; it generates one and prints it once.
+- Provisioning stores each hotel's generated admin password encrypted instead
+  of in plain text on the Hotel Environment record.
+- **(PMS)** The test checkout records a payment only on a POST from its Pay
+  button. As a GET, a link preview in WhatsApp or mail could have marked a stay
+  paid.
 - Customer certificates are issued on demand and gated by
   `lodgiva_control.api.allow_host`, which answers only for hostnames that exist
   as site directories. Without the gate, anyone pointing a DNS record at the
