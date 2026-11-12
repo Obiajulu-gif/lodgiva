@@ -26,6 +26,12 @@ cd "$BENCH_DIR"
 
 if [ ! -d "sites/$SITE" ]; then
   echo "creating $SITE"
+  # No built-in default: a password in this file is a password in git
+  # history. Generated when not supplied, and shown once so it can be kept.
+  if [ -z "${CONTROL_ADMIN_PASSWORD:-}" ]; then
+    CONTROL_ADMIN_PASSWORD="$(openssl rand -base64 18)"
+    echo "  Administrator password for $SITE (save it, shown once): $CONTROL_ADMIN_PASSWORD"
+  fi
   "$BENCH" new-site "$SITE" \
     --db-host 127.0.0.1 \
     --db-port 3307 \
@@ -33,7 +39,7 @@ if [ ! -d "sites/$SITE" ]; then
     --db-root-password "${DB_ADMIN_PASSWORD:-}" \
     --mariadb-user-host-login-scope=% \
     --no-mariadb-socket \
-    --admin-password "${CONTROL_ADMIN_PASSWORD:-lodgivacontrol}" \
+    --admin-password "$CONTROL_ADMIN_PASSWORD" \
     --install-app lodgiva_control || exit 1
 else
   echo "$SITE already exists"
