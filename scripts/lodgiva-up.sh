@@ -14,9 +14,10 @@
 # What it starts, in order:
 #   MariaDB      127.0.0.1:3307   the eval bench's own database
 #   Frappe       0.0.0.0:8002     ALL sites, resolved by Host header
-#   worker                        runs provisioning jobs (new hotel sites)
+#   worker + scheduler            provisioning jobs, night audit, daily billing sweep
 #   socketio     9001             live updates between staff screens
-#   Caddy        8001             landing page + PMS + /admin on one address
+#   Caddy        8001             landing page + PMS on one address
+#                8011             the control console, on its own origin
 #   cloudflared                   public https link
 set -uo pipefail
 
@@ -82,7 +83,7 @@ MSYS_NO_PATHCONV=1 wsl -d "$DISTRO" -u "$WSL_USER" -- bash /home/frappe/kamra-se
 PIDS+=($!)
 wait_for_port 8002 "Frappe" 60 || exit 1
 
-echo "3/5 background worker (needed to provision new hotels)"
+echo "3/5 background worker + scheduler (provisioning, night audit, billing sweep)"
 # Supervised: RQ quits cleanly after an idle stretch on this bench, which
 # silently stops provisioning while everything else keeps looking fine.
 MSYS_NO_PATHCONV=1 wsl -d "$DISTRO" -u "$WSL_USER" -- bash /home/frappe/lodgiva-worker.sh &
@@ -95,10 +96,19 @@ else
 fi
 
 echo "4/5 Caddy router"
+# LODGIVA_PMS_SITE names the site :8001 serves. It has to be said out loud
+# here because every site on this laptop is reached through `localhost`, so
+# the hostname carries no site name. On a server the hostname IS the site, so
+# the variable is left unset there and the Host header decides.
 MSYS_NO_PATHCONV=1 wsl -d "$DISTRO" -u "$WSL_USER" -- bash -c \
-  "cd /home/frappe/lodgiva-router && FRAPPE_UPSTREAM=127.0.0.1:8002 exec ./caddy run --config Caddyfile.local --adapter caddyfile" &
+  "cd /home/frappe/lodgiva-router \
+   && FRAPPE_UPSTREAM=127.0.0.1:8002 \
+      LODGIVA_PMS_SITE=kamra.localhost \
+      LODGIVA_CONTROL_SITE=control.localhost \
+      exec ./caddy run --config Caddyfile.local --adapter caddyfile" &
 PIDS+=($!)
 wait_for_port 8001 "Caddy" 40 || exit 1
+wait_for_port 8011 "Caddy (console origin)" 20 || exit 1
 
 echo ""
 echo "local:  http://localhost:8001"

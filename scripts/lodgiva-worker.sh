@@ -15,6 +15,19 @@ set -u
 export PATH="$HOME/.local/bin:$PATH"
 cd "$HOME/kamra-bench"
 
+# The scheduler is a separate process from the worker. Without it no
+# scheduled job is ever enqueued: the PMS night audit never runs (business
+# date stalls, found 13 days behind on 2026-11-12) and the control site's
+# daily subscription sweep never ends a trial. Supervised for the same reason
+# as the worker below.
+(
+  while true; do
+    bench schedule
+    echo "[scheduler-supervisor] exited with $?; restarting in 3s" >&2
+    sleep 3
+  done
+) &
+
 while true; do
   bench worker --queue long,default,short
   code=$?

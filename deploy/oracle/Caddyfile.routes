@@ -20,17 +20,18 @@
 	# own site so the billing console is never restricted by the billing state
 	# it enforces.
 	#
-	# Host rewrite rather than a path prefix: Desk owns /app, /api and /assets
-	# at the root, so a second Frappe surface cannot be mounted under /admin
-	# without those calls landing on the wrong site. Rewriting Host is the same
-	# mechanism tunnel.py uses to give each hotel its own link.
-	@admin path /admin /admin/*
-	handle @admin {
-		uri replace /admin /app/hotel-environment
-		reverse_proxy {$FRAPPE_UPSTREAM} {
-			header_up Host {$LODGIVA_CONTROL_SITE}
-		}
-	}
+	# A redirect, not a proxy. Desk owns /app, /api, /assets and /login at the
+	# root, and those paths are already claimed below by the PMS. Proxying only
+	# /admin to the control site gets the first HTML page and then sends every
+	# asset and API call it triggers to the hotel site instead - wrong site,
+	# wrong session. The console needs a whole origin, so it gets one:
+	# LODGIVA_CONTROL_URL (port 8011 on the laptop, control.<apex> on a server).
+	#
+	# The default matters: an unset variable here used to leave `header_up Host`
+	# with no argument, which fails config adaptation and stops Caddy booting -
+	# taking the landing page and the PMS down with it, not just /admin.
+	redir /admin {$LODGIVA_CONTROL_URL:http://localhost:8011}/app/hotels-console 302
+	redir /admin/* {$LODGIVA_CONTROL_URL:http://localhost:8011}/app/hotels-console 302
 
 	@pms path /lodgiva /lodgiva/* /kamra /kamra/* \
 		/book /book/* /stay /stay/* /hk /hk/* /checkin/* \
@@ -40,7 +41,21 @@
 		/website_script.js /print/* /printview* /desk*
 
 	handle @pms {
-		reverse_proxy {$FRAPPE_UPSTREAM}
+		reverse_proxy {$FRAPPE_UPSTREAM} {
+			# Name the site explicitly. Frappe reads this header before it looks
+			# at Host, and unlike a Host rewrite it leaves Origin matching Host,
+			# which the realtime server insists on.
+			#
+			# Unset, it sends the header empty, and an empty value is falsy in
+			# Frappe - so the site falls back to Host, which is what the server
+			# wants: there, one hostname per hotel IS the routing. Only the
+			# laptop sets it, because every site is reached through localhost
+			# and the hostname carries no site name.
+			#
+			# Do not write the default as a placeholder: `{$VAR:{http.request.host}}`
+			# adapts to the literal `kamra.localhost}`, trailing brace and all.
+			header_up X-Frappe-Site-Name "{$LODGIVA_PMS_SITE:}"
+		}
 	}
 
 	# Everything else - /, /_next/*, pricing, features - is the landing page.
