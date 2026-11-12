@@ -1,0 +1,22 @@
+{
+ "actions": [],
+ "creation": "2026-10-08 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": ["room_type_code", "numbers"],
+ "fields": [
+  {"fieldname": "room_type_code", "fieldtype": "Data", "label": "Room Type Code", "reqd": 1, "in_list_view": 1, "columns": 3},
+  {"fieldname": "numbers", "fieldtype": "Small Text", "label": "Room Numbers", "reqd": 1, "in_list_view": 1, "columns": 7, "description": "Comma separated, e.g. 101, 102, 103"}
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-08 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Lodgiva Control",
+ "name": "Hotel Environment Room Block",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

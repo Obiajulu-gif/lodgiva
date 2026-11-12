@@ -12,7 +12,51 @@ import Caddyfile.routes
 	# Frappe's realtime service runs on its own port on the laptop; on Oracle
 	# the frappe_docker frontend already routes /socket.io internally.
 	handle /socket.io/* {
-		reverse_proxy 127.0.0.1:9001
+		reverse_proxy 127.0.0.1:9001 {
+			# The realtime server refuses a connection whose Host and Origin
+			# hostnames disagree. A stock bench reaches it cross-origin on
+			# :9001, so the browser always sends Origin; proxying it onto
+			# this origin makes the handshake same-origin, and browsers omit
+			# Origin on a same-origin GET. Both are set here so the pair is
+			# consistent whatever the browser chose to send.
+			header_up Host {host}
+			# Keep the port: the realtime server calls the web server back at
+			# this Origin to check the session, so dropping it aims that call
+			# at port 80 and the handshake dies as "Unauthorized: fetch failed".
+			header_up Origin {scheme}://{host}:{port}
+			header_up X-Frappe-Site-Name {$LODGIVA_PMS_SITE:kamra.localhost}
+		}
 	}
 	import lodgiva_routes
+}
+
+# The control console, on an origin of its own.
+#
+# Desk serves /app, /api, /assets and /login from the root, and those paths
+# belong to the PMS on :8001, so the console needs a whole origin to itself.
+# Same Frappe process as the PMS - only the site header differs.
+#
+# Both blocks name their site with X-Frappe-Site-Name rather than rewriting
+# Host, because the realtime server refuses a connection whose Host and
+# Origin hostnames disagree, and the browser's Origin is always this port.
+:8011 {
+	handle /socket.io/* {
+		reverse_proxy 127.0.0.1:9001 {
+			# The realtime server refuses a connection whose Host and Origin
+			# hostnames disagree. A stock bench reaches it cross-origin on
+			# :9001, so the browser always sends Origin; proxying it onto
+			# this origin makes the handshake same-origin, and browsers omit
+			# Origin on a same-origin GET. Both are set here so the pair is
+			# consistent whatever the browser chose to send.
+			header_up Host {host}
+			# Keep the port: the realtime server calls the web server back at
+			# this Origin to check the session, so dropping it aims that call
+			# at port 80 and the handshake dies as "Unauthorized: fetch failed".
+			header_up Origin {scheme}://{host}:{port}
+			header_up X-Frappe-Site-Name {$LODGIVA_CONTROL_SITE:control.localhost}
+		}
+	}
+	reverse_proxy {$FRAPPE_UPSTREAM:127.0.0.1:8002} {
+		header_up X-Frappe-Site-Name {$LODGIVA_CONTROL_SITE:control.localhost}
+	}
 }

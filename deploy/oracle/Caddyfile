@@ -9,3 +9,22 @@ import Caddyfile.routes
 	encode zstd gzip
 	import lodgiva_routes
 }
+
+# One Frappe site per hotel customer, reached at <customer>.<apex>.
+#
+# Certificates are issued on first request rather than from one wildcard
+# certificate, which keeps this on the stock caddy:2 image: a wildcard needs a
+# DNS-01 challenge, and that needs a Caddy built with a DNS provider module
+# plus an API token for the zone.
+#
+# The cost of on-demand issuance is that any hostname resolving here would
+# otherwise trigger a certificate request, so the `ask` endpoint in the global
+# block (written by setup.sh) decides which hosts are real. Creating a customer
+# therefore needs no change here and no reload.
+*.{$LODGIVA_APEX} {
+	encode zstd gzip
+	tls {
+		on_demand
+	}
+	reverse_proxy {$FRAPPE_UPSTREAM}
+}

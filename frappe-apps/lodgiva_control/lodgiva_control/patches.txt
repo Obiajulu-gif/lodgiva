@@ -1,0 +1,7 @@
+[pre_model_sync]
+
+[post_model_sync]
+# Must be post-sync: the patch reads Subscription Plan and Hotel Subscription,
+# which do not exist until the DocTypes have been imported. Frappe requires
+# both section headers to be present even when one is empty.
+lodgiva_control.patches.seed_plans
