@@ -44,6 +44,16 @@ cannot exist until that is gone. Steps 3 and 4 are an outage.
    no default site Frappe cannot resolve that request at all and answers an
    error, which Caddy reads as "refuse" — and then no customer site can ever
    obtain a certificate.
+
+   This is safe **here** because the stack serves through gunicorn, which
+   loads `frappe.app:application` directly and resolves every request's site
+   from `X-Frappe-Site-Name` or `Host`. It is not safe under the development
+   server: `bench serve` with no `--site` substitutes `default_site`
+   (`bench_helper.py`, `get_sites`), binds to that one site for its whole life
+   and stops reading `Host` — so every hotel's address serves the default
+   site's data, with nothing in any log to say so. See
+   [scripts/kamra-serve-multi.sh](../../scripts/kamra-serve-multi.sh), which
+   refuses to start while the key is set.
 7. Re-run `setup.sh`, or apply its Caddy changes by hand, so the global block
    carries `on_demand_tls` and the `*.<apex>` site block exists.
 8. Confirm the backup cron in `/etc/cron.d/lodgiva-backup` says `--site all`.
@@ -64,6 +74,27 @@ query, so certificates keep working while the control site is down.
 
 Without it, a stranger can exhaust the Let's Encrypt limit of 50 certificates
 per registered domain per week and take live customers offline.
+
+## Hotels Console
+
+`/app/hotels-console` (and `/admin` on the public origin) is the operator's
+home: every Hotel Environment, plus any site directory on disk that has no
+record, each with its subscription state and a health read taken on the
+hotel's own site. `lodgiva_control.console.overview` builds it;
+`issues_for` turns each row into actions, worst first, and is covered by
+`tests/test_console.py`.
+
+- Health is read with a short python run per site, the same way
+  `scheduler.usage_for` reads usage, and cached for 5 minutes. "Re-check all
+  sites" bypasses the cache. Past a few dozen hotels, have the daily sweep
+  store health in a table and read that instead.
+- "Open hotel site" uses `public_url` when it is live, otherwise the
+  `lodgiva_hotel_url` template from the control site's config (default
+  `https://{site}`; locally `http://{site}:8002`). A quick-tunnel URL is
+  ignored once its cloudflared process is gone.
+- A trial that ended but is still `trialing`, or a hotel whose business date
+  is behind, means scheduled jobs are not running — the stack needs
+  `bench schedule` as well as `bench worker`.
 
 ## Failure
 

@@ -249,7 +249,13 @@ def provision(docname: str) -> None:
             cwd=os.path.join(bench_path, "sites"),
         )
 
-        doc.db_set("admin_password", admin_password)
+        # db_set writes the column verbatim, which for a Password field means
+        # plaintext in tabHotel Environment. Store it encrypted in __Auth the
+        # way a normal save would, and leave only the mask in the column.
+        from frappe.utils.password import set_encrypted_password
+
+        set_encrypted_password(doc.doctype, doc.name, admin_password, "admin_password")
+        doc.db_set("admin_password", "*" * len(admin_password))
         doc.db_set("status", "Active")
         frappe.db.commit()
 

@@ -46,11 +46,81 @@ than this repository. They're recorded here so the product has one history.
   ([docs/LODGIVA_PMS_WALKTHROUGH.md](docs/LODGIVA_PMS_WALKTHROUGH.md)) — what to
   say for each of the ten `/lodgiva` sections, drawn from the app's own launcher
   definitions.
+- **Hotels Console** (`/app/hotels-console` on the control site; `/admin` now
+  lands there). One page listing every hotel on the platform: provisioning
+  status, plan and subscription state, and a live health read of each hotel's
+  own site (staff accounts, last sign-in, rooms, bookings in 30 days, business
+  date, overdue departures, server errors, scheduler). Each hotel carries a list
+  of issues worded as the action to take, worst first, plus buttons to open the
+  site, open the record and log, retry a failed provision, mark a subscription
+  paid or email the owner. Sites on disk with no record are listed too, since
+  nothing else bills or sweeps them. Details in the app's
+  [README](frappe-apps/lodgiva_control/README.md#hotels-console).
+- **(PMS) Paystack payment links in naira.** Payment links now use the
+  property's currency from the localisation pack instead of a hard-coded INR,
+  and `lodgiva_nigeria` registers a Paystack gateway (signed `charge.success`
+  webhook at `/api/method/lodgiva_nigeria.paystack.webhook`). With test mode on,
+  a link opens a built-in test checkout that posts the payment to the folio,
+  idempotent on the reference.
+- **(PMS) Payment link straight after booking.** The booking dialog's
+  confirmation offers "Get payment link" for the stay total, and the folio's
+  Payment link button now shows the link, amount, Copy and Open instead of
+  silently writing to the clipboard. "copy check-in link" on Today confirms the
+  copy.
+- **(PMS) Night-audit catch-up and overdue departures.** A stalled business date
+  is rolled forward one audited day at a time (capped at 370), and Today shows
+  guests still checked in past their departure date.
 
 ### Changed
 - The nightly backup cron in `setup.sh` now runs `bench --site all backup`
   instead of naming one site, so customers created later are included. Pinned to
   a single site, every new environment would have gone unbacked.
+- **The local stack now runs the Frappe scheduler** alongside the worker
+  ([scripts/lodgiva-worker.sh](scripts/lodgiva-worker.sh)). Without it no
+  scheduled job was ever enqueued: the PMS night audit never ran (the demo's
+  business date was found 13 days behind) and the daily subscription sweep never
+  ended a trial.
+- **(PMS)** The app switcher in the PMS top bar is a labelled, bordered "Apps"
+  button with a chevron instead of a bare grid icon nobody read as clickable.
+
+### Fixed
+- **Every hotel's address served the same site.** `bench serve` was started
+  without `--site`, which looks like multi-site serving but is not: bench
+  substitutes `default_site` from `sites/common_site_config.json`, the server
+  binds to that one site, and the `Host` header is never read again. Nothing
+  reported it — Desk, the API and the login page all answered normally, as the
+  wrong site — so it surfaced only as a login being refused against another
+  site's user list. Removing `default_site` restores per-`Host` resolution, and
+  [scripts/kamra-serve-multi.sh](scripts/kamra-serve-multi.sh) now refuses to
+  start while the key is set. A request naming no site gets a 404 instead of a
+  default, which is the right way round for a SaaS.
+- **`/admin` reached a site without the console installed**, answering "Page
+  hotel-environment not found". The console lives on its own site; the console
+  origin (`:8011` locally) now names that site with `X-Frappe-Site-Name` rather
+  than by rewriting `Host`, which the realtime server rejects.
+- **Live updates never connected on either origin** ("Invalid origin"). The
+  realtime server refuses a connection whose `Host` and `Origin` hostnames
+  disagree. A stock bench reaches it cross-origin on its own port, so browsers
+  always send `Origin`; proxying `/socket.io` onto the same origin makes the
+  handshake same-origin, and browsers omit `Origin` there. Both headers are now
+  set in the proxy, with the port kept — dropping it aims the server's
+  session callback at port 80.
+- **(PMS) Guests could check out owing their room.** The settlement control ran
+  in `before_save`, but checkout posts the nights the night audit has not
+  reached (`post_remaining_nights`) afterwards, in `on_update`. A stay passed
+  the check at a zero balance and left owing; eleven demo stays did. The control
+  now runs again after posting, and refusing there rolls the checkout back.
+- **(PMS) Payment links pointed at a dead tunnel.** A stale `host_name` in the
+  demo site's config made every generated link use an old trycloudflare
+  address; links now use the address the desk is on.
+- **(PMS) Cancelling a booking left an empty open bill** when a prepayment link
+  had opened its folio. An untouched folio is now closed (without an invoice
+  number) on cancel.
+- **(PMS) Long emails overflowed the registration card** (GRC); values now wrap
+  inside their column.
+- **(PMS) Nigerian phone numbers saved as +91.** The phone field defaulted to
+  India's dial code. Five demo guests were corrected to +234, each with a
+  comment on the record.
 
 ### Security
 - Customer certificates are issued on demand and gated by
