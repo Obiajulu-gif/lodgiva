@@ -105,6 +105,12 @@ than this repository. They're recorded here so the product has one history.
   handshake same-origin, and browsers omit `Origin` there. Both headers are now
   set in the proxy, with the port kept — dropping it aims the server's
   session callback at port 80.
+- **Every Vercel build of `main` failed since 2026-09-22** with
+  `@prisma/client has no exported member 'PrismaClient'`. `packages/database`
+  declared no TypeScript, so pnpm paired its Prisma client with the TypeScript 7
+  the docs app pulls in; `prisma generate` filled that copy while `apps/api`
+  imported the TypeScript 5 copy, which stayed empty. Builds only passed from
+  cache. `packages/database` now pins `typescript ^5.8.3`.
 - **(PMS) Guests could check out owing their room.** The settlement control ran
   in `before_save`, but checkout posts the nights the night audit has not
   reached (`post_remaining_nights`) afterwards, in `on_update`. A stay passed
