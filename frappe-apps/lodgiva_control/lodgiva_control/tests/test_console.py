@@ -60,3 +60,47 @@ class TestIssues(unittest.TestCase):
         h = dict(HEALTHY, scheduler_off=True, overdue=1)
         levels = [lv for lv, _ in texts(row(health=h))]
         self.assertEqual(levels, sorted(levels, key=["critical", "warning", "info"].index))
+
+
+class TestExceptions(unittest.TestCase):
+    NOW = "2026-11-12 12:00:00"
+
+    def kinds(self, r):
+        from lodgiva_control.console import exceptions_for
+        return {e["kind"]: e for e in exceptions_for(r, now=self.NOW)}
+
+    def active(self, **kw):
+        h = dict(HEALTHY, last_job="2026-11-12 11:30:00")
+        base = row(health=h, name="h1", site_name="h1.example",
+                   backups={"Off-site copy": {"at": "2026-11-12 02:00:00"}})
+        base.update(kw)
+        return base
+
+    def test_healthy_site_has_no_exceptions(self):
+        self.assertEqual(self.kinds(self.active()), {})
+
+    def test_failed_provision_offers_retry(self):
+        e = self.kinds(row(status="Failed", name="h1", site_name="h1.example", on_disk=False,
+                           health=None, modified="2026-11-12 10:00:00"))["provisioning"]
+        self.assertEqual(e["action"]["act"], "retry")
+        self.assertEqual(e["when"], "2026-11-12 10:00:00")
+
+    def test_stale_and_missing_offsite_backup(self):
+        stale = self.active(backups={"Off-site copy": {"at": "2026-11-10 02:00:00"}})
+        self.assertIn("58 hours", self.kinds(stale)["backup"]["what"])
+        self.assertIn("on record", self.kinds(self.active(backups={}))["backup"]["what"])
+
+    def test_missed_jobs(self):
+        h = dict(HEALTHY, last_job="2026-11-12 07:00:00")
+        self.assertIn("scheduler process is down", self.kinds(self.active(health=h))["jobs"]["what"])
+
+    def test_overdue_subscription_and_access_mismatch(self):
+        sub = {"name": "S1", "state": "past_due", "grace_ends_on": "2026-11-15", "access_mode": "read_only"}
+        from lodgiva_control.console import exceptions_for
+        subs = [e for e in exceptions_for(self.active(subscription=sub), now=self.NOW)
+                if e["kind"] == "subscription"]
+        overdue = [e for e in subs if e["what"].startswith("Subscription past due")]
+        self.assertEqual(overdue[0]["action"]["act"], "paid")
+        self.assertIn("2026-11-15", overdue[0]["what"])
+        # the site still applies "full" while the subscription says read_only
+        self.assertEqual(len([e for e in subs if "mismatch" in e["what"]]), 1)

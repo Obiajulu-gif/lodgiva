@@ -140,8 +140,15 @@ def _log(doc, message: str) -> None:
     frappe.db.commit()
 
 
-def _run(doc, args: list[str], hide: list[str], cwd: str | None = None) -> None:
-    """Run one bench command, streaming a redacted record of it into the doc."""
+SECRET_LINE = re.compile(r"^ACTIVATE.*$", re.M)
+
+
+def _run(doc, args: list[str], hide: list[str], cwd: str | None = None) -> str:
+    """Run one bench command, streaming a redacted record of it into the doc.
+
+    Returns the raw output. Lines starting ACTIVATE carry the owner's
+    activation link: returned to the caller, never written to the log.
+    """
     _log(doc, f"$ {_redact(' '.join(args), hide)}")
     result = subprocess.run(
         args,
@@ -152,9 +159,109 @@ def _run(doc, args: list[str], hide: list[str], cwd: str | None = None) -> None:
     )
     output = ((result.stdout or "") + (result.stderr or "")).strip()
     if output:
-        _log(doc, _redact(output, hide))
+        _log(doc, _redact(SECRET_LINE.sub("ACTIVATE <link withheld>", output), hide))
     if result.returncode != 0:
         raise RuntimeError(f"exit {result.returncode}")
+    return output
+
+
+# What the owner gets on their own hotel's site. Unrestricted (no Property
+# User Permission), so a group owner sees every property they add later.
+OWNER_ROLES = ("Hotel Admin", "Front Desk", "Housekeeping", "Finance", "Revenue Manager")
+
+OWNER_SCRIPT = """
+import frappe, sys
+site, email, full_name, roles = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4].split(",")
+frappe.init(site=site)
+frappe.connect()
+# Two days to act on the activation email, not Frappe's 20 minutes.
+frappe.db.set_single_value("System Settings", "reset_password_link_expiry_duration", 172800)
+for r in roles:
+    if not frappe.db.exists("Role", r):
+        frappe.get_doc({"doctype": "Role", "role_name": r, "desk_access": 0}).insert(ignore_permissions=True)
+first, _, last = full_name.partition(" ")
+if frappe.db.exists("User", email):
+    user = frappe.get_doc("User", email)
+    for r in set(roles) - {x.role for x in user.roles}:
+        user.append("roles", {"role": r})
+    user.save(ignore_permissions=True)
+else:
+    user = frappe.get_doc({"doctype": "User", "email": email, "first_name": first or email,
+                           "last_name": last or None, "user_type": "System User",
+                           "send_welcome_email": 0,
+                           "roles": [{"role": r} for r in roles]}).insert(ignore_permissions=True)
+link = user._reset_password(send_email=False)
+frappe.db.commit()
+print("OWNER " + user.name)
+print("ACTIVATE" + link)
+"""
+
+
+def hotel_base_url(site: str) -> str:
+    """How the hotel's site is reached: https://<site> on a server; the
+    `lodgiva_hotel_url` template (e.g. http://{site}:8002) on a laptop."""
+    return (frappe.conf.get("lodgiva_hotel_url") or "https://{site}").format(site=site)
+
+
+def create_owner(doc, hide: list[str] | None = None) -> str:
+    """Create (or refresh) the owner's account on their site; return a fresh
+    one-time activation link. A new link voids the previous one."""
+    bench_path = frappe.utils.get_bench_path()
+    out = _run(
+        doc,
+        [os.path.join(bench_path, "env", "bin", "python"), "-c", OWNER_SCRIPT, doc.site_name,
+         doc.owner_email, doc.customer_name or doc.owner_email, ",".join(OWNER_ROLES)],
+        hide or [],
+        cwd=os.path.join(bench_path, "sites"),
+    )
+    link = next((ln[8:] for ln in out.splitlines() if ln.startswith("ACTIVATE")), None)
+    if not link:
+        raise RuntimeError("owner account was not created")
+    return link
+
+
+def activate_owner(doc, hide: list[str] | None = None) -> bool:
+    """Owner account plus activation email. False when mail is not set up,
+    which must not fail a finished site: the operator resends later."""
+    link = create_owner(doc, hide)
+    try:
+        send_activation(doc, link)
+    except frappe.OutgoingEmailError:
+        frappe.clear_last_message()
+        _log(doc, "Activation email NOT sent: the control site has no outgoing email "
+                  "account. Set one up, then use Resend activation.")
+        return False
+    _log(doc, f"Activation link emailed to {doc.owner_email}.")
+    return True
+
+
+@frappe.whitelist(methods=["POST"])
+def resend_activation(docname: str) -> dict:
+    """Operator action: a new activation link for the owner of an Active site."""
+    frappe.only_for(["Lodgiva Operator", "System Manager"])
+    doc = frappe.get_doc("Hotel Environment", docname)
+    if doc.status != "Active" or not site_exists(doc.site_name):
+        frappe.throw("Only an Active environment with a site on disk has an owner to activate.")
+    sent = activate_owner(doc)
+    doc.add_comment("Info", f"Activation {'resent' if sent else 'regenerated, email not sent'} "
+                            f"by {frappe.session.user}.")
+    return {"sent": sent, "owner": doc.owner_email}
+
+
+def send_activation(doc, link: str) -> None:
+    """Email the owner their one-time activation link, from the control site."""
+    frappe.sendmail(
+        recipients=[doc.owner_email],
+        subject=f"Activate your Lodgiva account for {doc.property_name or doc.customer_name}",
+        message=(
+            f"<p>Your hotel system is ready at <a href='{hotel_base_url(doc.site_name)}'>"
+            f"{hotel_base_url(doc.site_name)}</a>.</p>"
+            f"<p><a href='{link}'>Set your password</a> to sign in as {doc.owner_email}. "
+            "The link works once and expires in two days.</p>"
+        ),
+        reference_doctype=doc.doctype,
+        reference_name=doc.name,
+    )
 
 
 def setup_property_payload(doc) -> str:
@@ -226,7 +333,7 @@ def provision(docname: str) -> None:
             "--install-app", "lodgiva_nigeria",
         ], hide)
 
-        _run(doc, [bench, "--site", site, "set-config", "host_name", f"https://{site}"], hide)
+        _run(doc, [bench, "--site", site, "set-config", "host_name", hotel_base_url(site)], hide)
         _run(doc, [bench, "--site", site, "enable-scheduler"], hide)
         # Seed the hotel by calling the function directly rather than through
         # `bench execute`: that command eval()s the dotted path without
@@ -248,6 +355,10 @@ def provision(docname: str) -> None:
             hide,
             cwd=os.path.join(bench_path, "sites"),
         )
+
+        # The owner signs in as themselves. Administrator stays a break-glass
+        # account for Lodgiva support; its password is never handed out.
+        activate_owner(doc, hide)
 
         # db_set writes the column verbatim, which for a Password field means
         # plaintext in tabHotel Environment. Store it encrypted in __Auth the

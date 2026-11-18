@@ -1,0 +1,45 @@
+{% extends "templates/web.html" %}
+
+{% block title %}Start your Lodgiva hotel{% endblock %}
+
+{% block page_content %}
+<div style="max-width:520px;margin:2rem auto">
+  <h1 style="font-size:1.6rem">Start your Lodgiva hotel</h1>
+  <p class="text-muted">Free trial. We email you a confirmation link, then a link to set your password.</p>
+  <form id="signup" class="mt-4">
+    <div class="form-group"><label>Hotel name</label><input class="form-control" name="hotel_name" required maxlength="140"></div>
+    <div class="form-group"><label>Your full name</label><input class="form-control" name="owner_name" required maxlength="140"></div>
+    <div class="form-group"><label>Email</label><input class="form-control" type="email" name="email" required></div>
+    <div class="form-group"><label>Web address</label>
+      <div class="input-group"><input class="form-control" name="subdomain" required pattern="[a-z0-9][a-z0-9-]{1,30}[a-z0-9]" title="3-32 lowercase letters, digits or hyphens">
+      <div class="input-group-append"><span class="input-group-text">.{{ apex }}</span></div></div></div>
+    <div class="form-group"><label>City</label><input class="form-control" name="city" required></div>
+    <div class="form-group"><label>State</label><input class="form-control" name="state"></div>
+    <div class="form-group"><label>Number of rooms</label><input class="form-control" type="number" name="rooms" min="1" max="300" value="10" required></div>
+    <div class="form-group"><label>Nightly rate (NGN)</label><input class="form-control" type="number" name="base_price" min="0" value="30000"></div>
+    <button class="btn btn-primary" type="submit">Create my hotel</button>
+    <p id="signup-msg" class="mt-3" role="status" aria-live="polite"></p>
+  </form>
+</div>
+<script>
+document.getElementById("signup").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("signup-msg");
+  const btn = e.target.querySelector("button");
+  btn.disabled = true; msg.textContent = "Sending...";
+  const body = new URLSearchParams(new FormData(e.target));
+  const r = await fetch("/api/method/lodgiva_control.signup.signup", {
+    method: "POST", body, headers: { "X-Frappe-CSRF-Token": "{{ frappe.session.csrf_token or '' }}" },
+  });
+  const data = await r.json().catch(() => ({}));
+  if (r.ok) { msg.className = "mt-3 text-success"; msg.textContent = data.message.message; e.target.reset(); }
+  else {
+    let text = "Something went wrong. Try again.";
+    try { text = JSON.parse(JSON.parse(data._server_messages)[0]).message; } catch (_) {}
+    if (r.status === 429) text = "Too many attempts. Try again in an hour.";
+    msg.className = "mt-3 text-danger"; msg.textContent = text;
+  }
+  btn.disabled = false;
+});
+</script>
+{% endblock %}

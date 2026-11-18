@@ -134,8 +134,28 @@ browser → Caddy (HTTPS) ───┤
 The landing page is still deployed on Vercel from the `lodgiva` repo. Caddy
 fetches it from there, so changes you push to the landing page appear here
 without redeploying the VM. The landing page's **Log in** button opens the
-PMS login. **Get started** (`/signup`) and `/dashboard` go there too, on
-purpose: the old Next.js signup would create accounts in the production Neon
-database.
+PMS login. `/dashboard` goes there too. **Get started** (`/signup`) goes to
+the control site's signup page, which provisions a Frappe site for the
+hotel once the owner confirms their email. It never goes to the old Next.js
+signup, which would create accounts in the production Neon database.
+
+### One site per customer
+
+Each customer is its own Frappe site and database, reached at
+`<customer>.<apex>`. The frappe_docker frontend passes Caddy's
+`X-Frappe-Site-Name` through (`FRAPPE_SITE_NAME_HEADER='$http_x_frappe_site_name'`).
+Caddy sets it only for the landing domain, whose internal site is
+`lodgiva.local`. For every other host it is empty, and Frappe routes by
+Host. A hostname with no site gets a 404, and Caddy's `ask` gate refuses it
+a certificate.
+
+### Pinned releases
+
+`release.lock` holds the exact revision of Frappe, frappe_docker, payments,
+the PMS and the Nigeria pack. `setup.sh` checks each ref with
+`git ls-remote` and stops if it has moved. To release: update the SHAs,
+commit, then run `sudo REBUILD=1 bash setup.sh`. The image is tagged and
+labelled with the release (`/opt/lodgiva/release.txt`). Bump `PREV_RELEASE`
+in lodgiva-pms's CI `upgrade` job to the SHA that was live before.
 
 The full route list is in [`Caddyfile.routes`](Caddyfile.routes).

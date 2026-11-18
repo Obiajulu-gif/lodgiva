@@ -1,0 +1,14 @@
+# The exact revisions a Lodgiva server image is built from.
+#
+# setup.sh refuses to build when a ref below no longer points at its SHA, so a
+# push to main never changes what a re-run installs. To release: update the
+# SHAs (git ls-remote <repo> <ref>), commit, re-run setup.sh with REBUILD=1.
+FRAPPE_BRANCH=v16.25.0
+FRAPPE_SHA=9a8daf343db69a0127f470bad8be0af192cd80c8
+FRAPPE_DOCKER_SHA=85ad653360e4670c2e885c4283d293e7b9efeda9
+PAYMENTS_REF=develop
+PAYMENTS_SHA=b2ceb4a0484cf5c4f4f8625a63182dda63de8895
+PMS_REF=main
+PMS_SHA=de3a5ed54ab780bc2db5c17dbbe8d722846fb20d
+NIGERIA_REF=main
+NIGERIA_SHA=8863617570ad15e139b1b99f3c97aa01393d25f2

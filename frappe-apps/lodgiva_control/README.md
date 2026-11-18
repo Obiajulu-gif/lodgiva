@@ -95,6 +95,60 @@ hotel's own site. `lodgiva_control.console.overview` builds it;
 - A trial that ended but is still `trialing`, or a hotel whose business date
   is behind, means scheduled jobs are not running — the stack needs
   `bench schedule` as well as `bench worker`.
+- **Exceptions** (top of the page, `console.exceptions_for`): failed or stuck
+  provisioning (Retry), scheduler silent for 2 hours (heartbeat:
+  `max(Scheduled Job Type.last_execution)` on the hotel's site), missed
+  night audit, no off-server copy in 26 hours, past-due or unpaid
+  subscription (Mark paid), and a subscription access mode the site does not
+  apply. Each says which site, what happened, when, and what to do next.
+- Each site row shows the deployed version (frappe, kamra and
+  lodgiva_nigeria, with the git SHA when there is a checkout), the health
+  check time, access mode applied, last local backup, last off-server copy,
+  last verified restore and grace end. Plan and access changes are audited
+  through the subscription's change history.
+
+## Signup and owner activation
+
+`/signup` on the control site is the public way in. It saves a Draft Hotel
+Environment and emails the owner a confirmation link
+(`lodgiva_control.signup.verify`, valid 48 hours, single use). Confirming
+submits the record, which enqueues provisioning exactly as an operator's
+Submit does. Typos and fake addresses never cost a site build.
+
+At the end of provisioning, `provisioning.activate_owner` creates the
+owner's user on the new site and emails a one-time activation link (two
+days). Administrator stays break-glass for Lodgiva: its password is stored
+encrypted and never handed out. Without an outgoing email account on the
+control site the site still finishes; the log says the email was not sent,
+and **Resend activation** issues a fresh link once mail works.
+
+## Support access
+
+**Support access** on a hotel opens a dialog for a reason and a duration
+(at most 24 hours). `support.grant` creates `Support Access Grant`
+`SAG-#####` and a dedicated user `support-sag-#####@support.lodgiva.com`
+(Hotel Admin, Front Desk, Finance) on that site only. The password is shown
+once to the operator who asked. `support.expire_grants` runs hourly and
+disables the user when the grant runs out; **Revoke** does it at once. The
+grant record keeps who, why, until when, and who revoked it.
+
+## Backups and restore rehearsal
+
+```bash
+# copy every night off the server (rclone remote, or a path on another disk)
+bench --site control.<apex> execute lodgiva_control.backups.offsite \
+  --kwargs '{"site": "hotel.<apex>", "target": "r2:lodgiva-backups"}'
+# restore the newest copy into a throwaway site and verify it
+bench --site control.<apex> execute lodgiva_control.backups.rehearse \
+  --kwargs '{"site": "hotel.<apex>", "source_dir": "/mnt/offsite", "target_site": "rehearsal-hotel.<apex>"}'
+```
+
+`offsite` writes a manifest (SHA-256 of each file, plus reservation, folio,
+payment and file counts at backup time) next to the copy. `rehearse` only
+restores into a site named `rehearsal*` or `restore*`. It checks the counts
+and that every attachment exists on disk, then records a `Restore verified`
+Backup Event with the duration and the newest restored timestamp. Rehearsing
+from an rclone remote needs the copy synced to a local directory first.
 
 ## Failure
 
