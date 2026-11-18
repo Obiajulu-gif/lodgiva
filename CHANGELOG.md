@@ -104,6 +104,10 @@ than this repository. They're recorded here so the product has one history.
   rolls back a failed property before moving on.
 - **WhatsApp webhooks were unsigned.** (PMS) When a connection has its Meta
   app secret, `X-Hub-Signature-256` is now verified.
+- **Demo login passwords shipped to every hotel.** (PMS) The one-tap demo
+  accounts were compiled into the login bundle that every site serves,
+  even though they only show on the demo site. `site_info` now sends them,
+  and only when demo mode is on.
 - **Customer environment provisioning.** A new Frappe app,
   [frappe-apps/lodgiva_control](frappe-apps/lodgiva_control), creates one
   Lodgiva site per hotel customer. An operator fills a form in Frappe Desk
