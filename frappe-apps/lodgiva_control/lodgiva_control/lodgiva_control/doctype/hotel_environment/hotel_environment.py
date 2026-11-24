@@ -73,6 +73,16 @@ class HotelEnvironment(Document):
 
 
 @frappe.whitelist()
+def site_url(docname: str) -> str:
+    """Where this hotel's site is reached, as the console links to it."""
+    doc = frappe.get_doc("Hotel Environment", docname)
+    doc.check_permission("read")
+    from lodgiva_control.console import hotel_url
+
+    return hotel_url(doc.site_name, doc.public_url)
+
+
+@frappe.whitelist()
 def retry(docname: str):
     """Re-run provisioning for a record that failed.
 

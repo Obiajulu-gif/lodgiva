@@ -64,8 +64,21 @@ frappe.ui.form.on("Hotel Environment", {
     if (frm.doc.status === "Active" && frm.doc.site_name) {
       // Prefer the tunnel when one is published: on a laptop the site name is
       // only resolvable on this machine.
+      // The address comes from the server: the tunnel while it runs, else the
+      // control site's lodgiva_hotel_url template (http://{site}:8002 on a
+      // laptop, https://{site} on a server). A hard-coded https:// here sent
+      // operators to an address nothing answers on locally.
+      const site_url = (then) =>
+        frappe.call({
+          method: "lodgiva_control.lodgiva_control.doctype.hotel_environment.hotel_environment.site_url",
+          args: { docname: frm.doc.name },
+          callback: (r) => r.message && then(r.message),
+        });
+
       frm.add_custom_button(__("Open site"), () => {
-        window.open(frm.doc.public_url || `https://${frm.doc.site_name}`, "_blank");
+        // open the window inside the click so pop-up blockers allow it
+        const win = window.open("", "_blank");
+        site_url((url) => (win.location = url));
       });
 
       frm.add_custom_button(
@@ -112,10 +125,12 @@ frappe.ui.form.on("Hotel Environment", {
               frappe.msgprint(__("No password stored on this record."));
               return;
             }
-            frappe.utils.copy_to_clipboard(
-              `Site: https://${frm.doc.site_name}\nUser: Administrator\nPassword: ${password}`
-            );
-            frappe.show_alert({ message: __("Sign-in details copied"), indicator: "green" });
+            site_url((url) => {
+              frappe.utils.copy_to_clipboard(
+                `Site: ${url}/login\nUser: Administrator\nPassword: ${password}`
+              );
+              frappe.show_alert({ message: __("Sign-in details copied"), indicator: "green" });
+            });
           },
         });
       });
