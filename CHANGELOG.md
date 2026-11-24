@@ -79,6 +79,11 @@ than this repository. They're recorded here so the product has one history.
   the checks.
 
 ### Fixed (enterprise foundation)
+- **"Open site" and "Copy sign-in details" pointed at an address nothing
+  answers on.** The Hotel Environment form hard-coded `https://<site>`. It
+  now asks the server, which uses the running tunnel or the control site's
+  `lodgiva_hotel_url` template (`http://{site}:8002` on a laptop,
+  `https://{site}` on a server), and the copied details include `/login`.
 - **Every customer hostname reached the same hotel.** `setup.sh` forced
   `FRAPPE_SITE_NAME_HEADER` to the landing site. It now passes Caddy's
   header through, and Frappe otherwise routes by Host.
