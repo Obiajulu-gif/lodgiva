@@ -10,6 +10,18 @@ import Caddyfile.routes
 	import lodgiva_routes
 }
 
+# The certificate gate. On-demand TLS (global block, written by setup.sh) asks
+# lodgiva_control.api.allow_host before issuing for <customer>.<apex>. That
+# method lives on the control site, but Caddy's `ask` cannot set a header and
+# 127.0.0.1 is no site's hostname, so the request goes through this
+# loopback-only listener, which names the control site for Frappe.
+http://127.0.0.1:9111 {
+	bind 127.0.0.1
+	reverse_proxy {$FRAPPE_UPSTREAM} {
+		header_up X-Frappe-Site-Name {$LODGIVA_CONTROL_SITE}
+	}
+}
+
 # One Frappe site per hotel customer, reached at <customer>.<apex>.
 #
 # Certificates are issued on first request rather than from one wildcard

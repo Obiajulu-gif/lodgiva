@@ -79,6 +79,18 @@ than this repository. They're recorded here so the product has one history.
   the checks.
 
 ### Fixed (enterprise foundation)
+- **A server install had no control site.** `setup.sh` never installed
+  `lodgiva_control` or created `control.<apex>`, so there was nowhere to
+  provision customers, sign up or open `/admin`. The certificate gate
+  pointed at a method no site had, so every customer subdomain was refused
+  HTTPS. `lodgiva_control` is now a final image layer taken from
+  `LODGIVA_REF`, and `setup.sh` creates and configures the control site.
+  Caddy asks the gate through a loopback listener that names the control
+  site, and `/admin` and `/signup` redirect to it.
+- **`release.lock` pinned a moving branch and stale versions.** payments
+  was pinned to `develop`, which moves daily, so `setup.sh` would refuse
+  to build. It is now pinned to the `v16.0.1` tag. The PMS and Nigeria pins
+  are bumped to the enterprise-foundation merges.
 - **"Open site" and "Copy sign-in details" pointed at an address nothing
   answers on.** The Hotel Environment form hard-coded `https://<site>`. It
   now asks the server, which uses the running tunnel or the control site's
