@@ -53,7 +53,7 @@ The VM has its own firewall as well, and it blocks these ports too. The
 setup script opens that one. Both have to be open, and missing either one
 gives the same symptom: the site just times out.
 
-## 4. Run the setup (30–50 min, mostly the first image build)
+## 4. Run the setup (10–20 min with the prebuilt image; 30–50 if it builds here)
 
 From your PC, open PowerShell in the folder holding the key you downloaded:
 
@@ -113,6 +113,27 @@ It reuses everything already built and only changes the address and the
 certificate. On the free `<ip>.sslip.io` address no DNS is needed:
 sslip.io resolves every subdomain to the IP, so the control site and
 customer hotels work there too.
+
+### The image and lite mode
+
+`setup.sh` pulls the server image `ghcr.io/obiajulu-gif/lodgiva-server:<release>`.
+The **Server image** workflow in this repository builds it from
+`release.lock` whenever the lock, `release.sh`, `control.Containerfile` or
+the control app change, and builds it without pushing on pull requests.
+After its first push, set the `lodgiva-server` package to **Public**
+(GitHub → your profile → Packages → lodgiva-server → Package settings) so
+servers can pull it without a login. The code in it is already public.
+
+If the pull fails, `setup.sh` builds the image itself on a server with 4 GB
+or more, and stops with instructions on a smaller one. `BUILD_LOCALLY=1`
+forces a local build.
+
+Under 6 GB of RAM, `setup.sh` runs in **lite mode** (`compose.lite.yaml`):
+- one background worker instead of two, taking every queue
+- one web worker
+- a 256 MB MariaDB buffer pool, and no performance schema
+
+`LITE=0` or `LITE=1` overrides the automatic choice.
 
 ### The control site
 

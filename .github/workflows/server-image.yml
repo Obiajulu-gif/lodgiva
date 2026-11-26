@@ -1,0 +1,94 @@
+name: Server image
+
+# Builds the Lodgiva server image (Frappe + payments + PMS + Nigeria pack +
+# control app) from deploy/oracle/release.lock and pushes it to
+# ghcr.io/obiajulu-gif/lodgiva-server:<release>, so deploy/oracle/setup.sh can
+# pull it instead of building on the server. Building needs ~4 GB of RAM and
+# 20-40 minutes; pulling lets a 2 GB test VM run Lodgiva.
+#
+# The release name comes from deploy/oracle/release.sh, the same file setup.sh
+# uses, so the tag a server asks for is the tag pushed here.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - deploy/oracle/release.lock
+      - deploy/oracle/release.sh
+      - deploy/oracle/control.Containerfile
+      - frappe-apps/lodgiva_control/**
+      - .github/workflows/server-image.yml
+  # Build (without pushing) on pull requests that change the image, so a broken
+  # build is caught before it reaches main.
+  pull_request:
+    paths:
+      - deploy/oracle/release.lock
+      - deploy/oracle/release.sh
+      - deploy/oracle/control.Containerfile
+      - frappe-apps/lodgiva_control/**
+      - .github/workflows/server-image.yml
+  workflow_dispatch:
+    inputs:
+      rebuild:
+        description: Rebuild even if this release is already published
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: server-image
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      LODGIVA_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+    defaults:
+      run:
+        working-directory: deploy/oracle
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space for the image build
+        working-directory: .
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve the release
+        run: |
+          . ./release.sh
+          echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
+          echo "SERVER_IMAGE=$SERVER_IMAGE" >> "$GITHUB_ENV"
+          if docker manifest inspect "$SERVER_IMAGE:$RELEASE" >/dev/null 2>&1 \
+             && [ "${{ inputs.rebuild }}" != "true" ]; then
+            echo "PUBLISHED=1" >> "$GITHUB_ENV"
+            echo "$SERVER_IMAGE:$RELEASE is already published."
+          fi
+
+      - name: Build
+        if: env.PUBLISHED != '1'
+        run: |
+          . ./release.sh
+          fetch_frappe_docker
+          build_server_image
+
+      - name: Push
+        if: env.PUBLISHED != '1' && github.event_name != 'pull_request'
+        run: |
+          docker tag "lodgiva-pms:$RELEASE" "$SERVER_IMAGE:$RELEASE"
+          docker tag "lodgiva-pms:$RELEASE" "$SERVER_IMAGE:latest"
+          docker push "$SERVER_IMAGE:$RELEASE"
+          docker push "$SERVER_IMAGE:latest"
+          echo "Pushed $SERVER_IMAGE:$RELEASE" >> "$GITHUB_STEP_SUMMARY"

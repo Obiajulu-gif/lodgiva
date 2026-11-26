@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 # Lodgiva on any Ubuntu 22.04/24.04 server - one command, on a fresh VM.
-# Needs 4 GB RAM or more. Works on Oracle Cloud, DigitalOcean, Hetzner,
-# Contabo, AWS, Google Cloud and Azure alike (see deploy/README.md).
+# Needs 2 GB RAM and about 25 GB of disk for a test install (lite mode, chosen
+# automatically under 6 GB of RAM); 4 GB or more for real hotels. Works on
+# Oracle Cloud, DigitalOcean, Hetzner, Contabo, AWS, Google Cloud and Azure.
 #
 #   curl -fsSL https://raw.githubusercontent.com/Obiajulu-gif/lodgiva/main/deploy/oracle/setup.sh -o setup.sh
 #   sudo bash setup.sh                                  # free https://<ip>.sslip.io
 #   sudo LODGIVA_DOMAIN=demo.lodgiva.com bash setup.sh  # your own domain
 #   sudo DEMO_HOTEL=1 bash setup.sh                     # also create a sample Lagos hotel
+#   sudo LITE=0 bash setup.sh                           # full services even on a small VM
+#   sudo BUILD_LOCALLY=1 bash setup.sh                  # build the image here (needs 4 GB)
+#
+# The server image is built by GitHub ("Server image" workflow) and pulled
+# from ghcr.io, so a small VM never has to build it.
 #
 # What you get: the Lodgiva landing page at /, the PMS at /lodgiva, the
 # guest booking page at /book, HTTPS, and Frappe's scheduler running (it
@@ -27,33 +33,26 @@ REPO_RAW="https://raw.githubusercontent.com/Obiajulu-gif/lodgiva/${LODGIVA_REF}/
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
 mkdir -p "$WORK"; cd "$WORK"
 
-# ── Release pins: every app is built from the SHA in release.lock ─────────
-curl -fsSL "$REPO_RAW/release.lock" -o release.lock
+# ── Release: pinned app revisions and the image they make (release.sh) ────
+# release.sh is shared with the "Server image" workflow, so the image this
+# script asks for is named exactly as the one GitHub built.
+for f in release.lock release.sh control.Containerfile compose.lite.yaml; do
+  curl -fsSL "$REPO_RAW/$f" -o "$f"
+done
 # shellcheck disable=SC1091
-. ./release.lock
-pin() {  # pin <repo url> <branch or tag> <sha>: refuse a ref that has moved
-  local got
-  got="$(git ls-remote "$1" "refs/heads/$2" "refs/tags/$2^{}" "refs/tags/$2" | awk 'NR==1{print $1}')"
-  if [ "$got" != "$3" ]; then
-    echo "release.lock is stale: $1 $2 is ${got:-missing}, lock says $3." >&2
-    echo "Bump release.lock deliberately, or set LODGIVA_REF to a release branch." >&2
-    exit 1
-  fi
-}
-pin https://github.com/frappe/frappe "$FRAPPE_BRANCH" "$FRAPPE_SHA"
-pin https://github.com/frappe/payments "$PAYMENTS_REF" "$PAYMENTS_SHA"
-pin https://github.com/Obiajulu-gif/lodgiva-pms "$PMS_REF" "$PMS_SHA"
-pin https://github.com/Obiajulu-gif/lodgiva-nigeria "$NIGERIA_REF" "$NIGERIA_SHA"
+. ./release.sh
 
-# The control app (provisioning, signup, Hotels Console, billing) lives in this
-# repository, not in its own, so it is taken from the same LODGIVA_REF as this
-# script's config and added to the image as a final layer.
-rm -rf control-src && git init -q control-src
-git -C control-src fetch -q --depth 1 https://github.com/Obiajulu-gif/lodgiva "$LODGIVA_REF"
-git -C control-src checkout -q FETCH_HEAD -- frappe-apps/lodgiva_control
-CONTROL_SHA="$(git -C control-src rev-parse FETCH_HEAD)"
-BASE_RELEASE="pms-${PMS_SHA:0:7}.ng-${NIGERIA_SHA:0:7}.pay-${PAYMENTS_REF}.frappe-${FRAPPE_BRANCH}"
-RELEASE="${BASE_RELEASE}.ctl-${CONTROL_SHA:0:7}"
+# ── Size: lite mode for small VMs ─────────────────────────────────────────
+MEM_MB="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)"
+LITE="${LITE:-auto}"
+if [ "$LITE" = auto ]; then
+  if [ "$MEM_MB" -lt 6000 ]; then LITE=1; else LITE=0; fi
+fi
+DISK_FREE_GB="$(df -BG --output=avail / | tail -1 | tr -dc '0-9')"
+if [ "${DISK_FREE_GB:-0}" -lt 15 ]; then
+  echo "Only ${DISK_FREE_GB} GB free on /. Lodgiva needs about 15 GB for the image, data and swap." >&2
+  exit 1
+fi
 
 # ── 0. Address ────────────────────────────────────────────────────────────
 PUBLIC_IP="$(curl -fsS https://api.ipify.org || curl -fsS https://ifconfig.me)"
@@ -67,6 +66,7 @@ ACME_EMAIL="${ACME_EMAIL:-}"
 LODGIVA_APEX="${LODGIVA_APEX:-$LODGIVA_DOMAIN}"
 log "Public address: https://${LODGIVA_DOMAIN}"
 log "Customer environments: https://<customer>.${LODGIVA_APEX}"
+log "Release $RELEASE on ${MEM_MB} MB RAM ($([ "$LITE" = 1 ] && echo lite || echo full) mode)"
 
 # ── 1. Swap: the SPA build is memory-hungry even on 24 GB shapes ─────────
 if ! swapon --show | grep -q /swapfile; then
@@ -116,50 +116,30 @@ fi
 # shellcheck disable=SC1090
 . "$SECRETS"
 
-# ── 5. Build the image: Frappe + payments + Lodgiva PMS + Nigeria pack ───
-if [ ! -d frappe_docker ]; then
-  git init -q frappe_docker
-  git -C frappe_docker remote add origin https://github.com/frappe/frappe_docker
-fi
-git -C frappe_docker fetch -q --depth 1 origin "$FRAPPE_DOCKER_SHA"
-git -C frappe_docker checkout -q --force FETCH_HEAD
-cat > apps.json <<EOF
-[
-  { "url": "https://github.com/frappe/payments", "branch": "${PAYMENTS_REF}" },
-  { "url": "https://github.com/Obiajulu-gif/lodgiva-pms", "branch": "${PMS_REF}" },
-  { "url": "https://github.com/Obiajulu-gif/lodgiva-nigeria", "branch": "${NIGERIA_REF}" }
-]
-EOF
-if ! docker image inspect "lodgiva-pms:base-$BASE_RELEASE" >/dev/null 2>&1 || [ "${REBUILD:-0}" = 1 ]; then
-  log "Building the Lodgiva image $BASE_RELEASE (20-40 minutes on the first run)"
-  docker build \
-    --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
-    --build-arg=FRAPPE_BRANCH="$FRAPPE_BRANCH" \
-    --build-arg=APPS_JSON_BASE64="$(base64 -w 0 apps.json)" \
-    --tag=lodgiva-pms:base-"$BASE_RELEASE" \
-    --file=frappe_docker/images/layered/Containerfile frappe_docker
-fi
-# Control app layer: seconds to rebuild, so a control-only change never pays
-# for the whole image. It has no Python dependencies; a .pth entry is exactly
-# what an editable install would write, without needing pip in the image.
+# ── 5. The image: pulled from ghcr.io, or built here as a fallback ───────
+fetch_frappe_docker   # its compose files run the stack either way
 built="$(docker image inspect lodgiva-pms:latest --format '{{ index .Config.Labels "lodgiva.release" }}' 2>/dev/null || true)"
-if [ "$built" != "$RELEASE" ] || [ "${REBUILD:-0}" = 1 ]; then
-  log "Adding the control app ($RELEASE)"
-  rm -rf control-build && mkdir control-build
-  cp -r control-src/frappe-apps/lodgiva_control control-build/lodgiva_control
-  cat > control-build/Containerfile <<'EOF'
-ARG BASE
-FROM ${BASE}
-COPY --chown=frappe:0 lodgiva_control /home/frappe/frappe-bench/apps/lodgiva_control
-RUN cd /home/frappe/frappe-bench \
- && echo /home/frappe/frappe-bench/apps/lodgiva_control \
-      > "$(env/bin/python -c 'import site; print(site.getsitepackages()[0])')/lodgiva_control.pth" \
- && env/bin/python -c "import lodgiva_control"
+if [ "$built" = "$RELEASE" ] && [ "${REBUILD:-0}" != 1 ]; then
+  log "Image $RELEASE already here"
+elif [ "${BUILD_LOCALLY:-0}" != 1 ] && docker pull -q "$SERVER_IMAGE:$RELEASE"; then
+  log "Pulled the prebuilt image $RELEASE"
+  docker tag "$SERVER_IMAGE:$RELEASE" lodgiva-pms:latest
+  docker tag "$SERVER_IMAGE:$RELEASE" lodgiva-pms:"$RELEASE"
+else
+  if [ "$MEM_MB" -lt 3500 ]; then
+    cat >&2 <<EOF
+
+No prebuilt image for $RELEASE, and this server has ${MEM_MB} MB of RAM -
+building one needs about 4 GB. Either:
+  - run the "Server image" workflow on GitHub (Actions tab of
+    Obiajulu-gif/lodgiva) and make the ghcr.io/obiajulu-gif/lodgiva-server
+    package public, then re-run this script; or
+  - use a VM with 4 GB or more.
 EOF
-  docker build --build-arg=BASE="lodgiva-pms:base-$BASE_RELEASE" \
-    --label=lodgiva.release="$RELEASE" \
-    --tag=lodgiva-pms:latest --tag=lodgiva-pms:"$RELEASE" \
-    --file=control-build/Containerfile control-build
+    exit 1
+  fi
+  log "Building the Lodgiva image $RELEASE here (20-40 minutes on the first run)"
+  build_server_image
 fi
 echo "$RELEASE" > "$WORK/release.txt"
 
@@ -177,13 +157,17 @@ DB_PASSWORD=${DB_PASSWORD}
 # Single quotes: compose would otherwise expand it as a shell variable.
 FRAPPE_SITE_NAME_HEADER='\$http_x_frappe_site_name'
 HTTP_PUBLISH_PORT=8080
+GUNICORN_WORKERS=$([ "$LITE" = 1 ] && echo 1 || echo 2)
 EOF
 chmod 600 frappe.env
+LITE_OVERRIDE=()
+[ "$LITE" = 1 ] && LITE_OVERRIDE=(-f ../compose.lite.yaml)
 ( cd frappe_docker && docker compose --env-file ../frappe.env \
     -f compose.yaml \
     -f overrides/compose.mariadb.yaml \
     -f overrides/compose.redis.yaml \
     -f overrides/compose.noproxy.yaml \
+    "${LITE_OVERRIDE[@]}" \
     config > ../lodgiva-stack.yaml )
 docker compose -p lodgiva -f lodgiva-stack.yaml up -d
 

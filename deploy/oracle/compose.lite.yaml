@@ -1,0 +1,24 @@
+# Small-server profile: setup.sh adds this on machines under 6 GB of RAM
+# (or with LITE=1). Fits a test install of a few hotels in about 2 GB.
+#
+# - queue-short is not started: queue-long already takes long, default and
+#   short jobs, so one worker process serves everything.
+# - MariaDB gets a 256 MB buffer pool and no performance schema (its defaults
+#   assume a dedicated database server).
+# GUNICORN_WORKERS=1 is set in frappe.env by setup.sh.
+#
+# Moving to a bigger server later: run setup.sh there with LITE=0 and restore
+# the sites from backup.
+
+services:
+  queue-short:
+    profiles: ["full"]
+  db:
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --innodb-snapshot-isolation=OFF
+      - --innodb-buffer-pool-size=256M
+      - --performance-schema=OFF
+      - --max-connections=60
