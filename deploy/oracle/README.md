@@ -96,15 +96,36 @@ sudo grep ADMIN_PASSWORD /opt/lodgiva/secrets.env
 
 ## 5. Use your own domain instead (optional)
 
-Point a DNS **A record** — for example `demo.lodgiva.com` — at the VM's IP,
-wait a few minutes, then run:
+Point two DNS **A records** at the VM's IP, for example:
+
+| Name | Points at | Why |
+|---|---|---|
+| `demo.lodgiva.com` | VM IP | the landing page, PMS and booking page |
+| `*.demo.lodgiva.com` | VM IP | the control site (`control.demo.lodgiva.com`) and every customer hotel (`<hotel>.demo.lodgiva.com`) |
+
+Wait a few minutes, then run:
 
 ```bash
 sudo LODGIVA_DOMAIN=demo.lodgiva.com ACME_EMAIL=you@example.com bash setup.sh
 ```
 
 It reuses everything already built and only changes the address and the
-certificate.
+certificate. On the free `<ip>.sslip.io` address no DNS is needed:
+sslip.io resolves every subdomain to the IP, so the control site and
+customer hotels work there too.
+
+### The control site
+
+`setup.sh` also creates `control.<apex>` with the `lodgiva_control` app:
+provisioning, `/signup`, the Hotels Console (`/admin` redirects there) and
+billing. Its Administrator password is in `/opt/lodgiva/secrets.env`
+(`CONTROL_ADMIN_PASSWORD`). Before the first signup, add an outgoing email
+account on it (**Email Account**, default outgoing). Without one, signup
+confirmations and owner activation links are not sent.
+
+`lodgiva_control` lives in this repository, not its own, so it is taken from
+`LODGIVA_REF` (the same ref this script reads its config from) and added to
+the image as a small last layer. A change to it rebuilds only that layer.
 
 ---
 
@@ -153,9 +174,15 @@ a certificate.
 
 `release.lock` holds the exact revision of Frappe, frappe_docker, payments,
 the PMS and the Nigeria pack. `setup.sh` checks each ref with
-`git ls-remote` and stops if it has moved. To release: update the SHAs,
-commit, then run `sudo REBUILD=1 bash setup.sh`. The image is tagged and
-labelled with the release (`/opt/lodgiva/release.txt`). Bump `PREV_RELEASE`
-in lodgiva-pms's CI `upgrade` job to the SHA that was live before.
+`git ls-remote` and stops if it has moved. Frappe and payments are pinned
+to release tags (`v16.25.0`, `v16.0.1`), which do not move. The PMS and
+Nigeria pack track `main`, so every merge there needs a deliberate bump here.
+
+To release: update the SHAs, commit, then run `sudo REBUILD=1 bash setup.sh`.
+To deploy a specific revision of this repository (config and control app),
+run with `LODGIVA_REF=<sha or tag>`. The image is labelled with the full
+release, including the control app's SHA (`/opt/lodgiva/release.txt`).
+After a release goes live, bump `PREV_RELEASE` in lodgiva-pms's CI
+`upgrade` job to the PMS SHA it replaced.
 
 The full route list is in [`Caddyfile.routes`](Caddyfile.routes).

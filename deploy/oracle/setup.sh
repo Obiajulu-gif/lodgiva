@@ -31,19 +31,29 @@ mkdir -p "$WORK"; cd "$WORK"
 curl -fsSL "$REPO_RAW/release.lock" -o release.lock
 # shellcheck disable=SC1091
 . ./release.lock
-pin() {  # pin <repo url> <ref> <sha>: refuse a ref that has moved
-  local got; got="$(git ls-remote "$1" "$2" | awk 'NR==1{print $1}')"
+pin() {  # pin <repo url> <branch or tag> <sha>: refuse a ref that has moved
+  local got
+  got="$(git ls-remote "$1" "refs/heads/$2" "refs/tags/$2^{}" "refs/tags/$2" | awk 'NR==1{print $1}')"
   if [ "$got" != "$3" ]; then
     echo "release.lock is stale: $1 $2 is ${got:-missing}, lock says $3." >&2
     echo "Bump release.lock deliberately, or set LODGIVA_REF to a release branch." >&2
     exit 1
   fi
 }
-pin https://github.com/frappe/frappe "refs/tags/$FRAPPE_BRANCH" "$FRAPPE_SHA"
-pin https://github.com/frappe/payments "refs/heads/$PAYMENTS_REF" "$PAYMENTS_SHA"
-pin https://github.com/Obiajulu-gif/lodgiva-pms "refs/heads/$PMS_REF" "$PMS_SHA"
-pin https://github.com/Obiajulu-gif/lodgiva-nigeria "refs/heads/$NIGERIA_REF" "$NIGERIA_SHA"
-RELEASE="pms-${PMS_SHA:0:7}.ng-${NIGERIA_SHA:0:7}.frappe-${FRAPPE_BRANCH}"
+pin https://github.com/frappe/frappe "$FRAPPE_BRANCH" "$FRAPPE_SHA"
+pin https://github.com/frappe/payments "$PAYMENTS_REF" "$PAYMENTS_SHA"
+pin https://github.com/Obiajulu-gif/lodgiva-pms "$PMS_REF" "$PMS_SHA"
+pin https://github.com/Obiajulu-gif/lodgiva-nigeria "$NIGERIA_REF" "$NIGERIA_SHA"
+
+# The control app (provisioning, signup, Hotels Console, billing) lives in this
+# repository, not in its own, so it is taken from the same LODGIVA_REF as this
+# script's config and added to the image as a final layer.
+rm -rf control-src && git init -q control-src
+git -C control-src fetch -q --depth 1 https://github.com/Obiajulu-gif/lodgiva "$LODGIVA_REF"
+git -C control-src checkout -q FETCH_HEAD -- frappe-apps/lodgiva_control
+CONTROL_SHA="$(git -C control-src rev-parse FETCH_HEAD)"
+BASE_RELEASE="pms-${PMS_SHA:0:7}.ng-${NIGERIA_SHA:0:7}.pay-${PAYMENTS_REF}.frappe-${FRAPPE_BRANCH}"
+RELEASE="${BASE_RELEASE}.ctl-${CONTROL_SHA:0:7}"
 
 # ── 0. Address ────────────────────────────────────────────────────────────
 PUBLIC_IP="$(curl -fsS https://api.ipify.org || curl -fsS https://ifconfig.me)"
@@ -99,6 +109,10 @@ DB_PASSWORD=$(openssl rand -hex 24)
 ADMIN_PASSWORD=$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-20)
 EOF
 fi
+# Added later than the two above, so an existing install gets it on re-run.
+if ! grep -q '^CONTROL_ADMIN_PASSWORD=' "$SECRETS"; then
+  ( umask 077; echo "CONTROL_ADMIN_PASSWORD=$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-20)" >> "$SECRETS" )
+fi
 # shellcheck disable=SC1090
 . "$SECRETS"
 
@@ -116,16 +130,36 @@ cat > apps.json <<EOF
   { "url": "https://github.com/Obiajulu-gif/lodgiva-nigeria", "branch": "${NIGERIA_REF}" }
 ]
 EOF
-built="$(docker image inspect lodgiva-pms:latest --format '{{ index .Config.Labels "lodgiva.release" }}' 2>/dev/null || true)"
-if [ "$built" != "$RELEASE" ] || [ "${REBUILD:-0}" = 1 ]; then
-  log "Building the Lodgiva image $RELEASE (20-40 minutes on the first run)"
+if ! docker image inspect "lodgiva-pms:base-$BASE_RELEASE" >/dev/null 2>&1 || [ "${REBUILD:-0}" = 1 ]; then
+  log "Building the Lodgiva image $BASE_RELEASE (20-40 minutes on the first run)"
   docker build \
     --build-arg=FRAPPE_PATH=https://github.com/frappe/frappe \
     --build-arg=FRAPPE_BRANCH="$FRAPPE_BRANCH" \
     --build-arg=APPS_JSON_BASE64="$(base64 -w 0 apps.json)" \
+    --tag=lodgiva-pms:base-"$BASE_RELEASE" \
+    --file=frappe_docker/images/layered/Containerfile frappe_docker
+fi
+# Control app layer: seconds to rebuild, so a control-only change never pays
+# for the whole image. It has no Python dependencies; a .pth entry is exactly
+# what an editable install would write, without needing pip in the image.
+built="$(docker image inspect lodgiva-pms:latest --format '{{ index .Config.Labels "lodgiva.release" }}' 2>/dev/null || true)"
+if [ "$built" != "$RELEASE" ] || [ "${REBUILD:-0}" = 1 ]; then
+  log "Adding the control app ($RELEASE)"
+  rm -rf control-build && mkdir control-build
+  cp -r control-src/frappe-apps/lodgiva_control control-build/lodgiva_control
+  cat > control-build/Containerfile <<'EOF'
+ARG BASE
+FROM ${BASE}
+COPY --chown=frappe:0 lodgiva_control /home/frappe/frappe-bench/apps/lodgiva_control
+RUN cd /home/frappe/frappe-bench \
+ && echo /home/frappe/frappe-bench/apps/lodgiva_control \
+      > "$(env/bin/python -c 'import site; print(site.getsitepackages()[0])')/lodgiva_control.pth" \
+ && env/bin/python -c "import lodgiva_control"
+EOF
+  docker build --build-arg=BASE="lodgiva-pms:base-$BASE_RELEASE" \
     --label=lodgiva.release="$RELEASE" \
     --tag=lodgiva-pms:latest --tag=lodgiva-pms:"$RELEASE" \
-    --file=frappe_docker/images/layered/Containerfile frappe_docker
+    --file=control-build/Containerfile control-build
 fi
 echo "$RELEASE" > "$WORK/release.txt"
 
@@ -175,6 +209,27 @@ bench --site "$SITE" set-config developer_mode 0
 bench --site "$SITE" enable-scheduler
 bench --site "$SITE" migrate     # applies Lodgiva branding and Nigerian defaults
 
+# ── 7b. The control site: provisioning, signup, Hotels Console, billing ───
+# Its own site, so a hotel's billing state can never lock out the console that
+# manages billing. Customer sites are created from here as <customer>.<apex>.
+CONTROL_SITE="control.${LODGIVA_APEX}"
+if ! docker compose -p lodgiva -f lodgiva-stack.yaml exec -T backend test -d "sites/$CONTROL_SITE"; then
+  log "Creating the control site $CONTROL_SITE"
+  bench new-site "$CONTROL_SITE" \
+    --mariadb-user-host-login-scope='%' \
+    --db-root-password "$DB_PASSWORD" \
+    --admin-password "$CONTROL_ADMIN_PASSWORD" \
+    --install-app lodgiva_control
+fi
+bench --site "$CONTROL_SITE" set-config host_name "https://${CONTROL_SITE}"
+bench --site "$CONTROL_SITE" set-config developer_mode 0
+# What provisioning needs: the apex new sites hang off, and the database root
+# password to create their databases (the host is the stack's db_host).
+bench --site "$CONTROL_SITE" set-config lodgiva_apex "$LODGIVA_APEX" >/dev/null
+bench --site "$CONTROL_SITE" set-config lodgiva_db_root_password "$DB_PASSWORD" >/dev/null
+bench --site "$CONTROL_SITE" enable-scheduler
+bench --site "$CONTROL_SITE" migrate
+
 if [ "${DEMO_HOTEL:-0}" = 1 ]; then
   log "Creating the sample hotel 'Lodgiva Demo Hotel', Ikeja"
   bench --site "$SITE" execute kamra.api.setup_property --kwargs '{"payload": {
@@ -205,7 +260,9 @@ curl -fsSL "$REPO_RAW/Caddyfile.routes" -o caddy/Caddyfile.routes
 {
   printf '{\n'
   [ -n "$ACME_EMAIL" ] && printf '\temail %s\n' "$ACME_EMAIL"
-  printf '\ton_demand_tls {\n\t\task http://127.0.0.1:8080/api/method/lodgiva_control.api.allow_host\n\t}\n'
+  # The gate runs on the control site. Caddy's `ask` cannot set headers, so it
+  # goes through a loopback-only Caddy listener (Caddyfile) that names the site.
+  printf '\ton_demand_tls {\n\t\task http://127.0.0.1:9111/api/method/lodgiva_control.api.allow_host\n\t}\n'
   printf '}\n\n'
   cat caddy/Caddyfile
 } > caddy/Caddyfile.tmp
@@ -215,6 +272,8 @@ docker run -d --name lodgiva-caddy --restart unless-stopped --network host \
   -e LODGIVA_DOMAIN="$LODGIVA_DOMAIN" \
   -e LODGIVA_APEX="$LODGIVA_APEX" \
   -e LODGIVA_PMS_SITE="$SITE" \
+  -e LODGIVA_CONTROL_SITE="$CONTROL_SITE" \
+  -e LODGIVA_CONTROL_URL="https://${CONTROL_SITE}" \
   -e FRAPPE_UPSTREAM=127.0.0.1:8080 \
   -v "$WORK/caddy:/etc/caddy" -v lodgiva_caddy_data:/data \
   caddy:2 caddy run --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
@@ -233,7 +292,16 @@ cat <<EOF
     Booking page   https://${LODGIVA_DOMAIN}/book
 
     Username       Administrator
-    Password       sudo grep ADMIN_PASSWORD $SECRETS
+    Password       sudo grep '^ADMIN_PASSWORD' $SECRETS
+
+    Control site   https://${CONTROL_SITE}/app/hotels-console  (also /admin)
+    Signup         https://${LODGIVA_DOMAIN}/signup
+    Username       Administrator
+    Password       sudo grep CONTROL_ADMIN_PASSWORD $SECRETS
+
+  Customer hotels are created at https://<customer>.${LODGIVA_APEX}. That
+  needs a wildcard DNS record: *.${LODGIVA_APEX} -> this server. Set an
+  outgoing email account on the control site before the first signup.
 
   The first HTTPS request can take ~30s while the certificate is issued.
   If the site doesn't load, re-check the VCN ingress rules for 80/443.
