@@ -1,9 +1,19 @@
 # Where to host Lodgiva
 
-The PMS runs on **Frappe**, so it needs a real server. That means at least
-**4 GB of RAM**, a disk that persists, and processes that never go to sleep:
-the night audit posts room charges on a schedule. Serverless and "free web
-service" platforms can't run it; the landing page stays on Vercel either way.
+The PMS runs on **Frappe**, so it needs a real **Linux** server: a disk that
+persists and processes that never go to sleep (the night audit posts room
+charges on a schedule). Serverless and "free web service" platforms can't run
+it, and neither can Windows. The landing page stays on Vercel either way.
+
+| Use | RAM | Disk | Mode |
+|---|---|---|---|
+| Testing, a few hotels | **2 GB** | 25 GB | lite (automatic under 6 GB): one worker, small database cache |
+| Real hotels | 4 GB or more | 64 GB+ | full |
+
+The server image is built on GitHub and pulled, so a 2 GB VM never has to
+build it. To grow, move to a bigger VM: run `setup.sh` there and restore the
+sites from backup. A 2 GB option at most providers: Hetzner CX22, DigitalOcean
+Basic 2 GB, Azure B1ms, AWS t3.small.
 
 The installer, [`oracle/setup.sh`](oracle/setup.sh), works on **any Ubuntu
 22.04 or 24.04 server**, whatever the provider. Its folder is named after the

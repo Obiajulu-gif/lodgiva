@@ -78,6 +78,22 @@ than this repository. They're recorded here so the product has one history.
   installs the previous release with data, migrates to the PR, and re-runs
   the checks.
 
+### Changed
+- **A 2 GB test server is enough.** The server image is now built by a
+  GitHub workflow (**Server image**) and pulled from
+  `ghcr.io/obiajulu-gif/lodgiva-server`, so the VM never builds it. Under
+  6 GB of RAM, `setup.sh` runs in lite mode: one worker for every queue,
+  one web worker, and a 256 MB MariaDB buffer pool. `deploy/oracle/release.sh`
+  holds the release pins, naming and build steps, shared by `setup.sh` and
+  the workflow so the tags always match. The PMS pin moves to `439a737`.
+
+### Fixed (deploy)
+- **The server image was built without Lodgiva's apps.** The pinned
+  frappe_docker reads the app list from a build secret (`apps_json`).
+  `setup.sh` passed it as a build-arg, which is ignored, so the image held
+  Frappe only. The build now passes the secret and fails unless frappe,
+  payments, kamra, lodgiva_nigeria and lodgiva_control all import.
+
 ### Removed
 - **Kamra's release pipeline in lodgiva-pms.** (PMS) The nightly,
   release-please, release and VPS-doctor workflows published Kamra images
