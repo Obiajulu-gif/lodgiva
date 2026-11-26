@@ -78,6 +78,13 @@ than this repository. They're recorded here so the product has one history.
   installs the previous release with data, migrates to the PR, and re-runs
   the checks.
 
+### Removed
+- **Kamra's release pipeline in lodgiva-pms.** (PMS) The nightly,
+  release-please, release and VPS-doctor workflows published Kamra images
+  and deployed kamrapms.com hosts, and failed here daily (no `develop`
+  branch; Actions may not open PRs). Lodgiva releases through
+  `deploy/oracle/release.lock`. Only CI and linters remain.
+
 ### Fixed (enterprise foundation)
 - **A server install had no control site.** `setup.sh` never installed
   `lodgiva_control` or created `control.<apex>`, so there was nowhere to
